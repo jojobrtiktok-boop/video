@@ -689,6 +689,21 @@
   #resize-crop-canvas:active { cursor: grabbing; }
   .crop-hint { font-size: 0.72rem; color: var(--text-muted); text-align: center; }
 
+  /* ── SIZE COMPARISON (compress/upscale) ── */
+  .size-comparison {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 10px 14px;
+    font-size: 0.82rem; margin-bottom: 14px;
+  }
+  .size-orig { color: var(--text-muted); }
+  .size-arrow { color: var(--accent); font-weight: 700; }
+  .size-new { color: var(--success); font-weight: 700; }
+  .size-saved { color: var(--text-muted); font-size: 0.75rem; }
+
+  /* ── IMAGE in library ── */
+  .video-card img.lib-img { width: 100%; aspect-ratio: 16/9; object-fit: contain; background: rgba(255,255,255,0.04); border-radius: 6px 6px 0 0; display: block; }
+
   /* ── COMPRESS ── */
   .quality-row { display: flex; align-items: center; gap: 14px; padding: 8px 0; }
   .quality-row label { font-size: 0.81rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
@@ -1570,6 +1585,7 @@
       <div id="compress-error" class="error-msg"></div>
       <div id="compress-result-card" class="result-card" style="display:none">
         <h3>✓ Comprimido!</h3>
+        <div id="compress-sizes" class="size-comparison"></div>
         <video id="compress-result-video" class="result-video" controls></video><br/>
         <a id="compress-download-btn" class="download-btn" download>⬇ Baixar vídeo comprimido</a>
       </div>
@@ -1609,7 +1625,8 @@
       <div id="upscale-status" class="status-text"></div>
       <div id="upscale-error" class="error-msg"></div>
       <div id="upscale-result-card" class="result-card" style="display:none">
-        <h3>✓ Concluído!</h3>
+        <h3>✓ Qualidade Aumentada!</h3>
+        <div id="upscale-sizes" class="size-comparison"></div>
         <video id="upscale-result-video" class="result-video" controls></video><br/>
         <a id="upscale-download-btn" class="download-btn" download>⬇ Baixar vídeo</a>
       </div>

@@ -32,6 +32,55 @@ const PYTHON  = process.env.PYTHON_BIN  || (process.platform === 'win32' ? 'pyth
 // ── JOBS ASSÍNCRONOS (delogo/sora) ─────────────────────────────────────────
 const processJobs = {};
 
+// ── JOBS SIMPLES (compress/upscale/mirror com progresso real) ───────────────
+const simpleJobs = {};
+
+function getVideoDuration(inputPath) {
+  return new Promise(resolve => {
+    exec(`"${FFPROBE}" -v quiet -print_format json -show_entries format=duration "${inputPath}"`, (e, out) => {
+      try { resolve(parseFloat(JSON.parse(out).format.duration) || 0); }
+      catch { resolve(0); }
+    });
+  });
+}
+
+function spawnFfmpegWithProgress(jobId, ffmpegArgs, input, output, duration, expiry, libType, libLabel) {
+  const proc = spawn(FFMPEG, ffmpegArgs);
+  let stdoutBuf = '', stderrBuf = '';
+
+  proc.stdout.on('data', chunk => {
+    stdoutBuf += chunk.toString();
+    if (duration > 0) {
+      const m = stdoutBuf.match(/out_time_ms=(\d+)/g);
+      if (m) {
+        const ms = parseInt(m[m.length - 1].split('=')[1]);
+        simpleJobs[jobId].progress = Math.min(95, Math.round(ms / 1000 / duration * 100));
+      }
+    }
+    if (stdoutBuf.length > 2000) stdoutBuf = stdoutBuf.slice(-1000);
+  });
+  proc.stderr.on('data', chunk => {
+    stderrBuf += chunk.toString();
+    if (stderrBuf.length > 2000) stderrBuf = stderrBuf.slice(-1000);
+  });
+  proc.on('close', code => {
+    fs.unlink(input, () => {});
+    if (code !== 0) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error = stderrBuf.slice(-500) || 'FFmpeg falhou';
+      return;
+    }
+    let outSize = 0;
+    try { outSize = fs.statSync(output).size; } catch {}
+    simpleJobs[jobId].status = 'done';
+    simpleJobs[jobId].progress = 100;
+    simpleJobs[jobId].url = '/uploads/' + path.basename(output);
+    simpleJobs[jobId].outputSize = outSize;
+    scheduleDelete(output, expiry);
+    addToLibrary({ id: jobId, type: libType, label: libLabel, url: simpleJobs[jobId].url, createdAt: Date.now(), expiresAt: Date.now() + expiry });
+  });
+}
+
 function spawnJob(jobId, args, input, output, expiry, libEntry) {
   const [cmd, ...cmdArgs] = args;
   const proc = spawn(cmd, cmdArgs);
@@ -339,6 +388,12 @@ app.get('/api/video-library', (req, res) => {
     .filter(item => !item.expiresAt || item.expiresAt > now)
     .sort((a, b) => b.createdAt - a.createdAt);
   res.json({ items });
+});
+
+app.get('/api/job/:id', (req, res) => {
+  const job = simpleJobs[req.params.id];
+  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+  res.json(job);
 });
 
 // Endpoint para listar todos os vídeos lipsync gerados (para biblioteca)
@@ -953,7 +1008,9 @@ app.post('/api/trim', upload.single('video'), async (req, res) => {
     fs.unlink(input, () => {});
     if (err) return res.status(500).json({ error: se || err.message });
     scheduleDelete(output, EXPIRY);
-    res.json({ url: '/uploads/' + path.basename(output) });
+    const url = '/uploads/' + path.basename(output);
+    addToLibrary({ id: Date.now().toString(36), type: 'trim', label: 'Cortado', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY });
+    res.json({ url });
   });
 });
 
@@ -996,7 +1053,9 @@ app.post('/api/resize', upload.single('video'), async (req, res) => {
     fs.unlink(input, () => {});
     if (err) return res.status(500).json({ error: se || err.message });
     scheduleDelete(output, EXPIRY);
-    res.json({ url: '/uploads/' + path.basename(output) });
+    const url = '/uploads/' + path.basename(output);
+    addToLibrary({ id: Date.now().toString(36), type: 'resize', label: 'Redimensionado', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY });
+    res.json({ url });
   });
 });
 
@@ -1006,31 +1065,29 @@ app.post('/api/compress', upload.single('video'), async (req, res) => {
   const input = req.file.path;
   const crf = Math.min(51, Math.max(18, parseInt(req.body.crf) || 26));
   const output = path.join(UPLOAD_DIR, `compress_${Date.now()}.mp4`);
-  const EXPIRY = 3600000;
-  const cmd = `"${FFMPEG}" -y -i "${input}" -c:v libx264 -preset fast -crf ${crf} -c:a copy "${output}"`;
-  exec(cmd, (err, _so, se) => {
-    fs.unlink(input, () => {});
-    if (err) return res.status(500).json({ error: se || err.message });
-    scheduleDelete(output, EXPIRY);
-    res.json({ url: '/uploads/' + path.basename(output) });
-  });
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0 };
+  res.json({ id: jobId });
+  const duration = await getVideoDuration(input);
+  spawnFfmpegWithProgress(jobId,
+    ['-y', '-i', input, '-progress', 'pipe:1', '-nostats', '-c:v', 'libx264', '-preset', 'fast', '-crf', String(crf), '-c:a', 'copy', output],
+    input, output, duration, 3600000, 'compress', 'Comprimido');
 });
 
 // ── AUMENTAR QUALIDADE ─────────────────────────────────────────────────────
 app.post('/api/upscale', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
   const input = req.file.path;
-  const w = parseInt(req.body.w) || 1920;
   const h = parseInt(req.body.h) || 1080;
   const output = path.join(UPLOAD_DIR, `upscale_${Date.now()}.mp4`);
-  const EXPIRY = 3600000;
-  const cmd = `"${FFMPEG}" -y -i "${input}" -vf "scale=${w}:${h}:flags=lanczos" -c:v libx264 -preset fast -crf 18 -c:a copy "${output}"`;
-  exec(cmd, (err, _so, se) => {
-    fs.unlink(input, () => {});
-    if (err) return res.status(500).json({ error: se || err.message });
-    scheduleDelete(output, EXPIRY);
-    res.json({ url: '/uploads/' + path.basename(output) });
-  });
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0 };
+  res.json({ id: jobId });
+  const duration = await getVideoDuration(input);
+  // scale=-2:h mantém proporção (aspect ratio)
+  spawnFfmpegWithProgress(jobId,
+    ['-y', '-i', input, '-progress', 'pipe:1', '-nostats', '-vf', `scale=-2:${h}:flags=lanczos`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'copy', output],
+    input, output, duration, 3600000, 'upscale', `Qualidade ${h}p`);
 });
 
 // ── ESPELHAR ───────────────────────────────────────────────────────────────
@@ -1038,16 +1095,14 @@ app.post('/api/mirror', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
   const input = req.file.path;
   const flip = (req.body.flip || 'hflip').replace(/[^a-z,]/g, '');
-  const vf = flip.split(',').join(',');
   const output = path.join(UPLOAD_DIR, `mirror_${Date.now()}.mp4`);
-  const EXPIRY = 3600000;
-  const cmd = `"${FFMPEG}" -y -i "${input}" -vf "${vf}" -c:v libx264 -preset fast -crf 18 -c:a copy "${output}"`;
-  exec(cmd, (err, _so, se) => {
-    fs.unlink(input, () => {});
-    if (err) return res.status(500).json({ error: se || err.message });
-    scheduleDelete(output, EXPIRY);
-    res.json({ url: '/uploads/' + path.basename(output) });
-  });
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0 };
+  res.json({ id: jobId });
+  const duration = await getVideoDuration(input);
+  spawnFfmpegWithProgress(jobId,
+    ['-y', '-i', input, '-progress', 'pipe:1', '-nostats', '-vf', flip, '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'copy', output],
+    input, output, duration, 3600000, 'mirror', 'Espelhado');
 });
 
 // ── REMOVER FUNDO DE IMAGEM ────────────────────────────────────────────────
@@ -1072,7 +1127,9 @@ print('done')
     fs.unlink(input, () => {}); fs.unlink(tmpScript, () => {});
     if (err) return res.status(500).json({ error: (se || err.message) + '\n(pip install rembg pillow)' });
     scheduleDelete(output, EXPIRY);
-    res.json({ url: '/uploads/' + path.basename(output) });
+    const url = '/uploads/' + path.basename(output);
+    addToLibrary({ id: Date.now().toString(36), type: 'rembg', label: 'Fundo Removido', mediaType: 'image', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY });
+    res.json({ url });
   });
 });
 

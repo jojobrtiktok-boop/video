@@ -6,6 +6,12 @@ const videoLibraryGrid = document.getElementById('video-library-grid');
 const LIB_GROUPS = [
   { type: 'watermark',  icon: '🚫', title: 'Remoção de Marca d\'água' },
   { type: 'subtitle',   icon: '💬', title: 'Legendas' },
+  { type: 'trim',       icon: '✂️',  title: 'Cortados' },
+  { type: 'resize',     icon: '⬛',  title: 'Redimensionados' },
+  { type: 'compress',   icon: '📦', title: 'Comprimidos' },
+  { type: 'upscale',    icon: '🔷', title: 'Qualidade Aumentada' },
+  { type: 'mirror',     icon: '↔️',  title: 'Espelhados' },
+  { type: 'rembg',      icon: '🖼️',  title: 'Fundo Removido' },
   { type: 'video-gen',  icon: '🎬', title: 'Geração de Vídeo' },
   { type: 'lipsync',    icon: '💋', title: 'Lipsync' },
 ];
@@ -30,7 +36,9 @@ function renderVideoCard(item) {
   return `
     <div class="video-card" data-id="${item.id || ''}">
       ${isReady && item.url
-        ? `<video src="${API + item.url}" controls muted playsinline preload="metadata"></video>`
+        ? item.mediaType === 'image'
+          ? `<img src="${API + item.url}" class="lib-img" alt="${item.label || 'imagem'}">`
+          : `<video src="${API + item.url}" controls muted playsinline preload="metadata"></video>`
         : `<div class="video-card-placeholder">${isProc ? '⏳' : '❌'}</div>`
       }
       <div class="video-card-info">
@@ -1652,9 +1660,16 @@ if (lipSubmitBtn) {
 // ════════════════════════════════════════════════════════════════════
 // NOVAS FERRAMENTAS — helpers genéricos
 // ════════════════════════════════════════════════════════════════════
+function fmtBytes(b) {
+  if (!b) return '?';
+  if (b >= 1073741824) return (b/1073741824).toFixed(2) + ' GB';
+  if (b >= 1048576) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1024).toFixed(0) + ' KB';
+}
+
 function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
     progressId, statusId, errorId, resultCardId, resultVideoId, downloadBtnId,
-    endpoint, buildFormData }) {
+    endpoint, buildFormData, onResult }) {
   const fi   = document.getElementById(fileInputId);
   const dz   = document.getElementById(dropZoneId);
   const fn   = document.getElementById(fileNameId);
@@ -1671,10 +1686,9 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
   function setFile(f) {
     if (!f) return;
     file = f;
-    if (fn) fn.textContent = '✓ ' + f.name + ' (' + (f.size/1024/1024).toFixed(1) + ' MB)';
+    if (fn) fn.textContent = '✓ ' + f.name + ' (' + fmtBytes(f.size) + ')';
     if (dz) dz.classList.add('has-file');
-    sub.disabled = false;
-    sub.textContent = '▶ Processar';
+    sub.disabled = false; sub.textContent = '▶ Processar';
     if (err) err.style.display = 'none';
   }
   fi.addEventListener('change', () => { if (fi.files[0]) setFile(fi.files[0]); });
@@ -1691,6 +1705,27 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
     dz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fi.click(); });
   }
 
+  function applyResult(json) {
+    if (rv) rv.src = API + json.url;
+    if (dl) { dl.href = API + json.url; dl.download = json.url.split('/').pop(); }
+    if (onResult) onResult(json, file);
+    if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    sub.disabled = false; sub.textContent = '▶ Processar';
+    const bar = prog?.querySelector('.progress-bar');
+    if (bar) { bar.style.width = ''; bar.style.animation = ''; }
+    if (prog) prog.style.display = 'none';
+    if (stat) stat.textContent = '';
+  }
+
+  function setError(msg) {
+    if (err) { err.style.display = 'block'; err.textContent = 'Erro: ' + msg; }
+    sub.disabled = false; sub.textContent = '▶ Processar';
+    const bar = prog?.querySelector('.progress-bar');
+    if (bar) { bar.style.width = ''; bar.style.animation = ''; }
+    if (prog) prog.style.display = 'none';
+    if (stat) stat.textContent = '';
+  }
+
   sub.addEventListener('click', async () => {
     if (!file) return;
     sub.disabled = true; sub.textContent = '⏳ Enviando…';
@@ -1703,16 +1738,26 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
       const resp = await fetch(API + endpoint, { method: 'POST', body: fd });
       const json = await resp.json();
       if (!resp.ok || json.error) throw new Error(json.error || 'Erro ' + resp.status);
-      if (rv) { rv.src = API + json.url; }
-      if (dl) { dl.href = API + json.url; dl.download = json.url.split('/').pop(); }
-      if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-    } catch (e) {
-      if (err) { err.style.display = 'block'; err.textContent = 'Erro: ' + e.message; }
-    } finally {
-      sub.disabled = false; sub.textContent = '▶ Processar';
-      if (prog) prog.style.display = 'none';
-      if (stat) stat.textContent = '';
-    }
+
+      if (json.id) {
+        // Job-based: poll /api/job/:id for progress
+        const bar = prog?.querySelector('.progress-bar');
+        const poll = async () => {
+          try {
+            const pr = await fetch(API + '/api/job/' + json.id);
+            const job = await pr.json();
+            if (stat) stat.textContent = 'Processando… ' + job.progress + '%';
+            if (bar) { bar.style.animation = 'none'; bar.style.width = job.progress + '%'; }
+            if (job.status === 'error') { setError(job.error || 'Erro no processamento'); return; }
+            if (job.status === 'done') { applyResult(job); return; }
+            setTimeout(poll, 800);
+          } catch (e) { setError(e.message); }
+        };
+        setTimeout(poll, 600);
+      } else {
+        applyResult(json);
+      }
+    } catch (e) { setError(e.message); }
   });
 }
 
@@ -1891,6 +1936,17 @@ makeSimpleTool({
     fd.append('video', file);
     fd.append('crf', crfInput ? crfInput.value : '26');
     return fd;
+  },
+  onResult: (job, file) => {
+    const el = document.getElementById('compress-sizes');
+    if (!el) return;
+    const orig = job.inputSize || file.size || 0;
+    const out  = job.outputSize || 0;
+    const saved = orig > 0 ? Math.round((1 - out/orig)*100) : 0;
+    el.innerHTML = `<span class="size-orig">Original: ${fmtBytes(orig)}</span>` +
+      `<span class="size-arrow">→</span>` +
+      `<span class="size-new">Comprimido: ${fmtBytes(out)}</span>` +
+      (saved > 0 ? `<span class="size-saved">(−${saved}% menor)</span>` : '');
   }
 });
 
@@ -1910,8 +1966,17 @@ makeSimpleTool({
   downloadBtnId: 'upscale-download-btn', endpoint: '/api/upscale',
   buildFormData: (file) => {
     const fd = new FormData();
-    fd.append('video', file); fd.append('w', upscaleW); fd.append('h', upscaleH);
+    fd.append('video', file); fd.append('h', upscaleH);
     return fd;
+  },
+  onResult: (job, file) => {
+    const el = document.getElementById('upscale-sizes');
+    if (!el) return;
+    const orig = job.inputSize || file.size || 0;
+    const out  = job.outputSize || 0;
+    el.innerHTML = `<span class="size-orig">Original: ${fmtBytes(orig)}</span>` +
+      `<span class="size-arrow">→</span>` +
+      `<span class="size-new">Saída: ${fmtBytes(out)}</span>`;
   }
 });
 
