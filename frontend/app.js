@@ -1325,6 +1325,12 @@ if (lipSubmitBtn) {
       setTimeout(() => { igGoogleSaveKey.textContent = '💾 Salvar'; }, 1500);
     });
 
+    // Model dropdown vars
+    const igTrigger  = document.getElementById('ig-select-trigger');
+    const igDropdown = document.getElementById('ig-select-dropdown');
+    const igSelName  = document.getElementById('ig-select-name');
+    const igSelDesc  = document.getElementById('ig-select-desc');
+
     // Tabs
     let currentMode = 'clone';
     document.querySelectorAll('.ig-tab').forEach(tab => {
