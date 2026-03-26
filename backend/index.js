@@ -571,7 +571,7 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
       if (status === 'failed' || status === 'error') {
         return res.status(500).json({ error: 'Geracao falhou: ' + (statusResp.body.error || status) });
       }
-      if (status === 'completed') {
+      if (status === 'completed' || status === 'complete') {
         // 3) Download video and serve locally
         const dl = await orDownload(`/videos/${jobId}/content?index=0`);  // follows redirects
         if (dl.status !== 200 || !dl.buffer.length) {
@@ -721,26 +721,40 @@ app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res
         return res.status(500).json({ error: 'Erro da API: ' + msg });
       }
 
-      const content = orResult.body?.choices?.[0]?.message?.content;
-      if (Array.isArray(content)) {
-        const imgPart = content.find(p => p.type === 'image_url');
-        if (imgPart) imageUrl = imgPart.image_url?.url;
-        const inlinePart = content.find(p => p.type === 'image' || p.inline_data);
-        if (!imageUrl && inlinePart) {
-          const b64  = inlinePart.inline_data?.data || inlinePart.image;
-          const mime = inlinePart.inline_data?.mime_type || 'image/png';
-          if (b64) imageUrl = `data:${mime};base64,${b64}`;
-        }
-      } else if (typeof content === 'string') {
-        if (content.startsWith('data:image') || content.startsWith('http')) {
-          imageUrl = content;
-        } else {
-          const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
-          if (mdMatch) imageUrl = mdMatch[1];
-          else {
-            const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(png|jpg|jpeg|webp)/i);
-            if (urlMatch) imageUrl = urlMatch[0];
+      // 1) Some image models return data[0].url (DALL-E / images generations format)
+      if (orResult.body?.data?.[0]?.url) {
+        imageUrl = orResult.body.data[0].url;
+      } else if (orResult.body?.data?.[0]?.b64_json) {
+        imageUrl = `data:image/png;base64,${orResult.body.data[0].b64_json}`;
+      } else {
+        // 2) Chat completions format
+        const content = orResult.body?.choices?.[0]?.message?.content;
+        if (Array.isArray(content)) {
+          const imgPart = content.find(p => p.type === 'image_url');
+          if (imgPart) imageUrl = imgPart.image_url?.url;
+          const inlinePart = content.find(p => p.type === 'image' || p.inline_data);
+          if (!imageUrl && inlinePart) {
+            const b64  = inlinePart.inline_data?.data || inlinePart.image;
+            const mime = inlinePart.inline_data?.mime_type || 'image/png';
+            if (b64) imageUrl = `data:${mime};base64,${b64}`;
           }
+        } else if (typeof content === 'string') {
+          if (content.startsWith('data:image') || content.startsWith('http')) {
+            imageUrl = content.trim();
+          } else {
+            // markdown image: ![alt](url)
+            const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+            if (mdMatch) imageUrl = mdMatch[1];
+            else {
+              // any https URL — no extension requirement (CDN URLs often have none)
+              const urlMatch = content.match(/https?:\/\/[^\s"'<>)]+/);
+              if (urlMatch) imageUrl = urlMatch[0].replace(/[.,;!?]+$/, '');
+            }
+          }
+        }
+        if (!imageUrl) {
+          const debugInfo = JSON.stringify(orResult.body).slice(0, 400);
+          return res.status(500).json({ error: `Modelo não retornou imagem. Resposta da API: ${debugInfo}` });
         }
       }
     }
@@ -758,15 +772,16 @@ app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res
       const b64 = imageUrl.split(',')[1];
       fs.writeFileSync(fpath, Buffer.from(b64, 'base64'));
     } else {
-      // Download from URL
+      // Download from URL — follow redirects, pick http/https per URL
       const dlBuf = await new Promise((resolve, reject) => {
-        const u = new URL(imageUrl);
-        const lib = u.protocol === 'https:' ? https : require('http');
         const doReq = (urlStr, hops) => {
           if (hops > 5) return reject(new Error('Too many redirects'));
           const pu = new URL(urlStr);
+          const lib = pu.protocol === 'https:' ? https : require('http');
           lib.get({ hostname: pu.hostname, path: pu.pathname + pu.search }, resp => {
-            if ([301,302,307,308].includes(resp.statusCode)) return doReq(resp.headers.location, hops+1);
+            if ([301,302,307,308].includes(resp.statusCode) && resp.headers.location) {
+              return doReq(resp.headers.location, hops + 1);
+            }
             const chunks = [];
             resp.on('data', c => chunks.push(c));
             resp.on('end', () => resolve(Buffer.concat(chunks)));
