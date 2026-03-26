@@ -515,11 +515,10 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
     const selectedVideoModel = videoModel || 'google/veo-3-flash';
     const videoDuration = Math.max(4, Math.min(60, parseInt(duration) || 8));
 
-    const videoResp = await openrouterFetch('images/generations', {
+    const videoResp = await openrouterFetch('chat/completions', {
       model: selectedVideoModel,
-      prompt,
-      duration: videoDuration,
-      n: 1
+      messages: [{ role: 'user', content: prompt }],
+      duration: videoDuration
     });
 
     if (videoResp.status !== 200 || videoResp.body.error) {
@@ -528,7 +527,25 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
       });
     }
 
-    const videoUrl = videoResp.body.data?.[0]?.url;
+    // Extract video URL from response — OpenRouter video models return it in the message content
+    const msg = videoResp.body.choices?.[0]?.message;
+    let videoUrl = null;
+
+    if (Array.isArray(msg?.content)) {
+      // Structured content: [{type:'video_url', video_url:{url:'...'}}, ...]
+      const part = msg.content.find(p => p.type === 'video_url' || p.type === 'video');
+      videoUrl = part?.video_url?.url || part?.url || null;
+      // Fallback: check for image_url type (some models)
+      if (!videoUrl) {
+        const img = msg.content.find(p => p.type === 'image_url');
+        videoUrl = img?.image_url?.url || null;
+      }
+    } else if (typeof msg?.content === 'string') {
+      // Plain text URL
+      const match = msg.content.match(/https?:\/\/\S+\.(mp4|webm|mov)[^\s]*/i);
+      videoUrl = match ? match[0] : msg.content.trim();
+    }
+
     if (!videoUrl) {
       return res.status(500).json({ error: 'API nao retornou URL do video.', raw: videoResp.body });
     }
