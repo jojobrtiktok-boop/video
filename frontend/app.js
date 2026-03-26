@@ -1,6 +1,40 @@
 const API = '';
 
-// DOM: Ferramenta Marca D'Agua
+// ── TOOL NAVIGATION ────────────────────────────────────────────────────────
+function showTool(name) {
+  document.querySelectorAll('.tool-panel').forEach(p => {
+    p.style.display = p.id === 'tool-' + name ? 'block' : 'none';
+  });
+  document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
+    item.classList.toggle('active', item.dataset.tool === name);
+  });
+}
+document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
+  item.addEventListener('click', () => showTool(item.dataset.tool));
+});
+
+function formatTime(s) {
+  if (isNaN(s) || !isFinite(s)) return '0:00';
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
+  return m + ':' + String(sec).padStart(2, '0');
+}
+
+function makeDrop(zoneId, validator, onFile) {
+  const zone = document.getElementById(zoneId);
+  if (!zone) return;
+  let cnt = 0;
+  zone.addEventListener('dragenter', e => { e.preventDefault(); cnt++; zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => { cnt--; if (cnt <= 0) { cnt = 0; zone.classList.remove('drag-over'); } });
+  zone.addEventListener('dragover', e => e.preventDefault());
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); cnt = 0; zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0]; if (f && validator(f)) onFile(f);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// WATERMARK TOOL
+// ════════════════════════════════════════════════════════════════════
 const dropZone     = document.getElementById('drop-zone');
 const fileInput    = document.getElementById('file-input');
 const fileNameEl   = document.getElementById('file-name');
@@ -21,55 +55,20 @@ const vcSeek  = document.getElementById('vc-seek');
 const vcTime  = document.getElementById('vc-time');
 const vcSpeed = document.getElementById('vc-speed');
 
-// DOM: Lipsync
-const lipVideoInput   = document.getElementById('lip-video-input');
-const lipAudioInput   = document.getElementById('lip-audio-input');
-const lipFileNameEl   = document.getElementById('lip-file-name');
-const lipAudioNameEl  = document.getElementById('lip-audio-name');
-const lipSubmitBtn    = document.getElementById('lip-submit-btn');
-const lipProgressWrap = document.getElementById('lip-progress-wrap');
-const lipStatus       = document.getElementById('lip-status');
-const lipResultCard   = document.getElementById('lip-result-card');
-const lipResultVideo  = document.getElementById('lip-result-video');
-const lipDownloadBtn  = document.getElementById('lip-download-btn');
-const lipErrorMsg     = document.getElementById('lip-error-msg');
-
-// Troca de ferramenta
-function showTool(name) {
-  document.querySelectorAll('.tool-panel').forEach(p => {
-    p.style.display = p.id === 'tool-' + name ? 'block' : 'none';
-  });
-  document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
-    item.classList.toggle('active', item.dataset.tool === name);
-  });
-}
-document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
-  item.addEventListener('click', () => showTool(item.dataset.tool));
-});
-
-// Estado
 let selectedFile = null, selectedMode = 'blur', videoEl = null;
 let previewW = 0, previewH = 0, videoW = 0, videoH = 0;
 let selRect = null, dragMode = null, activeHandle = null;
 let dragStart = null, dragOrigRect = null;
 const HANDLE_SIZE = 10, HANDLE_HALF = 5;
-let animFrame = null, lipVideoFile = null, lipAudioFile = null;
+let animFrame = null;
 let isPaused = false, isSeeking = false;
 
-function formatTime(s) {
-  if (isNaN(s) || !isFinite(s)) return '0:00';
-  const m = Math.floor(s / 60), sec = Math.floor(s % 60);
-  return m + ':' + String(sec).padStart(2, '0');
-}
-
-// Descricoes de modos
 const modeDesc = {
-  blur:   'Blur gaussiano com bordas suaves — rapido, funciona em qualquer tipo de fundo.',
-  delogo: 'Reconstroi pixels da regiao usando arredores — otimo para fundos uniformes.',
+  blur:   'Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.',
+  delogo: 'Reconstrói pixels da região usando arredores — ótimo para fundos uniformes.',
   ai:     'Inpainting com IA — em breve neste servidor.'
 };
 
-// Botoes de modo
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (btn.disabled) return;
@@ -80,15 +79,14 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
   });
 });
 
-// Selecao de arquivo (marca d'agua)
 function setFile(file) {
-  if (!file || !file.type.startsWith('video/')) { showError('Arquivo invalido. Selecione um video.'); return; }
+  if (!file || !file.type.startsWith('video/')) { showError('Arquivo inválido. Selecione um vídeo.'); return; }
   selectedFile = file;
   const name = file.name.length > 50 ? file.name.substring(0, 47) + '...' : file.name;
   fileNameEl.textContent = '✓ ' + name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)';
   dropZone.classList.add('has-file');
   submitBtn.disabled = false;
-  submitBtn.textContent = '▶ Processar Video';
+  submitBtn.textContent = '▶ Processar Vídeo';
   clearError();
   loadVideoPreview(file);
 }
@@ -104,24 +102,17 @@ dropZone.addEventListener('drop', e => {
 dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
 fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
 
-// Loop de video no canvas
-function startVideoLoop() {
-  if (animFrame) cancelAnimationFrame(animFrame);
-  isPaused = false;
-  isSeeking = false;
-  videoEl.loop = true;
-  videoEl.playbackRate = vcSpeed ? parseFloat(vcSpeed.value) : 1;
-  videoEl.play().catch(() => {});
-  if (vcPlay) vcPlay.textContent = '\u23F8';
-  if (vcSeek) vcSeek.value = 0;
-  if (vcTime) vcTime.textContent = '0:00 / 0:00';
-  function loop() { drawFrame(); animFrame = requestAnimationFrame(loop); }
-  animFrame = requestAnimationFrame(loop);
+function startVideoLoop(vEl, canvasEl, ctxEl, pw, ph, drawFn, vcPlayEl) {
+  vEl.loop = true;
+  vEl.play().catch(() => {});
+  if (vcPlayEl) vcPlayEl.textContent = '\u23F8';
+  function loop() { drawFn(); requestAnimationFrame(loop); }
+  requestAnimationFrame(loop);
 }
 
 function loadVideoPreview(file) {
   selRect = null; dragMode = null;
-  regionInfo.innerHTML = 'Nenhuma regiao selecionada — arraste para marcar';
+  regionInfo.innerHTML = 'Nenhuma região selecionada — arraste para marcar';
   videoEl = document.createElement('video');
   videoEl.muted = true; videoEl.playsInline = true; videoEl.preload = 'auto';
   videoEl.src = URL.createObjectURL(file); videoEl.currentTime = 0.1;
@@ -129,14 +120,35 @@ function loadVideoPreview(file) {
     videoEl.removeEventListener('seeked', onS);
     videoW = videoEl.videoWidth; videoH = videoEl.videoHeight;
     previewSect.style.display = 'block';
-    requestAnimationFrame(() => { updateCanvasSize(); startVideoLoop(); });
+    requestAnimationFrame(() => { updateCanvasSize(); startWatermarkLoop(); });
   });
 }
 
-// Desenho do canvas
+function startWatermarkLoop() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  isPaused = false; isSeeking = false;
+  videoEl.loop = true;
+  videoEl.playbackRate = vcSpeed ? parseFloat(vcSpeed.value) : 1;
+  videoEl.play().catch(() => {});
+  if (vcPlay) vcPlay.textContent = '\u23F8';
+  function loop() { drawFrame(); animFrame = requestAnimationFrame(loop); }
+  animFrame = requestAnimationFrame(loop);
+}
+
+// Draw rounded rectangle helper
+function roundRect(c, x, y, w, h, r) {
+  const R = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+  c.beginPath();
+  c.moveTo(x + R, y);
+  c.lineTo(x + w - R, y); c.arcTo(x + w, y, x + w, y + R, R);
+  c.lineTo(x + w, y + h - R); c.arcTo(x + w, y + h, x + w - R, y + h, R);
+  c.lineTo(x + R, y + h); c.arcTo(x, y + h, x, y + h - R, R);
+  c.lineTo(x, y + R); c.arcTo(x, y, x + R, y, R);
+  c.closePath();
+}
+
 function drawFrame() {
   if (!videoEl) return;
-  // Update seek bar and time
   if (!isSeeking && vcSeek && vcTime) {
     const dur = videoEl.duration || 0;
     vcSeek.value = dur ? Math.round((videoEl.currentTime / dur) * 1000) : 0;
@@ -146,17 +158,22 @@ function drawFrame() {
   ctx.drawImage(videoEl, 0, 0, previewW, previewH);
   if (!selRect || selRect.w < 2 || selRect.h < 2) return;
   const { x, y, w, h } = selRect;
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, previewW, previewH);
-  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  // Dim outside selection
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, previewW, previewH);
+  // Show selection (clip to rounded rect)
+  ctx.save(); roundRect(ctx, x, y, w, h, 8); ctx.clip();
   ctx.drawImage(videoEl, 0, 0, previewW, previewH); ctx.restore();
+  // Border with rounded corners
   ctx.strokeStyle = '#6c63ff'; ctx.lineWidth = 2; ctx.setLineDash([6, 3]);
-  ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
-  getSelHandles().forEach(h2 => {
+  roundRect(ctx, x, y, w, h, 8); ctx.stroke(); ctx.setLineDash([]);
+  // Handles
+  getSelHandles().forEach(hh => {
     ctx.fillStyle = '#fff';
-    ctx.fillRect(h2.x - HANDLE_HALF, h2.y - HANDLE_HALF, HANDLE_SIZE, HANDLE_SIZE);
+    ctx.fillRect(hh.x - HANDLE_HALF, hh.y - HANDLE_HALF, HANDLE_SIZE, HANDLE_SIZE);
     ctx.strokeStyle = '#6c63ff'; ctx.lineWidth = 1.5;
-    ctx.strokeRect(h2.x - HANDLE_HALF, h2.y - HANDLE_HALF, HANDLE_SIZE, HANDLE_SIZE);
+    ctx.strokeRect(hh.x - HANDLE_HALF, hh.y - HANDLE_HALF, HANDLE_SIZE, HANDLE_SIZE);
   });
+  // Label
   const rW = Math.round(w * videoW / previewW), rH = Math.round(h * videoH / previewH);
   const label = rW + ' x ' + rH;
   ctx.font = 'bold 11px Segoe UI, system-ui, sans-serif';
@@ -179,31 +196,19 @@ function updateCanvasSize() {
 let resizeTimer = null;
 window.addEventListener('resize', () => {
   if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (videoEl) { updateCanvasSize(); if (!animFrame) drawFrame(); } }, 120);
+  resizeTimer = setTimeout(() => { if (videoEl) { updateCanvasSize(); } }, 120);
 });
 
-// ── Controles de Vídeo ──
+// Video controls (watermark)
 if (vcPlay) {
   vcPlay.addEventListener('click', () => {
     if (!videoEl) return;
-    if (isPaused) {
-      videoEl.play().catch(() => {});
-      isPaused = false;
-      vcPlay.textContent = '\u23F8';
-      if (!animFrame) {
-        function resumeLoop() { drawFrame(); animFrame = requestAnimationFrame(resumeLoop); }
-        animFrame = requestAnimationFrame(resumeLoop);
-      }
-    } else {
-      videoEl.pause();
-      isPaused = true;
-      vcPlay.textContent = '\u25B6';
-    }
+    if (isPaused) { videoEl.play().catch(() => {}); isPaused = false; vcPlay.textContent = '\u23F8'; }
+    else { videoEl.pause(); isPaused = true; vcPlay.textContent = '\u25B6'; }
   });
 }
 if (vcSeek) {
   vcSeek.addEventListener('mousedown', () => { isSeeking = true; });
-  vcSeek.addEventListener('touchstart', () => { isSeeking = true; }, { passive: true });
   vcSeek.addEventListener('input', () => {
     if (!videoEl || !videoEl.duration) return;
     videoEl.currentTime = (vcSeek.value / 1000) * videoEl.duration;
@@ -211,15 +216,9 @@ if (vcSeek) {
     drawFrame();
   });
   vcSeek.addEventListener('mouseup', () => { isSeeking = false; });
-  vcSeek.addEventListener('touchend', () => { isSeeking = false; });
 }
-if (vcSpeed) {
-  vcSpeed.addEventListener('change', () => {
-    if (videoEl) videoEl.playbackRate = parseFloat(vcSpeed.value);
-  });
-}
+if (vcSpeed) vcSpeed.addEventListener('change', () => { if (videoEl) videoEl.playbackRate = parseFloat(vcSpeed.value); });
 
-// Handles
 function getSelHandles() {
   if (!selRect) return [];
   const { x, y, w, h } = selRect;
@@ -250,7 +249,6 @@ function canvasPos(e) {
   return { x: Math.max(0, Math.min(previewW, src.clientX - rect.left)), y: Math.max(0, Math.min(previewH, src.clientY - rect.top)) };
 }
 
-// Mouse/Touch drag
 canvas.addEventListener('mousedown', e => {
   const p = canvasPos(e);
   if (selRect && selRect.w > 4 && selRect.h > 4) {
@@ -271,10 +269,10 @@ canvas.addEventListener('mousemove', e => {
     } else canvas.style.cursor = 'crosshair';
     return;
   }
-  handleDrag(p);
+  handleDragWm(p);
 });
-canvas.addEventListener('mouseup', () => endDrag());
-canvas.addEventListener('mouseleave', () => { if (dragMode) endDrag(); });
+canvas.addEventListener('mouseup', () => endDragWm());
+canvas.addEventListener('mouseleave', () => { if (dragMode) endDragWm(); });
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   const p = canvasPos(e);
@@ -285,10 +283,10 @@ canvas.addEventListener('touchstart', e => {
   }
   dragMode = 'new'; dragStart = p; selRect = { x: p.x, y: p.y, w: 0, h: 0 };
 }, { passive: false });
-canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!dragMode) return; handleDrag(canvasPos(e)); }, { passive: false });
-canvas.addEventListener('touchend', () => endDrag());
+canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!dragMode) return; handleDragWm(canvasPos(e)); }, { passive: false });
+canvas.addEventListener('touchend', () => endDragWm());
 
-function handleDrag(p) {
+function handleDragWm(p) {
   const dx = p.x - dragStart.x, dy = p.y - dragStart.y;
   if (dragMode === 'new') {
     selRect = { x: dx >= 0 ? dragStart.x : p.x, y: dy >= 0 ? dragStart.y : p.y, w: Math.abs(dx), h: Math.abs(dy) };
@@ -307,23 +305,19 @@ function handleDrag(p) {
   }
   drawFrame();
 }
-function endDrag() {
+function endDragWm() {
   if (!dragMode) return;
   dragMode = null; activeHandle = null; dragStart = null; dragOrigRect = null;
-  finalizeSel();
-}
-function finalizeSel() {
   if (!selRect || selRect.w < 5 || selRect.h < 5) {
     selRect = null; drawFrame();
-    regionInfo.innerHTML = 'Nenhuma regiao selecionada — arraste para marcar'; return;
+    regionInfo.innerHTML = 'Nenhuma região selecionada — arraste para marcar'; return;
   }
   const rx = Math.round(selRect.x * videoW / previewW), ry = Math.round(selRect.y * videoH / previewH);
   const rw = Math.round(selRect.w * videoW / previewW), rh = Math.round(selRect.h * videoH / previewH);
-  regionInfo.innerHTML = 'Regiao: <span>' + rw + ' x ' + rh + ' px</span> em <span>(' + rx + ', ' + ry + ')</span>';
+  regionInfo.innerHTML = 'Região: <span>' + rw + ' x ' + rh + ' px</span> em <span>(' + rx + ', ' + ry + ')</span>';
   drawFrame();
 }
 
-// Submit (marca d'agua)
 submitBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
   const fd = new FormData();
@@ -334,7 +328,7 @@ submitBtn.addEventListener('click', async () => {
     fd.append('w', Math.round(selRect.w * videoW / previewW));
     fd.append('h', Math.round(selRect.h * videoH / previewH));
   }
-  setLoading(true); clearError(); resultCard.style.display = 'none';
+  setLoadingWm(true); clearError(); resultCard.style.display = 'none';
   try {
     const resp = await fetch(API + '/api/process', { method: 'POST', body: fd });
     const json = await resp.json();
@@ -344,91 +338,30 @@ submitBtn.addEventListener('click', async () => {
     resultCard.style.display = 'block';
     resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (err) { showError(err.message); }
-  finally { setLoading(false); }
+  finally { setLoadingWm(false); }
 });
-function setLoading(on) {
+function setLoadingWm(on) {
   submitBtn.disabled = on;
-  submitBtn.textContent = on ? '⏳ Processando...' : '▶ Processar Video';
+  submitBtn.textContent = on ? '⏳ Processando...' : '▶ Processar Vídeo';
   progressWrap.style.display = on ? 'block' : 'none';
-  statusText.textContent = on ? 'Aguarde — o ffmpeg esta processando o video...' : '';
+  statusText.textContent = on ? 'Aguarde — o ffmpeg está processando o vídeo...' : '';
 }
 function showError(msg) { errorMsg.style.display = 'block'; errorMsg.textContent = 'Erro: ' + msg; }
 function clearError() { errorMsg.style.display = 'none'; errorMsg.textContent = ''; }
 
-// Lipsync: selecao de arquivo
-lipVideoInput.addEventListener('change', () => {
-  if (!lipVideoInput.files[0]) return;
-  lipVideoFile = lipVideoInput.files[0];
-  lipFileNameEl.textContent = '✓ ' + lipVideoFile.name;
-  document.getElementById('lip-drop-zone').classList.add('has-file');
-  updateLipSubmit();
-});
-lipAudioInput.addEventListener('change', () => {
-  if (!lipAudioInput.files[0]) return;
-  lipAudioFile = lipAudioInput.files[0];
-  lipAudioNameEl.textContent = '✓ ' + lipAudioFile.name;
-  document.getElementById('lip-audio-drop-zone').classList.add('has-file');
-  updateLipSubmit();
-});
-function updateLipSubmit() {
-  if (lipVideoFile && lipAudioFile) { lipSubmitBtn.disabled = false; lipSubmitBtn.textContent = '💋 Sincronizar Labios'; }
-  else { lipSubmitBtn.disabled = true; lipSubmitBtn.textContent = 'Selecione o video e o audio'; }
-}
-
-// Drag-drop nas zonas lipsync
-function makeDrop(zoneId, validator, onFile) {
-  const zone = document.getElementById(zoneId); let cnt = 0;
-  zone.addEventListener('dragenter', e => { e.preventDefault(); cnt++; zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => { cnt--; if (cnt <= 0) { cnt = 0; zone.classList.remove('drag-over'); } });
-  zone.addEventListener('dragover', e => e.preventDefault());
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); cnt = 0; zone.classList.remove('drag-over');
-    const f = e.dataTransfer.files[0]; if (f && validator(f)) onFile(f);
-  });
-}
-makeDrop('lip-drop-zone', f => f.type.startsWith('video/'), f => {
-  lipVideoFile = f; lipFileNameEl.textContent = '✓ ' + f.name;
-  document.getElementById('lip-drop-zone').classList.add('has-file'); updateLipSubmit();
-});
-makeDrop('lip-audio-drop-zone', f => f.type.startsWith('audio/'), f => {
-  lipAudioFile = f; lipAudioNameEl.textContent = '✓ ' + f.name;
-  document.getElementById('lip-audio-drop-zone').classList.add('has-file'); updateLipSubmit();
-});
-
-// Submit Lipsync
-lipSubmitBtn.addEventListener('click', async () => {
-  if (!lipVideoFile || !lipAudioFile) return;
-  lipSubmitBtn.disabled = true; lipSubmitBtn.textContent = '⏳ Processando...';
-  lipProgressWrap.style.display = 'block'; lipStatus.textContent = 'Enviando arquivos...';
-  lipErrorMsg.style.display = 'none'; lipResultCard.style.display = 'none';
-  const fd = new FormData();
-  fd.append('video', lipVideoFile); fd.append('audio', lipAudioFile);
-  try {
-    const resp = await fetch(API + '/api/lipsync', { method: 'POST', body: fd });
-    const json = await resp.json();
-    if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-    lipResultVideo.src = API + json.url; lipDownloadBtn.href = API + json.url;
-    lipDownloadBtn.download = json.url.split('/').pop();
-    lipResultCard.style.display = 'block';
-    lipResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  } catch (err) {
-    lipErrorMsg.style.display = 'block'; lipErrorMsg.textContent = 'Erro: ' + err.message;
-  } finally {
-    lipSubmitBtn.disabled = false; lipSubmitBtn.textContent = '💋 Sincronizar Labios';
-    lipProgressWrap.style.display = 'none'; lipStatus.textContent = '';
-  }
-});
-
-// ════════════════════════════════════════════
-// SUBTITLE TOOL
-// ════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
+// LEGENDAS TOOL (Auto + Manual + Canvas Position)
+// ════════════════════════════════════════════════════════════════════
 const subFileInput    = document.getElementById('sub-file-input');
-const subFileNameEl   = document.getElementById('sub-file-name');
 const subDropZone     = document.getElementById('sub-drop-zone');
-const subAddBtn       = document.getElementById('sub-add-btn');
-const subEntriesEl    = document.getElementById('sub-entries');
-const subEmptyEl      = document.getElementById('sub-empty');
-const subCountEl      = document.getElementById('sub-count');
+const subFileNameEl   = document.getElementById('sub-file-name');
+const subPreviewSect  = document.getElementById('sub-preview-section');
+const subCanvas       = document.getElementById('sub-preview-canvas');
+const subCtx          = subCanvas ? subCanvas.getContext('2d') : null;
+const subVcPlay       = document.getElementById('sub-vc-play');
+const subVcSeek       = document.getElementById('sub-vc-seek');
+const subVcTime       = document.getElementById('sub-vc-time');
+const subVcSpeed      = document.getElementById('sub-vc-speed');
 const subSubmitBtn    = document.getElementById('sub-submit-btn');
 const subProgressWrap = document.getElementById('sub-progress-wrap');
 const subStatusEl     = document.getElementById('sub-status');
@@ -438,8 +371,35 @@ const subResultVideo  = document.getElementById('sub-result-video');
 const subDownloadBtn  = document.getElementById('sub-download-btn');
 const subFontSize     = document.getElementById('sub-fontsize');
 const subFontSizeVal  = document.getElementById('sub-fontsize-val');
+const subAddBtn       = document.getElementById('sub-add-btn');
+const subEntriesEl    = document.getElementById('sub-entries');
+const subEmptyEl      = document.getElementById('sub-empty');
 
-let subFile = null, subEntries = [], subPreset = 'classico', subPosition = 'bottom', subNextId = 1, subWordByWord = false;
+let subFile = null, subEntries = [], subPreset = 'classico', subWordByWord = false;
+let subSubMode = 'auto'; // 'auto' | 'manual'
+let subNextId = 1;
+
+// Canvas state for subtitle position
+let subVideoEl = null;
+let subPreviewW = 0, subPreviewH = 0, subVideoW = 0, subVideoH = 0;
+let subAnimFrame = null, subIsPaused = false, subIsSeeking = false;
+// Subtitle block position (fraction 0..1 of video)
+let subBlockX = 0.5, subBlockY = 0.88;
+let subBlockDragging = false;
+const SUB_BLOCK_W_FRAC = 0.82; // block width as fraction of video width
+const SUB_BLOCK_H_PX = 56;
+
+// Mode switching
+document.querySelectorAll('.sub-mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sub-mode-btn').forEach(b => b.classList.remove('sm-active'));
+    btn.classList.add('sm-active');
+    subSubMode = btn.dataset.submode;
+    document.getElementById('sub-auto-panel').style.display = subSubMode === 'auto' ? '' : 'none';
+    document.getElementById('sub-manual-panel').style.display = subSubMode === 'manual' ? '' : 'none';
+    updateSubSubmit();
+  });
+});
 
 // File selection
 function setSubFile(file) {
@@ -448,12 +408,152 @@ function setSubFile(file) {
   const name = file.name.length > 50 ? file.name.substring(0, 47) + '...' : file.name;
   subFileNameEl.textContent = '✓ ' + name + ' (' + (file.size / 1024 / 1024).toFixed(1) + ' MB)';
   subDropZone.classList.add('has-file');
+  loadSubVideoPreview(file);
   updateSubSubmit();
 }
 subFileInput.addEventListener('change', () => { if (subFileInput.files[0]) setSubFile(subFileInput.files[0]); });
 makeDrop('sub-drop-zone', f => f.type.startsWith('video/'), setSubFile);
 
-// Style preset selection
+function loadSubVideoPreview(file) {
+  if (subAnimFrame) cancelAnimationFrame(subAnimFrame); subAnimFrame = null;
+  subVideoEl = document.createElement('video');
+  subVideoEl.muted = true; subVideoEl.playsInline = true; subVideoEl.preload = 'auto';
+  subVideoEl.src = URL.createObjectURL(file); subVideoEl.currentTime = 0.1;
+  subVideoEl.addEventListener('seeked', function onS() {
+    subVideoEl.removeEventListener('seeked', onS);
+    subVideoW = subVideoEl.videoWidth; subVideoH = subVideoEl.videoHeight;
+    subPreviewSect.style.display = 'block';
+    requestAnimationFrame(() => { updateSubCanvasSize(); startSubLoop(); });
+  });
+}
+
+function updateSubCanvasSize() {
+  if (!subVideoW || !subVideoH || !subCanvas) return;
+  const wrap = document.getElementById('sub-canvas-wrap');
+  const maxW = 760, dW = Math.min(maxW, Math.max(200, wrap.clientWidth || maxW));
+  const dH = Math.round(dW * subVideoH / subVideoW), dpr = window.devicePixelRatio || 1;
+  subCanvas.style.width = dW + 'px'; subCanvas.style.height = dH + 'px';
+  subCanvas.width = Math.max(1, Math.round(dW * dpr));
+  subCanvas.height = Math.max(1, Math.round(dH * dpr));
+  subCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  subPreviewW = dW; subPreviewH = dH;
+}
+
+function startSubLoop() {
+  subIsPaused = false; subIsSeeking = false;
+  subVideoEl.loop = true; subVideoEl.play().catch(() => {});
+  if (subVcPlay) subVcPlay.textContent = '\u23F8';
+  function loop() { drawSubFrame(); subAnimFrame = requestAnimationFrame(loop); }
+  subAnimFrame = requestAnimationFrame(loop);
+}
+
+function drawSubFrame() {
+  if (!subVideoEl || !subCtx) return;
+  if (!subIsSeeking && subVcSeek && subVcTime) {
+    const dur = subVideoEl.duration || 0;
+    subVcSeek.value = dur ? Math.round((subVideoEl.currentTime / dur) * 1000) : 0;
+    subVcTime.textContent = formatTime(subVideoEl.currentTime) + ' / ' + formatTime(dur);
+  }
+  subCtx.clearRect(0, 0, subPreviewW, subPreviewH);
+  subCtx.drawImage(subVideoEl, 0, 0, subPreviewW, subPreviewH);
+
+  // Draw subtitle block
+  const bW = subPreviewW * SUB_BLOCK_W_FRAC;
+  const bH = SUB_BLOCK_H_PX * (subPreviewH / 400);
+  const bX = subBlockX * subPreviewW - bW / 2;
+  const bY = subBlockY * subPreviewH - bH / 2;
+
+  subCtx.fillStyle = 'rgba(108,99,255,0.22)';
+  roundRect(subCtx, bX, bY, bW, bH, 8);
+  subCtx.fill();
+  subCtx.strokeStyle = subBlockDragging ? '#ffffff' : '#6c63ff';
+  subCtx.lineWidth = 2; subCtx.setLineDash([5, 3]);
+  roundRect(subCtx, bX, bY, bW, bH, 8); subCtx.stroke(); subCtx.setLineDash([]);
+
+  // Sample text
+  const fs = Math.max(10, Math.round(15 * subPreviewH / 360));
+  subCtx.font = `bold ${fs}px Arial, sans-serif`;
+  subCtx.fillStyle = '#ffffff';
+  subCtx.strokeStyle = '#000';
+  subCtx.lineWidth = 3;
+  subCtx.textAlign = 'center';
+  subCtx.textBaseline = 'middle';
+  subCtx.strokeText('Legenda Modelo', bX + bW / 2, bY + bH / 2);
+  subCtx.fillText('Legenda Modelo', bX + bW / 2, bY + bH / 2);
+
+  // Drag hint
+  subCtx.font = `${Math.max(9, Math.round(11 * subPreviewH / 360))}px Arial`;
+  subCtx.fillStyle = 'rgba(255,255,255,0.55)';
+  subCtx.textAlign = 'center';
+  subCtx.fillText('↕ arraste', bX + bW / 2, bY + bH + 14);
+}
+
+function subCanvasPos(e) {
+  if (!subCanvas) return { x: 0, y: 0 };
+  const rect = subCanvas.getBoundingClientRect(), src = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+function isNearSubBlock(px, py) {
+  const bW = subPreviewW * SUB_BLOCK_W_FRAC;
+  const bH = SUB_BLOCK_H_PX * (subPreviewH / 400);
+  const bX = subBlockX * subPreviewW - bW / 2;
+  const bY = subBlockY * subPreviewH - bH / 2;
+  return px >= bX - 8 && px <= bX + bW + 8 && py >= bY - 8 && py <= bY + bH + 8;
+}
+
+if (subCanvas) {
+  subCanvas.style.cursor = 'default';
+  subCanvas.addEventListener('mousedown', e => {
+    const p = subCanvasPos(e);
+    if (isNearSubBlock(p.x, p.y)) { subBlockDragging = true; subCanvas.style.cursor = 'grabbing'; }
+  });
+  subCanvas.addEventListener('mousemove', e => {
+    const p = subCanvasPos(e);
+    if (subBlockDragging) {
+      subBlockX = Math.max(0.1, Math.min(0.9, p.x / subPreviewW));
+      subBlockY = Math.max(0.05, Math.min(0.97, p.y / subPreviewH));
+    } else {
+      subCanvas.style.cursor = isNearSubBlock(p.x, p.y) ? 'grab' : 'default';
+    }
+  });
+  subCanvas.addEventListener('mouseup', () => { subBlockDragging = false; subCanvas.style.cursor = 'default'; });
+  subCanvas.addEventListener('mouseleave', () => { subBlockDragging = false; });
+  subCanvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const p = subCanvasPos(e);
+    if (isNearSubBlock(p.x, p.y)) subBlockDragging = true;
+  }, { passive: false });
+  subCanvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (!subBlockDragging) return;
+    const p = subCanvasPos(e);
+    subBlockX = Math.max(0.1, Math.min(0.9, p.x / subPreviewW));
+    subBlockY = Math.max(0.05, Math.min(0.97, p.y / subPreviewH));
+  }, { passive: false });
+  subCanvas.addEventListener('touchend', () => { subBlockDragging = false; });
+}
+
+// Sub video controls
+if (subVcPlay) {
+  subVcPlay.addEventListener('click', () => {
+    if (!subVideoEl) return;
+    if (subIsPaused) { subVideoEl.play().catch(() => {}); subIsPaused = false; subVcPlay.textContent = '\u23F8'; }
+    else { subVideoEl.pause(); subIsPaused = true; subVcPlay.textContent = '\u25B6'; }
+  });
+}
+if (subVcSeek) {
+  subVcSeek.addEventListener('mousedown', () => { subIsSeeking = true; });
+  subVcSeek.addEventListener('input', () => {
+    if (!subVideoEl || !subVideoEl.duration) return;
+    subVideoEl.currentTime = (subVcSeek.value / 1000) * subVideoEl.duration;
+    if (subVcTime) subVcTime.textContent = formatTime(subVideoEl.currentTime) + ' / ' + formatTime(subVideoEl.duration);
+  });
+  subVcSeek.addEventListener('mouseup', () => { subIsSeeking = false; });
+}
+if (subVcSpeed) subVcSpeed.addEventListener('change', () => { if (subVideoEl) subVideoEl.playbackRate = parseFloat(subVcSpeed.value); });
+
+// Presets
 document.querySelectorAll('.preset-card').forEach(card => {
   card.addEventListener('click', () => {
     document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('sp-active'));
@@ -462,16 +562,7 @@ document.querySelectorAll('.preset-card').forEach(card => {
   });
 });
 
-// Position selection
-document.querySelectorAll('.pos-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('pp-active'));
-    btn.classList.add('pp-active');
-    subPosition = btn.dataset.pos;
-  });
-});
-
-// Animation mode selection
+// Animation mode
 document.querySelectorAll('.anim-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.anim-btn').forEach(b => b.classList.remove('pa-active'));
@@ -480,28 +571,23 @@ document.querySelectorAll('.anim-btn').forEach(btn => {
   });
 });
 
-// Font size slider
-if (subFontSize) {
-  subFontSize.addEventListener('input', () => { subFontSizeVal.textContent = subFontSize.value; });
-}
+// Font size
+if (subFontSize) subFontSize.addEventListener('input', () => { subFontSizeVal.textContent = subFontSize.value; });
 
-// Time helpers
+// Manual entries
 function advanceTime(t, secs) {
   const parts = String(t).split(':').map(Number);
-  let total = parts.length === 3 ? parts[0]*3600 + parts[1]*60 + parts[2] : parts[0]*60 + (parts[1] || 0);
+  let total = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + (parts[1] || 0);
   total += secs;
   const m = Math.floor(total / 60), s = total % 60;
   return m + ':' + String(s).padStart(2, '0');
 }
-function getLastEndTime() {
-  return subEntries.length ? subEntries[subEntries.length - 1].end : '0:00';
-}
+function getLastEndTime() { return subEntries.length ? subEntries[subEntries.length - 1].end : '0:00'; }
 
-// Render entry list
 function renderEntries() {
+  if (!subEntriesEl) return;
   subEntriesEl.innerHTML = '';
-  subEmptyEl.style.display = subEntries.length === 0 ? 'block' : 'none';
-  subCountEl.textContent = subEntries.length;
+  if (subEmptyEl) subEmptyEl.style.display = subEntries.length === 0 ? 'block' : 'none';
   subEntries.forEach((entry, i) => {
     const div = document.createElement('div');
     div.className = 'sub-entry';
@@ -521,42 +607,97 @@ function renderEntries() {
     });
     div.querySelector('.sub-remove').addEventListener('click', () => {
       subEntries = subEntries.filter(e => e.id !== entry.id);
-      renderEntries();
-      updateSubSubmit();
+      renderEntries(); updateSubSubmit();
     });
     subEntriesEl.appendChild(div);
   });
 }
 
-subAddBtn.addEventListener('click', () => {
-  const lastEnd = getLastEndTime();
-  const newEnd = advanceTime(lastEnd, 3);
-  subEntries.push({ id: subNextId++, start: lastEnd, end: newEnd, text: '' });
-  renderEntries();
-  const inputs = subEntriesEl.querySelectorAll('.sub-text-input');
-  if (inputs.length) inputs[inputs.length - 1].focus();
-  updateSubSubmit();
-});
-
-function updateSubSubmit() {
-  if (!subFile) { subSubmitBtn.disabled = true; subSubmitBtn.textContent = 'Selecione um vídeo'; return; }
-  const hasText = subEntries.some(e => e.text.trim().length > 0);
-  if (!subEntries.length || !hasText) { subSubmitBtn.disabled = true; subSubmitBtn.textContent = 'Adicione ao menos uma legenda'; return; }
-  subSubmitBtn.disabled = false;
-  subSubmitBtn.textContent = '💬 Gravar Legendas no Vídeo';
+if (subAddBtn) {
+  subAddBtn.addEventListener('click', () => {
+    const lastEnd = getLastEndTime();
+    const newEnd = advanceTime(lastEnd, 3);
+    subEntries.push({ id: subNextId++, start: lastEnd, end: newEnd, text: '' });
+    renderEntries();
+    const inputs = subEntriesEl.querySelectorAll('.sub-text-input');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+    updateSubSubmit();
+  });
 }
 
-// ════════════════════════════════════════════
-// CREATIVE COMBINER
-// ════════════════════════════════════════════
+function updateSubSubmit() {
+  if (!subSubmitBtn) return;
+  if (!subFile) { subSubmitBtn.disabled = true; subSubmitBtn.textContent = 'Selecione um vídeo'; return; }
+  if (subSubMode === 'manual') {
+    const hasText = subEntries.some(e => e.text.trim().length > 0);
+    if (!subEntries.length || !hasText) { subSubmitBtn.disabled = true; subSubmitBtn.textContent = 'Adicione ao menos uma legenda'; return; }
+  }
+  subSubmitBtn.disabled = false;
+  subSubmitBtn.textContent = subSubMode === 'auto' ? '🤖 Gerar AutoCaption' : '💬 Gravar Legendas no Vídeo';
+}
+
+// Submit
+if (subSubmitBtn) {
+  subSubmitBtn.addEventListener('click', async () => {
+    if (!subFile) return;
+    if (subSubMode === 'manual' && !subEntries.some(e => e.text.trim())) return;
+
+    subSubmitBtn.disabled = true; subSubmitBtn.textContent = '⏳ Processando...';
+    subProgressWrap.style.display = 'block';
+    subStatusEl.textContent = subSubMode === 'auto'
+      ? '⏳ Transcrevendo com faster-whisper… pode levar alguns minutos'
+      : 'Gerando arquivo de legendas...';
+    subErrorEl.style.display = 'none'; subResultCard.style.display = 'none';
+
+    // Convert canvas block position to ASS coordinates (1920x1080 space)
+    const posX = Math.round(subBlockX * 1920);
+    const posY = Math.round(subBlockY * 1080);
+
+    const fd = new FormData();
+    fd.append('video', subFile);
+    fd.append('preset', subPreset);
+    fd.append('fontsize', subFontSize ? subFontSize.value : '72');
+    fd.append('wordbyword', subWordByWord ? '1' : '0');
+    fd.append('posX', posX);
+    fd.append('posY', posY);
+
+    let endpoint;
+    if (subSubMode === 'auto') {
+      endpoint = '/api/subtitle/auto';
+      fd.append('lang', document.getElementById('sub-auto-lang').value);
+      fd.append('model', document.getElementById('sub-auto-model').value);
+    } else {
+      endpoint = '/api/subtitle';
+      const valid = subEntries.filter(e => e.text.trim());
+      fd.append('subs', JSON.stringify(valid.map(e => ({ start: e.start, end: e.end, text: e.text.trim() }))));
+    }
+
+    try {
+      const resp = await fetch(API + endpoint, { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+      subResultVideo.src = API + json.url;
+      subDownloadBtn.href = API + json.url;
+      subDownloadBtn.download = json.url.split('/').pop();
+      subResultCard.style.display = 'block';
+      subResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      subErrorEl.style.display = 'block'; subErrorEl.textContent = 'Erro: ' + err.message;
+    } finally {
+      subSubmitBtn.disabled = false;
+      subProgressWrap.style.display = 'none'; subStatusEl.textContent = '';
+      updateSubSubmit();
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// COMBINADOR
+// ════════════════════════════════════════════════════════════════════
 const hookInput        = document.getElementById('hook-input');
 const bodyInput        = document.getElementById('body-input');
 const hookListEl       = document.getElementById('hook-list');
-const hookCountEl      = document.getElementById('hook-count');
 const bodyListEl       = document.getElementById('body-list');
-const bodyCountEl      = document.getElementById('body-count');
-const combineFormulaEl = document.getElementById('combine-formula');
-const combineMatrixEl  = document.getElementById('combine-matrix');
 const combineBtn       = document.getElementById('combine-btn');
 const combineProgEl    = document.getElementById('combine-prog');
 const combineStatusEl  = document.getElementById('combine-status');
@@ -568,9 +709,10 @@ const combineDoneN     = document.getElementById('combine-done-n');
 
 let hookFiles = [], bodyFiles = [];
 
-// Multi-file drag-drop
 function makeMultiDrop(zoneId, onFiles) {
-  const zone = document.getElementById(zoneId); let cnt = 0;
+  const zone = document.getElementById(zoneId);
+  if (!zone) return;
+  let cnt = 0;
   zone.addEventListener('dragenter', e => { e.preventDefault(); cnt++; zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => { cnt--; if (cnt <= 0) { cnt = 0; zone.classList.remove('drag-over'); } });
   zone.addEventListener('dragover', e => e.preventDefault());
@@ -581,11 +723,15 @@ function makeMultiDrop(zoneId, onFiles) {
   });
 }
 
-function renderClipList(files, listId, countId, onRemove) {
-  const listEl = document.getElementById(listId);
+function renderClipList(files, listEl, countId, onRemove) {
+  if (!listEl) return;
   const countEl = document.getElementById(countId);
   listEl.innerHTML = '';
   if (countEl) countEl.textContent = files.length;
+  if (files.length === 0) {
+    listEl.innerHTML = '<span class="clip-empty">Nenhum arquivo adicionado</span>';
+    return;
+  }
   files.forEach((f, i) => {
     const div = document.createElement('div');
     div.className = 'clip-item';
@@ -601,12 +747,12 @@ function renderClipList(files, listId, countId, onRemove) {
 }
 
 function renderHookList() {
-  renderClipList(hookFiles, 'hook-list', 'hook-count', i => {
+  renderClipList(hookFiles, hookListEl, 'hook-count', i => {
     hookFiles.splice(i, 1); renderHookList(); updateCombinePreview();
   });
 }
 function renderBodyList() {
-  renderClipList(bodyFiles, 'body-list', 'body-count', i => {
+  renderClipList(bodyFiles, bodyListEl, 'body-count', i => {
     bodyFiles.splice(i, 1); renderBodyList(); updateCombinePreview();
   });
 }
@@ -615,29 +761,41 @@ function updateCombinePreview() {
   const nH = hookFiles.length, nB = bodyFiles.length, total = nH * nB;
   const previewCard = document.getElementById('combine-preview');
   if (previewCard) previewCard.style.display = (nH > 0 || nB > 0) ? 'block' : 'none';
-  if (combineFormulaEl) {
-    combineFormulaEl.innerHTML =
-      '<span class="cn">' + nH + '</span> hooks × <span class="cn">' + nB + '</span> corpos = <span class="cn">' + total + '</span> vídeo' + (total !== 1 ? 's' : '');
+  const formulaEl = document.getElementById('combine-formula');
+  if (formulaEl) {
+    formulaEl.innerHTML = '<span class="cn">' + nH + '</span> hooks × <span class="cn">' + nB + '</span> corpos = <span class="cn">' + total + '</span> vídeo' + (total !== 1 ? 's' : '');
   }
-  if (combineMatrixEl) {
-    combineMatrixEl.innerHTML = '';
+  const matrixEl = document.getElementById('combine-matrix');
+  if (matrixEl) {
+    matrixEl.innerHTML = '';
     if (total > 0 && total <= 50) {
       hookFiles.forEach((h, hi) => {
         bodyFiles.forEach((b, bi) => {
           const tag = document.createElement('span');
           tag.className = 'combo-tag';
           tag.textContent = 'H' + (hi + 1) + '+C' + (bi + 1);
-          combineMatrixEl.appendChild(tag);
+          matrixEl.appendChild(tag);
         });
       });
     } else if (total > 50) {
-      combineMatrixEl.textContent = total + ' combinações';
+      matrixEl.textContent = total + ' combinações';
     }
   }
   if (combineBtn) combineBtn.disabled = (nH === 0 || nB === 0);
 }
 
-// File input change listeners
+// Click to open file input from clip-dz divs
+const hookDz = document.getElementById('hook-dz');
+const bodyDz = document.getElementById('body-dz');
+if (hookDz && hookInput) {
+  hookDz.addEventListener('click', () => hookInput.click());
+  hookDz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') hookInput.click(); });
+}
+if (bodyDz && bodyInput) {
+  bodyDz.addEventListener('click', () => bodyInput.click());
+  bodyDz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') bodyInput.click(); });
+}
+
 if (hookInput) {
   hookInput.addEventListener('change', () => {
     hookFiles = hookFiles.concat(Array.from(hookInput.files).filter(f => f.type.startsWith('video/')));
@@ -653,18 +811,11 @@ if (bodyInput) {
   });
 }
 
-// Drag-drop for hook/body zones
-makeMultiDrop('hook-dz', files => {
-  hookFiles = hookFiles.concat(files); renderHookList(); updateCombinePreview();
-});
-makeMultiDrop('body-dz', files => {
-  bodyFiles = bodyFiles.concat(files); renderBodyList(); updateCombinePreview();
-});
+makeMultiDrop('hook-dz', files => { hookFiles = hookFiles.concat(files); renderHookList(); updateCombinePreview(); });
+makeMultiDrop('body-dz', files => { bodyFiles = bodyFiles.concat(files); renderBodyList(); updateCombinePreview(); });
 
-// Initialize preview state
 updateCombinePreview();
 
-// Combiner submit
 if (combineBtn) {
   combineBtn.addEventListener('click', async () => {
     if (!hookFiles.length || !bodyFiles.length) return;
@@ -676,7 +827,6 @@ if (combineBtn) {
     combineStatusEl.textContent = 'Enviando arquivos para o servidor...';
     combineDetEl.textContent = '';
 
-    // Step 1: Stage all files
     let hookIds, hookNames, bodyIds, bodyNames;
     try {
       const fd = new FormData();
@@ -690,12 +840,10 @@ if (combineBtn) {
     } catch (err) {
       combineProgEl.style.display = 'none';
       combineErrorEl.style.display = 'block';
-      combineErrorEl.textContent = 'Erro ao enviar arquivos: ' + err.message;
-      combineBtn.disabled = false;
-      return;
+      combineErrorEl.textContent = 'Erro ao enviar: ' + err.message;
+      combineBtn.disabled = false; return;
     }
 
-    // Step 2: Create placeholder cards
     const total = hookIds.length * bodyIds.length;
     combineResultsEl.style.display = 'block';
     if (combineDoneN) combineDoneN.textContent = '0 / ' + total;
@@ -704,199 +852,165 @@ if (combineBtn) {
       bodyIds.forEach((bId, bi) => {
         const card = document.createElement('div');
         card.className = 'combo-card combo-processing';
-        card.innerHTML =
-          '<div class="combo-card-info">' +
-          '<span class="combo-card-label">H' + (hi + 1) + ' + C' + (bi + 1) + '</span>' +
-          '<span class="combo-card-label" style="opacity:.6;font-size:11px">' +
-          (hookNames[hi] || hId) + ' + ' + (bodyNames[bi] || bId) + '</span>' +
-          '<span style="opacity:.5">⏳ gerando...</span>' +
-          '</div>';
+        card.innerHTML = '<div class="combo-card-info"><span class="combo-card-label">H' + (hi + 1) + ' + C' + (bi + 1) + '</span><span style="opacity:.5">⏳ gerando...</span></div>';
         combineGridEl.appendChild(card);
         cards.push({ card, hId, bId, hi, bi });
       });
     });
 
-    // Step 3: Run sequentially
     let done = 0;
     for (const { card, hId, bId, hi, bi } of cards) {
       combineStatusEl.textContent = 'Gerando vídeo ' + (done + 1) + ' de ' + total + '...';
-      combineDetEl.textContent = 'H' + (hi + 1) + ' + C' + (bi + 1) + ': ' + (hookNames[hi] || hId) + ' + ' + (bodyNames[bi] || bId);
+      combineDetEl.textContent = 'H' + (hi + 1) + ' + C' + (bi + 1);
       try {
         const resp = await fetch(API + '/api/concat/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ hookId: hId, bodyId: bId })
         });
         const json = await resp.json();
         if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
         const url = API + json.url;
-        const label = 'H' + (hi + 1) + '+C' + (bi + 1);
-        const fname = 'combo-h' + (hi + 1) + '-c' + (bi + 1) + '.mp4';
         card.className = 'combo-card';
         card.innerHTML =
           '<video src="' + url + '" controls muted playsinline></video>' +
-          '<div class="combo-card-info">' +
-          '<span class="combo-card-label">' + label + '</span>' +
-          '<a class="combo-dl" href="' + url + '" download="' + fname + '">⬇ Baixar</a>' +
-          '</div>';
+          '<div class="combo-card-info"><span class="combo-card-label">H' + (hi + 1) + '+C' + (bi + 1) + '</span>' +
+          '<a class="combo-dl" href="' + url + '" download="combo-h' + (hi + 1) + '-c' + (bi + 1) + '.mp4">⬇ Baixar</a></div>';
       } catch (err) {
         card.className = 'combo-card combo-err';
-        card.innerHTML =
-          '<div class="combo-card-info" style="padding:1rem">' +
-          '<span class="combo-card-label" style="color:#ff6b6b">H' + (hi + 1) + '+C' + (bi + 1) + ' — Erro</span>' +
-          '<span style="font-size:12px;opacity:.7">' + err.message + '</span>' +
-          '</div>';
+        card.innerHTML = '<div class="combo-card-info" style="padding:1rem"><span class="combo-card-label">H' + (hi + 1) + '+C' + (bi + 1) + ' — Erro</span><span style="font-size:12px;opacity:.7">' + err.message + '</span></div>';
       }
       done++;
       if (combineDoneN) combineDoneN.textContent = done + ' / ' + total;
     }
 
-    combineProgEl.style.display = 'none';
-    combineStatusEl.textContent = '';
-    combineDetEl.textContent = '';
+    combineProgEl.style.display = 'none'; combineStatusEl.textContent = ''; combineDetEl.textContent = '';
     combineBtn.disabled = false;
   });
 }
 
-// ════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // EXTRAIR TOOL
-// ════════════════════════════════════════════
-const extrVideoInput   = document.getElementById('extr-video-input');
-const extrAudioInput   = document.getElementById('extr-audio-input');
-const extrDz           = document.getElementById('extr-dz');
-const extrAdz          = document.getElementById('extr-adz');
-const extrFileNameEl   = document.getElementById('extr-file-name');
-const extrAudioNameEl  = document.getElementById('extr-audio-name');
-const extrAudioZone    = document.getElementById('extr-audio-zone');
-const extrSubmitBtn    = document.getElementById('extr-submit-btn');
-const extrProgress     = document.getElementById('extr-progress');
-const extrStatusEl     = document.getElementById('extr-status');
-const extrErrorEl      = document.getElementById('extr-error');
-const extrResultCard   = document.getElementById('extr-result-card');
-const extrResultVideo  = document.getElementById('extr-result-video');
-const extrDownloadBtn  = document.getElementById('extr-download-btn');
-const extrTransWrap    = document.getElementById('extr-transcript-wrap');
-const extrTransText    = document.getElementById('extr-transcript-text');
-const extrCopyBtn      = document.getElementById('extr-copy-btn');
+// ════════════════════════════════════════════════════════════════════
+const extrVideoInput  = document.getElementById('extr-video-input');
+const extrAudioInput  = document.getElementById('extr-audio-input');
+const extrDz          = document.getElementById('extr-dz');
+const extrAdz         = document.getElementById('extr-adz');
+const extrFileNameEl  = document.getElementById('extr-file-name');
+const extrAudioNameEl = document.getElementById('extr-audio-name');
+const extrAudioZone   = document.getElementById('extr-audio-zone');
+const extrLangRow     = document.getElementById('extr-lang-row');
+const extrSubmitBtn   = document.getElementById('extr-submit-btn');
+const extrProgress    = document.getElementById('extr-progress');
+const extrStatusEl    = document.getElementById('extr-status');
+const extrErrorEl     = document.getElementById('extr-error');
+const extrResultCard  = document.getElementById('extr-result-card');
+const extrResultVideo = document.getElementById('extr-result-video');
+const extrDownloadBtn = document.getElementById('extr-download-btn');
+const extrTransWrap   = document.getElementById('extr-transcript-wrap');
+const extrTransText   = document.getElementById('extr-transcript-text');
+const extrCopyBtn     = document.getElementById('extr-copy-btn');
 
 let extrMode = 'video', extrVideoFile = null, extrAudioFile = null;
 
-// Mode card selection
 document.querySelectorAll('.extr-mode-card').forEach(card => {
   card.addEventListener('click', () => {
     document.querySelectorAll('.extr-mode-card').forEach(c => c.classList.remove('em-active'));
     card.classList.add('em-active');
     extrMode = card.dataset.mode;
     if (extrAudioZone) extrAudioZone.classList.toggle('show', extrMode === 'merge');
+    if (extrLangRow) extrLangRow.style.display = extrMode === 'transcribe' ? '' : 'none';
     updateExtrSubmit();
   });
 });
 
-// File inputs
-extrVideoInput.addEventListener('change', () => {
-  if (!extrVideoInput.files[0]) return;
-  extrVideoFile = extrVideoInput.files[0];
-  const n = extrVideoFile.name;
-  extrFileNameEl.textContent = '✓ ' + (n.length > 50 ? n.substring(0, 47) + '...' : n);
-  extrDz.classList.add('has-file');
-  updateExtrSubmit();
-});
-extrAudioInput.addEventListener('change', () => {
-  if (!extrAudioInput.files[0]) return;
-  extrAudioFile = extrAudioInput.files[0];
-  const n = extrAudioFile.name;
-  extrAudioNameEl.textContent = '✓ ' + (n.length > 50 ? n.substring(0, 47) + '...' : n);
-  extrAdz.classList.add('has-file');
-  updateExtrSubmit();
-});
+if (extrVideoInput) {
+  extrVideoInput.addEventListener('change', () => {
+    if (!extrVideoInput.files[0]) return;
+    extrVideoFile = extrVideoInput.files[0];
+    extrFileNameEl.textContent = '✓ ' + extrVideoFile.name;
+    extrDz.classList.add('has-file');
+    updateExtrSubmit();
+  });
+}
+if (extrAudioInput) {
+  extrAudioInput.addEventListener('change', () => {
+    if (!extrAudioInput.files[0]) return;
+    extrAudioFile = extrAudioInput.files[0];
+    extrAudioNameEl.textContent = '✓ ' + extrAudioFile.name;
+    if (extrAdz) extrAdz.classList.add('has-file');
+    updateExtrSubmit();
+  });
+}
 
-// Drag-drop for video zone
 makeDrop('extr-dz', f => f.type.startsWith('video/'), f => {
   extrVideoFile = f;
-  const n = f.name;
-  extrFileNameEl.textContent = '✓ ' + (n.length > 50 ? n.substring(0, 47) + '...' : n);
-  extrDz.classList.add('has-file');
+  extrFileNameEl.textContent = '✓ ' + f.name;
+  if (extrDz) extrDz.classList.add('has-file');
   updateExtrSubmit();
 });
-
-// Drag-drop for audio zone (accepts audio or video files as audio source)
 makeDrop('extr-adz', f => f.type.startsWith('audio/') || f.type.startsWith('video/'), f => {
   extrAudioFile = f;
-  const n = f.name;
-  extrAudioNameEl.textContent = '✓ ' + (n.length > 50 ? n.substring(0, 47) + '...' : n);
-  extrAdz.classList.add('has-file');
+  extrAudioNameEl.textContent = '✓ ' + f.name;
+  if (extrAdz) extrAdz.classList.add('has-file');
   updateExtrSubmit();
 });
 
 function updateExtrSubmit() {
-  if (!extrVideoFile) {
-    extrSubmitBtn.disabled = true;
-    extrSubmitBtn.textContent = 'Selecione um vídeo';
-    return;
-  }
-  if (extrMode === 'merge' && !extrAudioFile) {
-    extrSubmitBtn.disabled = true;
-    extrSubmitBtn.textContent = 'Selecione o áudio também';
-    return;
-  }
+  if (!extrSubmitBtn) return;
+  if (!extrVideoFile) { extrSubmitBtn.disabled = true; extrSubmitBtn.textContent = 'Selecione um vídeo'; return; }
+  if (extrMode === 'merge' && !extrAudioFile) { extrSubmitBtn.disabled = true; extrSubmitBtn.textContent = 'Selecione o áudio também'; return; }
   extrSubmitBtn.disabled = false;
   const labels = { video: '🎬 Extrair Vídeo Sem Áudio', transcribe: '📝 Transcrever Vídeo', merge: '🔗 Juntar Vídeo + Áudio' };
   extrSubmitBtn.textContent = labels[extrMode] || 'Processar';
 }
 
-// Submit
-extrSubmitBtn.addEventListener('click', async () => {
-  if (!extrVideoFile) return;
-  if (extrMode === 'merge' && !extrAudioFile) return;
-
-  extrSubmitBtn.disabled = true;
-  extrSubmitBtn.textContent = '⏳ Processando...';
-  extrProgress.style.display = 'block';
-  extrErrorEl.style.display = 'none';
-  extrResultCard.style.display = 'none';
-  extrTransWrap.style.display = 'none';
-
-  const statusMap = {
-    video: 'Removendo áudio do vídeo...',
-    transcribe: 'Extraindo áudio e transcrevendo — pode levar alguns instantes...',
-    merge: 'Juntando vídeo com o novo áudio...'
-  };
-  extrStatusEl.textContent = statusMap[extrMode] || 'Processando...';
-
-  const fd = new FormData();
-  fd.append('video', extrVideoFile);
-  if (extrMode === 'merge') fd.append('audio', extrAudioFile);
-
-  const endpointMap = { video: '/api/extract/video', transcribe: '/api/extract/transcribe', merge: '/api/extract/merge' };
-  try {
-    const resp = await fetch(API + endpointMap[extrMode], { method: 'POST', body: fd });
-    const json = await resp.json();
-    if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-
+if (extrSubmitBtn) {
+  extrSubmitBtn.addEventListener('click', async () => {
+    if (!extrVideoFile) return;
+    if (extrMode === 'merge' && !extrAudioFile) return;
+    extrSubmitBtn.disabled = true; extrSubmitBtn.textContent = '⏳ Processando...';
+    extrProgress.style.display = 'block';
+    extrErrorEl.style.display = 'none';
+    extrResultCard.style.display = 'none';
+    extrTransWrap.style.display = 'none';
+    const statusMap = {
+      video: 'Removendo áudio do vídeo...',
+      transcribe: 'Transcrevendo com faster-whisper — pode levar alguns instantes...',
+      merge: 'Juntando vídeo com o novo áudio...'
+    };
+    extrStatusEl.textContent = statusMap[extrMode] || 'Processando...';
+    const fd = new FormData();
+    fd.append('video', extrVideoFile);
+    if (extrMode === 'merge') fd.append('audio', extrAudioFile);
     if (extrMode === 'transcribe') {
-      extrTransText.textContent = json.text || '(sem resultado)';
-      extrTransWrap.style.display = 'block';
-      extrTransWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } else {
-      const url = API + json.url;
-      extrResultVideo.src = url;
-      extrDownloadBtn.href = url;
-      extrDownloadBtn.download = json.url.split('/').pop();
-      extrResultCard.style.display = 'block';
-      extrResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      fd.append('lang', document.getElementById('extr-lang').value);
+      fd.append('model', document.getElementById('extr-model').value);
     }
-  } catch (err) {
-    extrErrorEl.style.display = 'block';
-    extrErrorEl.textContent = 'Erro: ' + err.message;
-  } finally {
-    extrSubmitBtn.disabled = false;
-    extrProgress.style.display = 'none';
-    extrStatusEl.textContent = '';
-    updateExtrSubmit();
-  }
-});
+    const endpointMap = { video: '/api/extract/video', transcribe: '/api/extract/transcribe', merge: '/api/extract/merge' };
+    try {
+      const resp = await fetch(API + endpointMap[extrMode], { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+      if (extrMode === 'transcribe') {
+        extrTransText.textContent = json.text || '(sem resultado)';
+        extrTransWrap.style.display = 'block';
+        extrTransWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else {
+        const url = API + json.url;
+        extrResultVideo.src = url; extrDownloadBtn.href = url;
+        extrDownloadBtn.download = json.url.split('/').pop();
+        extrResultCard.style.display = 'block';
+        extrResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    } catch (err) {
+      extrErrorEl.style.display = 'block'; extrErrorEl.textContent = 'Erro: ' + err.message;
+    } finally {
+      extrSubmitBtn.disabled = false; extrProgress.style.display = 'none'; extrStatusEl.textContent = '';
+      updateExtrSubmit();
+    }
+  });
+}
 
-// Copy transcript
 if (extrCopyBtn) {
   extrCopyBtn.addEventListener('click', () => {
     const text = extrTransText.textContent || '';
@@ -904,158 +1018,172 @@ if (extrCopyBtn) {
       extrCopyBtn.textContent = '✓ Copiado!';
       setTimeout(() => { extrCopyBtn.textContent = '📋 Copiar texto'; }, 2000);
     }).catch(() => {
-      // fallback for browsers without clipboard API
       const ta = document.createElement('textarea');
       ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
       extrCopyBtn.textContent = '✓ Copiado!';
       setTimeout(() => { extrCopyBtn.textContent = '📋 Copiar texto'; }, 2000);
     });
   });
 }
 
-// Submit subtitle
-subSubmitBtn.addEventListener('click', async () => {
-  if (!subFile) return;
-  const valid = subEntries.filter(e => e.text.trim());
-  if (!valid.length) return;
-  subSubmitBtn.disabled = true; subSubmitBtn.textContent = '⏳ Processando...';
-  subProgressWrap.style.display = 'block';
-  subStatusEl.textContent = 'Gerando arquivo de legendas...';
-  subErrorEl.style.display = 'none'; subResultCard.style.display = 'none';
-  const fd = new FormData();
-  fd.append('video', subFile);
-  fd.append('subs', JSON.stringify(valid.map(e => ({ start: e.start, end: e.end, text: e.text.trim() }))));
-  fd.append('preset', subPreset);
-  fd.append('position', subPosition);
-  fd.append('fontsize', subFontSize ? subFontSize.value : '72');
-  fd.append('wordbyword', subWordByWord ? '1' : '0');
-  try {
-    const resp = await fetch(API + '/api/subtitle', { method: 'POST', body: fd });
-    const json = await resp.json();
-    if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-    subResultVideo.src = API + json.url;
-    subDownloadBtn.href = API + json.url;
-    subDownloadBtn.download = json.url.split('/').pop();
-    subResultCard.style.display = 'block';
-    subResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  } catch (err) {
-    subErrorEl.style.display = 'block'; subErrorEl.textContent = 'Erro: ' + err.message;
-  } finally {
-    subSubmitBtn.disabled = false;
-    subProgressWrap.style.display = 'none'; subStatusEl.textContent = '';
-    updateSubSubmit();
-  }
+// ════════════════════════════════════════════════════════════════════
+// LIPSYNC TOOL
+// ════════════════════════════════════════════════════════════════════
+const lipVideoInput   = document.getElementById('lip-video-input');
+const lipAudioInput   = document.getElementById('lip-audio-input');
+const lipFileNameEl   = document.getElementById('lip-file-name');
+const lipAudioNameEl  = document.getElementById('lip-audio-name');
+const lipSubmitBtn    = document.getElementById('lip-submit-btn');
+const lipProgressWrap = document.getElementById('lip-progress-wrap');
+const lipStatus       = document.getElementById('lip-status');
+const lipResultCard   = document.getElementById('lip-result-card');
+const lipResultVideo  = document.getElementById('lip-result-video');
+const lipDownloadBtn  = document.getElementById('lip-download-btn');
+const lipErrorMsg     = document.getElementById('lip-error-msg');
+let lipVideoFile = null, lipAudioFile = null;
+
+if (lipVideoInput) lipVideoInput.addEventListener('change', () => {
+  if (!lipVideoInput.files[0]) return;
+  lipVideoFile = lipVideoInput.files[0];
+  lipFileNameEl.textContent = '✓ ' + lipVideoFile.name;
+  document.getElementById('lip-drop-zone').classList.add('has-file');
+  updateLipSubmit();
 });
+if (lipAudioInput) lipAudioInput.addEventListener('change', () => {
+  if (!lipAudioInput.files[0]) return;
+  lipAudioFile = lipAudioInput.files[0];
+  lipAudioNameEl.textContent = '✓ ' + lipAudioFile.name;
+  document.getElementById('lip-audio-drop-zone').classList.add('has-file');
+  updateLipSubmit();
+});
+makeDrop('lip-drop-zone', f => f.type.startsWith('video/'), f => {
+  lipVideoFile = f; lipFileNameEl.textContent = '✓ ' + f.name;
+  document.getElementById('lip-drop-zone').classList.add('has-file'); updateLipSubmit();
+});
+makeDrop('lip-audio-drop-zone', f => f.type.startsWith('audio/'), f => {
+  lipAudioFile = f; lipAudioNameEl.textContent = '✓ ' + f.name;
+  document.getElementById('lip-audio-drop-zone').classList.add('has-file'); updateLipSubmit();
+});
+function updateLipSubmit() {
+  if (lipVideoFile && lipAudioFile) { lipSubmitBtn.disabled = false; lipSubmitBtn.textContent = '💋 Sincronizar Lábios'; }
+  else { lipSubmitBtn.disabled = true; lipSubmitBtn.textContent = 'Selecione o vídeo e o áudio'; }
+}
+if (lipSubmitBtn) {
+  lipSubmitBtn.addEventListener('click', async () => {
+    if (!lipVideoFile || !lipAudioFile) return;
+    lipSubmitBtn.disabled = true; lipSubmitBtn.textContent = '⏳ Processando...';
+    lipProgressWrap.style.display = 'block'; lipStatus.textContent = 'Enviando...';
+    lipErrorMsg.style.display = 'none'; lipResultCard.style.display = 'none';
+    const fd = new FormData(); fd.append('video', lipVideoFile); fd.append('audio', lipAudioFile);
+    try {
+      const resp = await fetch(API + '/api/lipsync', { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+      lipResultVideo.src = API + json.url; lipDownloadBtn.href = API + json.url;
+      lipDownloadBtn.download = json.url.split('/').pop();
+      lipResultCard.style.display = 'block';
+      lipResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      lipErrorMsg.style.display = 'block'; lipErrorMsg.textContent = 'Erro: ' + err.message;
+    } finally {
+      lipSubmitBtn.disabled = false; lipSubmitBtn.textContent = '💋 Sincronizar Lábios';
+      lipProgressWrap.style.display = 'none'; lipStatus.textContent = '';
+    }
+  });
+}
 
-// ══════════════════════════════════════════════════════
-// LEGENDAS AUTOMÁTICAS
-// ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
+// GERAR VÍDEO COM HOOK
+// ════════════════════════════════════════════════════════════════════
 (function () {
-  const capDz         = document.getElementById('cap-dz');
-  const capInput      = document.getElementById('cap-video-input');
-  const capFileName   = document.getElementById('cap-file-name');
-  const capSubmitBtn  = document.getElementById('cap-submit-btn');
-  const capProgress   = document.getElementById('cap-progress');
-  const capStatus     = document.getElementById('cap-status');
-  const capError      = document.getElementById('cap-error');
-  const capResultCard = document.getElementById('cap-result-card');
-  const capResultVid  = document.getElementById('cap-result-video');
-  const capDownBtn    = document.getElementById('cap-download-btn');
-  const capLang       = document.getElementById('cap-lang');
-  const capModel      = document.getElementById('cap-model');
-  const capFontSize   = document.getElementById('cap-font-size');
-  const capFontColor  = document.getElementById('cap-font-color');
-  const capFontsizeWrap  = document.getElementById('cap-fontsize-wrap');
-  const capFontcolorWrap = document.getElementById('cap-fontcolor-wrap');
+  const vgApiKey    = document.getElementById('vg-apikey');
+  const vgPrompt    = document.getElementById('vg-prompt');
+  const vgHookAi    = document.getElementById('vg-hook-ai');
+  const vgDuration  = document.getElementById('vg-duration');
+  const vgDurVal    = document.getElementById('vg-duration-val');
+  const vgCostEst   = document.getElementById('vg-cost-est');
+  const vgSubmit    = document.getElementById('vg-submit-btn');
+  const vgProgress  = document.getElementById('vg-progress');
+  const vgStatus    = document.getElementById('vg-status');
+  const vgError     = document.getElementById('vg-error');
+  const vgRefined   = document.getElementById('vg-refined-prompt');
+  const vgRefinedTx = document.getElementById('vg-refined-text');
+  const vgResultCard= document.getElementById('vg-result-card');
+  const vgResultVid = document.getElementById('vg-result-video');
+  const vgDownBtn   = document.getElementById('vg-download-btn');
+  if (!vgSubmit) return;
 
-  if (!capDz) return;
+  let selectedVideoModel = 'google/veo-3-flash';
+  let selectedModelCost  = 0.10;
 
-  let capFile = null;
-  let capMode = 'burn';
-
-  document.querySelectorAll('.cap-mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.cap-mode-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      capMode = btn.dataset.capmode;
-      const showBurn = capMode === 'burn';
-      if (capFontsizeWrap) capFontsizeWrap.style.display = showBurn ? '' : 'none';
-      if (capFontcolorWrap) capFontcolorWrap.style.display = showBurn ? '' : 'none';
-      updateCapSubmit();
+  // Model selection
+  document.querySelectorAll('.vg-model-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.vg-model-card').forEach(c => c.classList.remove('vm-active'));
+      card.classList.add('vm-active');
+      selectedVideoModel = card.dataset.model;
+      selectedModelCost  = parseFloat(card.dataset.cost) || 0.10;
+      updateCostEst();
     });
   });
 
-  makeDrop(capDz, capInput, f => {
-    capFile = f;
-    capFileName.textContent = f.name;
-    updateCapSubmit();
-  });
-
-  capInput.addEventListener('change', () => {
-    if (capInput.files[0]) {
-      capFile = capInput.files[0];
-      capFileName.textContent = capFile.name;
-      updateCapSubmit();
-    }
-  });
-
-  function updateCapSubmit() {
-    if (!capFile) { capSubmitBtn.disabled = true; capSubmitBtn.textContent = 'Selecione um vídeo'; return; }
-    capSubmitBtn.disabled = false;
-    capSubmitBtn.textContent = capMode === 'burn' ? '💬 Gerar Vídeo com Legendas' : '📄 Baixar SRT';
+  function updateCostEst() {
+    if (!vgDuration || !vgCostEst) return;
+    const dur = parseInt(vgDuration.value) || 8;
+    if (vgDurVal) vgDurVal.textContent = dur + 's';
+    const cost = (dur * selectedModelCost).toFixed(2);
+    vgCostEst.textContent = '$' + cost;
   }
 
-  capSubmitBtn.addEventListener('click', async () => {
-    if (!capFile) return;
-    capSubmitBtn.disabled = true;
-    capError.style.display = 'none';
-    capResultCard.style.display = 'none';
-    capProgress.style.display = 'block';
-    capStatus.textContent = '⏳ Transcrevendo com IA local… pode levar alguns minutos';
+  if (vgDuration) {
+    vgDuration.addEventListener('input', updateCostEst);
+    updateCostEst();
+  }
 
-    const fd = new FormData();
-    fd.append('video', capFile);
-    fd.append('mode', capMode);
-    fd.append('lang', capLang.value);
-    fd.append('model', capModel.value);
-    fd.append('fontSize', capFontSize ? capFontSize.value : 18);
-    fd.append('fontColor', capFontColor ? capFontColor.value : 'white');
+  vgSubmit.addEventListener('click', async () => {
+    const apiKey = vgApiKey ? vgApiKey.value.trim() : '';
+    const prompt = vgPrompt ? vgPrompt.value.trim() : '';
+    if (!apiKey) { alert('Informe sua API key da OpenRouter'); return; }
+    if (!prompt) { alert('Escreva sua ideia no campo de comando'); return; }
+
+    vgSubmit.disabled = true; vgSubmit.textContent = '⏳ Gerando...';
+    vgProgress.style.display = 'block'; vgStatus.textContent = '🤖 Hook IA refinando sua ideia...';
+    vgError.style.display = 'none'; vgRefined.style.display = 'none'; vgResultCard.style.display = 'none';
 
     try {
-      const resp = await fetch(API + '/api/caption', { method: 'POST', body: fd });
+      const resp = await fetch(API + '/api/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          videoModel: selectedVideoModel,
+          hookModel: vgHookAi ? vgHookAi.value : 'google/gemini-flash-1.5',
+          duration: vgDuration ? parseInt(vgDuration.value) : 8,
+          apiKey
+        })
+      });
 
-      if (capMode === 'srt') {
-        if (!resp.ok) {
-          const j = await resp.json().catch(() => ({}));
-          throw new Error(j.error || 'HTTP ' + resp.status);
-        }
-        const text = await resp.text();
-        const blob = new Blob([text], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'legendas.srt'; a.click();
-        URL.revokeObjectURL(url);
-        capStatus.textContent = '✅ SRT baixado!';
-      } else {
-        const json = await resp.json();
-        if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-        capResultVid.src = API + json.url;
-        capDownBtn.href = API + json.url;
-        capDownBtn.download = json.url.split('/').pop();
-        capResultCard.style.display = 'block';
-        capResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        capStatus.textContent = '✅ Pronto!';
+      vgStatus.textContent = '🎬 Gerando vídeo com ' + selectedVideoModel + '...';
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+
+      if (json.refinedPrompt) {
+        vgRefinedTx.textContent = json.refinedPrompt;
+        vgRefined.style.display = 'block';
+      }
+
+      if (json.url) {
+        vgResultVid.src = json.url;
+        vgDownBtn.href = json.url;
+        vgResultCard.style.display = 'block';
+        vgResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     } catch (err) {
-      capError.style.display = 'block';
-      capError.textContent = 'Erro: ' + err.message;
+      vgError.style.display = 'block'; vgError.textContent = 'Erro: ' + err.message;
     } finally {
-      capSubmitBtn.disabled = false;
-      updateCapSubmit();
-      setTimeout(() => { capProgress.style.display = 'none'; }, 2000);
+      vgSubmit.disabled = false; vgSubmit.textContent = '🎬 Gerar Vídeo com Hook';
+      vgProgress.style.display = 'none'; vgStatus.textContent = '';
     }
   });
 })();

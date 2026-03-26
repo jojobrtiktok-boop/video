@@ -13,11 +13,9 @@
       --radius: 12px;
     }
     body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; overflow: hidden; height: 100vh; }
-
-    /* ── LAYOUT ── */
     .editor-layout { display: flex; height: 100vh; }
 
-    /* ── SIDEBAR ── */
+    /* SIDEBAR */
     .sidebar { width: 240px; min-width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; }
     .sidebar-logo { font-size: 1.25rem; font-weight: 900; letter-spacing: -0.5px; padding: 22px 20px 0; }
     .sidebar-logo span { color: var(--accent); }
@@ -37,17 +35,17 @@
     .back-btn { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-decoration: none; width: 100%; transition: color 0.15s, border-color 0.15s; }
     .back-btn:hover { color: var(--text); border-color: var(--accent); }
 
-    /* ── MAIN ── */
+    /* MAIN */
     .editor-main { flex: 1; overflow-y: auto; background: var(--bg); }
-    .tool-panel { padding: 32px 40px 60px; max-width: 800px; }
+    .tool-panel { padding: 32px 40px 60px; max-width: 820px; }
     .tool-header { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
     .tool-title { font-size: 1.55rem; font-weight: 900; letter-spacing: -0.5px; }
     .tool-subtitle { color: var(--text-muted); font-size: 0.88rem; margin-top: 6px; }
 
-    /* ── CARD ── */
+    /* CARD */
     .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 18px; }
 
-    /* ── DROP ZONE ── */
+    /* DROP ZONE */
     .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; display: block; }
     .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(108,99,255,.06); }
     .drop-zone.has-file { border-color: var(--success); background: rgba(34,197,94,.04); border-style: solid; }
@@ -58,24 +56,26 @@
     .dz-filename { margin-top: 8px; font-size: 0.8rem; color: var(--success); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .hidden-input { position: fixed; top: -9999px; left: -9999px; width: 1px; height: 1px; opacity: 0; }
 
-    /* ── CANVAS ── */
+    /* CANVAS */
     .section-label { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin: 20px 0 10px; }
     .canvas-hint { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; }
     .canvas-hint strong { color: var(--accent); }
-    #canvas-wrap { position: relative; border-radius: 8px 8px 0 0; overflow: hidden; border: 1px solid var(--border); border-bottom: none; cursor: crosshair; }
-    #preview-canvas { display: block; user-select: none; -webkit-user-select: none; }
-    /* ── VIDEO CONTROLS ── */
+    #canvas-wrap, #sub-canvas-wrap { position: relative; border-radius: 8px 8px 0 0; overflow: hidden; border: 1px solid var(--border); border-bottom: none; cursor: crosshair; }
+    #sub-canvas-wrap { cursor: default; }
+    #preview-canvas, #sub-preview-canvas { display: block; user-select: none; -webkit-user-select: none; }
+
+    /* VIDEO CONTROLS */
     .video-controls { display: flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 0 0 8px 8px; padding: 7px 10px; margin-bottom: 6px; }
-    #vc-play { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text); padding: 0 4px; line-height: 1; flex-shrink: 0; }
-    #vc-play:hover { color: var(--accent); }
-    #vc-time { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 88px; text-align: center; flex-shrink: 0; }
-    #vc-seek { flex: 1; cursor: pointer; accent-color: var(--accent); height: 4px; min-width: 0; }
-    #vc-speed { background: var(--bg-card); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 3px 6px; font-size: 0.75rem; cursor: pointer; flex-shrink: 0; }
-    #vc-speed:focus { outline: none; border-color: var(--accent); }
+    .vc-play { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text); padding: 0 4px; line-height: 1; flex-shrink: 0; }
+    .vc-play:hover { color: var(--accent); }
+    .vc-time { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 88px; text-align: center; flex-shrink: 0; }
+    .vc-seek { flex: 1; cursor: pointer; accent-color: var(--accent); height: 4px; min-width: 0; }
+    .vc-speed { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 3px 6px; font-size: 0.75rem; cursor: pointer; flex-shrink: 0; }
+    .vc-speed:focus { outline: none; border-color: var(--accent); }
     #region-info { margin-top: 4px; font-size: 0.78rem; color: var(--text-muted); min-height: 20px; }
     #region-info span { color: var(--text); font-weight: 700; }
 
-    /* ── MODE TOGGLE ── */
+    /* MODE TOGGLE */
     .mode-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
     .mode-btn { flex: 1; min-width: 130px; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px; justify-content: center; }
     .mode-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
@@ -83,28 +83,28 @@
     .mode-btn:disabled { opacity: 0.32; cursor: not-allowed; }
     .mode-desc { margin-top: 10px; padding: 10px 14px; background: var(--surface2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.55; }
 
-    /* ── SUBMIT ── */
+    /* SUBMIT */
     .submit-btn { width: 100%; margin-top: 20px; padding: 13px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.96rem; font-weight: 800; cursor: pointer; transition: background .15s, opacity .15s; }
     .submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
     .submit-btn:disabled { opacity: .38; cursor: not-allowed; }
 
-    /* ── PROGRESS ── */
+    /* PROGRESS */
     .progress-wrap { display: none; margin-top: 16px; background: var(--surface2); border-radius: 99px; height: 6px; overflow: hidden; }
     .progress-bar { height: 100%; width: 60%; background: linear-gradient(90deg, var(--accent), #9b6cff); border-radius: 99px; animation: inde 1.4s infinite linear; }
     @keyframes inde { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
     .status-text { text-align: center; font-size: 0.82rem; color: var(--text-muted); margin-top: 10px; min-height: 18px; }
 
-    /* ── RESULT ── */
+    /* RESULT */
     .result-card { background: var(--surface); border: 1px solid var(--success); border-radius: var(--radius); padding: 20px 24px; margin-top: 18px; }
     .result-card h3 { color: var(--success); font-size: 0.95rem; margin-bottom: 14px; }
     .result-video { width: 100%; border-radius: 8px; background: #000; max-height: 320px; }
     .download-btn { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 22px; background: var(--success); border: none; border-radius: 8px; color: #fff; font-size: 0.86rem; font-weight: 700; cursor: pointer; text-decoration: none; transition: opacity .15s; }
     .download-btn:hover { opacity: .85; }
 
-    /* ── ERROR ── */
+    /* ERROR */
     .error-msg { display: none; margin-top: 14px; padding: 12px 16px; background: rgba(239,68,68,.08); border: 1px solid var(--error); border-radius: 8px; color: var(--error); font-size: 0.82rem; }
 
-    /* ── LIPSYNC ── */
+    /* LIPSYNC */
     .lip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     .tech-info { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
     .tech-option { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border); }
@@ -115,7 +115,11 @@
     .tech-option small { font-size: 0.74rem; color: var(--text-muted); }
     .tech-option .pill-soon { margin-left: auto; }
 
-    /* ── SUBTITLE TOOL ── */
+    /* SUBTITLE TOOL */
+    .sub-mode-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .sub-mode-btn { flex: 1; padding: 11px 10px; background: var(--surface2); border: 2px solid var(--border); border-radius: 10px; color: var(--text-muted); font-size: 0.84rem; font-weight: 700; cursor: pointer; transition: all .15s; text-align: center; }
+    .sub-mode-btn:hover { border-color: var(--accent); color: var(--text); }
+    .sub-mode-btn.sm-active { background: rgba(108,99,255,.14); border-color: var(--accent); color: var(--text); }
     .sub-entries { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; min-height: 0; }
     .sub-entry { display: flex; align-items: center; gap: 8px; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
     .sub-num { color: var(--text-muted); font-size: 0.7rem; font-weight: 700; min-width: 18px; text-align: center; flex-shrink: 0; }
@@ -130,7 +134,11 @@
     .sub-add-btn { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 16px; background: var(--surface2); border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.83rem; font-weight: 700; cursor: pointer; width: 100%; transition: all .15s; }
     .sub-add-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.07); }
     .sub-empty { padding: 18px; text-align: center; color: var(--text-muted); font-size: 0.82rem; background: var(--surface3); border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 10px; }
-    /* Presets */
+    .auto-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
+    .auto-field label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; font-weight: 600; }
+    .auto-field select { width: 100%; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 0.88rem; }
+
+    /* PRESETS */
     .presets-grid { display: flex; gap: 9px; flex-wrap: wrap; }
     .preset-card { flex: 1; min-width: 80px; padding: 14px 8px; border-radius: 10px; border: 2px solid var(--border); cursor: pointer; text-align: center; background: var(--surface3); transition: border-color .15s, transform .12s; position: relative; }
     .preset-card:hover { border-color: rgba(108,99,255,.55); transform: translateY(-2px); }
@@ -138,18 +146,12 @@
     .preset-card.sp-active::after { content: '✓'; position: absolute; top: 5px; right: 8px; font-size: 0.7rem; color: var(--accent); font-weight: 900; }
     .preset-preview { font-size: 1rem; font-weight: 900; padding: 4px 0; max-height: 36px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
     .preset-name { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-top: 6px; }
-    /* Position & Size */
-    .pos-group { display: flex; gap: 8px; }
-    .pos-btn { flex: 1; padding: 9px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all .15s; }
-    .pos-btn:hover { border-color: var(--accent); color: var(--text); }
-    .pos-btn.pp-active { background: rgba(108,99,255,.14); border-color: var(--accent); color: var(--text); }
+
+    /* SIZE + ANIM */
     .size-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
     .size-row label { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; white-space: nowrap; }
     .size-row input[type=range] { flex: 1; accent-color: var(--accent); }
     .size-row .size-val { font-size: 0.82rem; color: var(--text); font-weight: 700; min-width: 32px; text-align: right; }
-    /* Anim toggle */
-    .anim-toggle-row { margin-top: 18px; }
-    .anim-toggle-row .section-label { margin-top: 0; }
     .anim-btns { display: flex; gap: 8px; }
     .anim-btn { flex: 1; padding: 11px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all .15s; text-align: center; }
     .anim-btn:hover { border-color: var(--accent); color: var(--text); }
@@ -157,7 +159,7 @@
     .anim-btn .anim-desc { font-size: 0.68rem; font-weight: 400; color: var(--text-muted); display: block; margin-top: 3px; }
     .anim-btn.pa-active .anim-desc { color: rgba(226,232,240,.6); }
 
-    /* ── COMBINER TOOL ── */
+    /* COMBINER */
     .combine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
     .clip-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; min-height: 28px; }
     .clip-empty { color: var(--text-muted); font-size: 0.76rem; padding: 4px 0; }
@@ -167,7 +169,7 @@
     .clip-sz { color: var(--text-muted); font-size: 0.7rem; flex-shrink: 0; }
     .clip-rm { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.88rem; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; transition: all .15s; }
     .clip-rm:hover { color: var(--error); background: rgba(239,68,68,.12); }
-    .clip-dz { border: 1.5px dashed var(--border); border-radius: 8px; padding: 13px; text-align: center; color: var(--text-muted); font-size: 0.82rem; cursor: pointer; transition: all .15s; }
+    .clip-dz { border: 1.5px dashed var(--border); border-radius: 8px; padding: 13px; text-align: center; color: var(--text-muted); font-size: 0.82rem; cursor: pointer; transition: all .15s; display: block; }
     .clip-dz:hover, .clip-dz.drag-over { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.05); }
     .clip-dz strong { display: block; font-size: 0.86rem; margin-bottom: 2px; }
     .accent-n { color: var(--accent); font-size: 0.84rem; }
@@ -192,7 +194,7 @@
     .combo-card.combo-err .combo-card-label { color: var(--error); }
     @media (max-width: 680px) { .combine-grid { grid-template-columns: 1fr; } }
 
-    /* ── EXTRAIR TOOL ── */
+    /* EXTRAIR */
     .extr-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
     .extr-mode-card { border: 2px solid var(--border); border-radius: 12px; padding: 14px 10px; cursor: pointer; text-align: center; transition: all .18s; background: var(--surface); user-select: none; }
     .extr-mode-card:hover { border-color: var(--accent); background: var(--surface2); }
@@ -205,18 +207,40 @@
     .transcript-result { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; font-size: 0.9rem; line-height: 1.75; color: var(--text); min-height: 100px; white-space: pre-wrap; word-break: break-word; margin-top: 10px; }
     .copy-btn { margin-top: 10px; padding: 8px 22px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; font-size: 0.85rem; transition: all .18s; }
     .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .extr-lang-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0 0; }
+    .extr-lang-row label { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; display: block; margin-bottom: 5px; }
+    .extr-lang-row select { width: 100%; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 0.88rem; }
     @media (max-width: 680px) { .extr-modes { grid-template-columns: 1fr 1fr; } }
 
-    /* ── LEGENDAS TOOL ── */
-    .cap-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
-    .cap-field label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; font-weight: 600; }
-    .cap-field select, .cap-field input[type=number] { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 0.88rem; }
-    .cap-mode-toggle { display: flex; gap: 8px; margin: 16px 0 8px; }
-    .cap-mode-btn { flex: 1; padding: 9px 10px; border: 2px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 0.83rem; font-weight: 600; cursor: pointer; transition: all .18s; text-align: center; }
-    .cap-mode-btn.active { border-color: var(--accent); background: rgba(108,99,255,.13); color: var(--accent); }
-    .cap-result-video { width: 100%; border-radius: 10px; margin-top: 8px; outline: none; }
+    /* VIDEO GENERATOR */
+    .vg-api-row { display: flex; gap: 10px; align-items: flex-end; }
+    .vg-api-row input { flex: 1; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 0.88rem; }
+    .vg-api-row input:focus { outline: none; border-color: var(--accent); }
+    .vg-api-row input::placeholder { color: var(--text-muted); }
+    .vg-prompt-area { width: 100%; min-height: 90px; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); font-size: 0.9rem; font-family: inherit; resize: vertical; margin-top: 4px; }
+    .vg-prompt-area:focus { outline: none; border-color: var(--accent); }
+    .vg-prompt-area::placeholder { color: var(--text-muted); }
+    .vg-models { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+    .vg-model-card { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--surface2); border: 2px solid var(--border); border-radius: 10px; cursor: pointer; transition: all .15s; user-select: none; }
+    .vg-model-card:hover { border-color: var(--accent); }
+    .vg-model-card.vm-active { border-color: var(--accent); background: rgba(108,99,255,.1); }
+    .vg-model-name { font-weight: 700; font-size: 0.88rem; flex: 1; }
+    .vg-model-desc { font-size: 0.72rem; color: var(--text-muted); }
+    .vg-model-cost { font-size: 0.78rem; color: var(--accent); font-weight: 700; white-space: nowrap; }
+    .vg-duration-row { display: flex; align-items: center; gap: 14px; padding: 14px 0 4px; }
+    .vg-duration-row label { font-size: 0.82rem; color: var(--text-muted); font-weight: 700; white-space: nowrap; }
+    .vg-duration-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .vg-duration-val { font-size: 0.9rem; font-weight: 700; color: var(--text); min-width: 28px; }
+    .vg-cost-badge { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+    .vg-cost-badge span { color: var(--accent); font-weight: 700; }
+    .vg-refined-prompt { background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: 0.84rem; color: var(--text-muted); line-height: 1.6; margin-top: 12px; display: none; }
+    .vg-refined-prompt strong { color: var(--accent); display: block; margin-bottom: 6px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; }
+    .vg-result-video { width: 100%; border-radius: 10px; margin-top: 8px; }
+    .hook-ai-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+    .hook-ai-row label { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+    .hook-ai-row select { flex: 1; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 0.85rem; }
 
-    /* ── RESPONSIVE ── */
+    /* RESPONSIVE */
     @media (max-width: 680px) {
       .sidebar { width: 100%; min-width: 0; height: auto; border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; overflow: visible; }
       .editor-layout { flex-direction: column; }
@@ -225,6 +249,8 @@
       .sidebar-footer, .sidebar-logo, .sidebar-subtitle, .nav-section { display: none; }
       .tool-panel { padding: 20px 16px 40px; }
       .lip-grid { grid-template-columns: 1fr; }
+      .auto-settings { grid-template-columns: 1fr; }
+      .vg-api-row { flex-direction: column; }
     }
     @media (min-width: 681px) and (max-width: 900px) {
       .sidebar { width: 190px; min-width: 190px; }
@@ -235,11 +261,10 @@
 <body>
 <div class="editor-layout">
 
-  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-logo">Video<span>Forge</span></div>
     <div class="sidebar-subtitle">Editor de Vídeo Online</div>
-
     <div class="nav-section">Ferramentas</div>
 
     <button class="nav-item active" data-tool="watermark">
@@ -250,19 +275,11 @@
       </div>
     </button>
 
-    <button class="nav-item" data-tool="lipsync">
-      <span class="nav-icon">💋</span>
-      <div class="nav-text">
-        <div class="nav-title">Lipsync</div>
-        <div class="nav-desc">Sincronizar lábios</div>
-      </div>
-    </button>
-
     <button class="nav-item" data-tool="subtitle">
       <span class="nav-icon">💬</span>
       <div class="nav-text">
         <div class="nav-title">Legendas</div>
-        <div class="nav-desc">CapCut-style captions</div>
+        <div class="nav-desc">AutoCaption + Manual</div>
       </div>
     </button>
 
@@ -278,35 +295,30 @@
       <span class="nav-icon">✂️</span>
       <div class="nav-text">
         <div class="nav-title">Extrair</div>
-        <div class="nav-desc">Vídeo, transcrição e juntar</div>
+        <div class="nav-desc">Vídeo, transcrição, juntar</div>
       </div>
     </button>
 
-    <button class="nav-item" data-tool="caption">
-      <span class="nav-icon">💬</span>
+    <button class="nav-item" data-tool="lipsync">
+      <span class="nav-icon">💋</span>
       <div class="nav-text">
-        <div class="nav-title">Legendas</div>
-        <div class="nav-desc">Autocaption com IA local</div>
+        <div class="nav-title">Lipsync</div>
+        <div class="nav-desc">Sincronizar lábios</div>
+      </div>
+    </button>
+
+    <button class="nav-item" data-tool="videogen">
+      <span class="nav-icon">🎬</span>
+      <div class="nav-text">
+        <div class="nav-title">Gerar Vídeo</div>
+        <div class="nav-desc">Hook IA + OpenRouter</div>
       </div>
     </button>
 
     <div class="nav-section">Em breve</div>
-
     <button class="nav-item" disabled>
       <span class="nav-icon">✂️</span>
-      <div class="nav-text">
-        <div class="nav-title">Cortar Vídeo</div>
-        <div class="nav-desc">Trim sem reencoding</div>
-      </div>
-      <span class="pill-soon">breve</span>
-    </button>
-
-    <button class="nav-item" disabled>
-      <span class="nav-icon">🔄</span>
-      <div class="nav-text">
-        <div class="nav-title">Converter</div>
-        <div class="nav-desc">MP4, MKV, AVI, MOV…</div>
-      </div>
+      <div class="nav-text"><div class="nav-title">Cortar Vídeo</div><div class="nav-desc">Trim sem reencoding</div></div>
       <span class="pill-soon">breve</span>
     </button>
 
@@ -315,21 +327,18 @@
     </div>
   </aside>
 
-  <!-- ═══════════ MAIN ═══════════ -->
+  <!-- MAIN -->
   <main class="editor-main">
 
-    <!-- ─── TOOL: MARCA D'ÁGUA ─── -->
+    <!-- MARCA D'ÁGUA -->
     <div id="tool-watermark" class="tool-panel">
       <div class="tool-header">
         <h1 class="tool-title">🎭 Remover Marca d'Água</h1>
         <p class="tool-subtitle">Selecione a região no vídeo e escolha o modo de remoção</p>
       </div>
-
       <div class="card">
         <label for="file-input" id="drop-zone" class="drop-zone" tabindex="0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
           <p><strong>Clique ou arraste</strong> um vídeo aqui</p>
           <p>MP4, MKV, AVI, MOV — até 2 GB</p>
           <div id="file-name" class="dz-filename"></div>
@@ -341,15 +350,12 @@
           <p class="canvas-hint"><strong>Arraste</strong> para criar &nbsp;·&nbsp; <strong>Mova</strong> para reposicionar &nbsp;·&nbsp; <strong>Handles</strong> para redimensionar</p>
           <div id="canvas-wrap"><canvas id="preview-canvas"></canvas></div>
           <div class="video-controls">
-            <button id="vc-play" title="Play / Pause">⏸</button>
-            <span id="vc-time">0:00 / 0:00</span>
-            <input type="range" id="vc-seek" min="0" max="1000" step="1" value="0">
-            <select id="vc-speed" title="Velocidade">
-              <option value="0.25">0.25×</option>
-              <option value="0.5">0.5×</option>
-              <option value="1" selected>1×</option>
-              <option value="1.5">1.5×</option>
-              <option value="2">2×</option>
+            <button id="vc-play" class="vc-play" title="Play / Pause">⏸</button>
+            <span id="vc-time" class="vc-time">0:00 / 0:00</span>
+            <input type="range" id="vc-seek" class="vc-seek" min="0" max="1000" step="1" value="0">
+            <select id="vc-speed" class="vc-speed" title="Velocidade">
+              <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option>
             </select>
           </div>
           <div id="region-info">Nenhuma região selecionada — arraste para marcar</div>
@@ -361,115 +367,92 @@
           <button class="mode-btn" data-mode="delogo">✨ Remoção Limpa</button>
           <button class="mode-btn" data-mode="ai" disabled>🤖 IA Inpainting</button>
         </div>
-        <div id="mode-desc" class="mode-desc">Blur gaussiano com bordas suaves — rápido, funciona em qualquer tipo de fundo.</div>
-
+        <div id="mode-desc" class="mode-desc">Blur gaussiano com bordas suaves e degrade nas bordas — rápido, funciona em qualquer fundo.</div>
         <button id="submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
-        <div id="progress-bar-wrap" class="progress-wrap"><div id="progress-bar" class="progress-bar"></div></div>
+        <div id="progress-bar-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
         <div id="status-text" class="status-text"></div>
         <div id="error-msg" class="error-msg"></div>
       </div>
-
       <div id="result-card" class="result-card" style="display:none">
         <h3>✓ Processado com sucesso!</h3>
-        <video id="result-video" class="result-video" controls></video>
-        <br/>
-        <a id="download-btn" class="download-btn" download>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-          </svg>
-          Baixar vídeo processado
-        </a>
+        <video id="result-video" class="result-video" controls></video><br/>
+        <a id="download-btn" class="download-btn" download>⬇ Baixar vídeo processado</a>
       </div>
     </div>
 
-    <!-- ─── TOOL: LIPSYNC ─── -->
-    <div id="tool-lipsync" class="tool-panel" style="display:none">
-      <div class="tool-header">
-        <h1 class="tool-title">💋 Lipsync</h1>
-        <p class="tool-subtitle">Sincronize o movimento dos lábios com um novo áudio (dublagem automática)</p>
-      </div>
-
-      <div class="lip-grid">
-        <div class="card">
-          <div class="section-label">📹 Vídeo</div>
-          <label for="lip-video-input" id="lip-drop-zone" class="drop-zone" tabindex="0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
-            </svg>
-            <p><strong>Selecione o vídeo</strong></p>
-            <p>MP4, MKV, AVI, MOV</p>
-            <div id="lip-file-name" class="dz-filename"></div>
-          </label>
-          <input type="file" id="lip-video-input" accept="video/*" class="hidden-input" />
-        </div>
-
-        <div class="card">
-          <div class="section-label">🎵 Áudio</div>
-          <label for="lip-audio-input" id="lip-audio-drop-zone" class="drop-zone" tabindex="0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53L6.75 15.75H4.5A2.25 2.25 0 012.25 13.5v-3A2.25 2.25 0 014.5 8.25h2.25z"/>
-            </svg>
-            <p><strong>Selecione o áudio</strong></p>
-            <p>MP3, WAV, AAC, OGG</p>
-            <div id="lip-audio-name" class="dz-filename"></div>
-          </label>
-          <input type="file" id="lip-audio-input" accept="audio/*" class="hidden-input" />
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="section-label">Tecnologia</div>
-        <div class="tech-info">
-          <div class="tech-option active-tech">
-            <span>🎯</span>
-            <div><strong>Wav2Lip</strong><small>Alta precisão no movimento dos lábios — modelo open-source</small></div>
-          </div>
-          <div class="tech-option coming">
-            <span>🧠</span>
-            <div><strong>SadTalker</strong><small>Animação facial completa, expressões e movimento de cabeça</small></div>
-            <span class="pill-soon">Em breve</span>
-          </div>
-        </div>
-        <button id="lip-submit-btn" class="submit-btn" disabled>Selecione o vídeo e o áudio</button>
-        <div id="lip-progress-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
-        <div id="lip-status" class="status-text"></div>
-        <div id="lip-error-msg" class="error-msg"></div>
-      </div>
-
-      <div id="lip-result-card" class="result-card" style="display:none">
-        <h3>✓ Lipsync concluído!</h3>
-        <video id="lip-result-video" class="result-video" controls></video>
-        <br/>
-        <a id="lip-download-btn" class="download-btn" download>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-          </svg>
-          Baixar vídeo sincronizado
-        </a>
-      </div>
-    </div>
-
-    <!-- ─── TOOL: LEGENDAS ─── -->
+    <!-- LEGENDAS (Auto + Manual unificado) -->
     <div id="tool-subtitle" class="tool-panel" style="display:none">
       <div class="tool-header">
-        <h1 class="tool-title">💬 Adicionar Legendas</h1>
-        <p class="tool-subtitle">Crie legendas estilosas e grave no vídeo — 5 estilos CapCut prontos p/ usar</p>
+        <h1 class="tool-title">💬 Legendas</h1>
+        <p class="tool-subtitle">AutoCaption automático (faster-whisper) ou adicione legendas manualmente</p>
       </div>
 
+      <!-- Upload + Canvas -->
       <div class="card">
         <label for="sub-file-input" id="sub-drop-zone" class="drop-zone" tabindex="0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
           <p><strong>Clique ou arraste</strong> um vídeo aqui</p>
           <p>MP4, MKV, AVI, MOV — até 2 GB</p>
           <div id="sub-file-name" class="dz-filename"></div>
         </label>
         <input type="file" id="sub-file-input" accept="video/*" class="hidden-input" />
+
+        <div id="sub-preview-section" style="display:none">
+          <div class="section-label">Posição das legendas — <span style="color:var(--accent);font-weight:400">arraste o bloco</span></div>
+          <div id="sub-canvas-wrap"><canvas id="sub-preview-canvas"></canvas></div>
+          <div class="video-controls">
+            <button id="sub-vc-play" class="vc-play">⏸</button>
+            <span id="sub-vc-time" class="vc-time">0:00 / 0:00</span>
+            <input type="range" id="sub-vc-seek" class="vc-seek" min="0" max="1000" step="1" value="0">
+            <select id="sub-vc-speed" class="vc-speed">
+              <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+            </select>
+          </div>
+        </div>
       </div>
 
+      <!-- Modo Auto / Manual -->
       <div class="card">
-        <div class="section-label">Estilo das legendas</div>
+        <div class="section-label">Modo</div>
+        <div class="sub-mode-row">
+          <button class="sub-mode-btn sm-active" data-submode="auto">🤖 AutoCaption</button>
+          <button class="sub-mode-btn" data-submode="manual">✏️ Manual</button>
+        </div>
+
+        <div id="sub-auto-panel">
+          <div class="auto-settings">
+            <div class="auto-field">
+              <label>Idioma</label>
+              <select id="sub-auto-lang">
+                <option value="pt" selected>Português</option>
+                <option value="en">Inglês</option>
+                <option value="es">Espanhol</option>
+                <option value="auto">Auto-detectar</option>
+              </select>
+            </div>
+            <div class="auto-field">
+              <label>Modelo Whisper</label>
+              <select id="sub-auto-model">
+                <option value="tiny">Tiny (rápido)</option>
+                <option value="base">Base</option>
+                <option value="small" selected>Small (recomendado)</option>
+                <option value="medium">Medium (preciso)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="sub-manual-panel" style="display:none">
+          <div id="sub-entries" class="sub-entries"></div>
+          <div id="sub-empty" class="sub-empty">🗨️ Clique em <strong>+ Adicionar Legenda</strong> para começar</div>
+          <button id="sub-add-btn" class="sub-add-btn">+ Adicionar Legenda</button>
+        </div>
+      </div>
+
+      <!-- Estilos -->
+      <div class="card">
+        <div class="section-label">Estilo</div>
         <div class="presets-grid" id="presets-grid">
           <div class="preset-card sp-active" data-preset="classico">
             <div class="preset-preview" style="color:#fff;text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000">Abc</div>
@@ -493,38 +476,23 @@
           </div>
         </div>
 
-        <div class="section-label" style="margin-top:18px">Posição</div>
-        <div class="pos-group">
-          <button class="pos-btn" data-pos="top">▲ Topo</button>
-          <button class="pos-btn pp-active" data-pos="bottom">▼ Base</button>
-        </div>
-
         <div class="size-row">
           <label>Fonte</label>
           <input type="range" id="sub-fontsize" min="36" max="120" step="4" value="72">
           <span class="size-val" id="sub-fontsize-val">72</span>
         </div>
 
-        <div class="anim-toggle-row">
-          <div class="section-label">Animação</div>
-          <div class="anim-btns">
-            <button class="anim-btn pa-active" data-anim="block">
-              📝 Bloco completo
-              <span class="anim-desc">Frase inteira aparece de uma vez</span>
-            </button>
-            <button class="anim-btn" data-anim="word">
-              ✨ Palavra por palavra
-              <span class="anim-desc">Cada palavra aparece em sequência</span>
-            </button>
-          </div>
+        <div class="section-label" style="margin-top:18px">Animação</div>
+        <div class="anim-btns">
+          <button class="anim-btn pa-active" data-anim="block">
+            📝 Bloco completo
+            <span class="anim-desc">Frase inteira aparece de uma vez</span>
+          </button>
+          <button class="anim-btn" data-anim="word">
+            ✨ Palavra por palavra
+            <span class="anim-desc">Cada palavra em sequência</span>
+          </button>
         </div>
-      </div>
-
-      <div class="card">
-        <div class="section-label">Legendas &nbsp;<span id="sub-count" style="color:var(--accent);font-size:0.8rem">0</span></div>
-        <div id="sub-entries"></div>
-        <div id="sub-empty" class="sub-empty">🗨️ Clique em <strong>+ Adicionar Legenda</strong> para começar</div>
-        <button id="sub-add-btn" class="sub-add-btn">+ Adicionar Legenda</button>
       </div>
 
       <button id="sub-submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
@@ -534,49 +502,42 @@
 
       <div id="sub-result-card" class="result-card" style="display:none">
         <h3>✓ Legendas gravadas com sucesso!</h3>
-        <video id="sub-result-video" class="result-video" controls></video>
-        <br/>
-        <a id="sub-download-btn" class="download-btn" download>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-          </svg>
-          Baixar vídeo com legendas
-        </a>
+        <video id="sub-result-video" class="result-video" controls></video><br/>
+        <a id="sub-download-btn" class="download-btn" download>⬇ Baixar vídeo com legendas</a>
       </div>
     </div>
 
-    <!-- ─── TOOL: COMBINADOR DE CRIATIVOS ─── -->
+    <!-- COMBINADOR -->
     <div id="tool-combine" class="tool-panel" style="display:none">
       <div class="tool-header">
         <h1 class="tool-title">⚡ Combinador de Criativos</h1>
-        <p class="tool-subtitle">Adicione hooks e corpos — gera automaticamente todas as combinações: 5 hooks × 3 corpos = 15 vídeos</p>
+        <p class="tool-subtitle">Adicione hooks e corpos — gera todas as combinações automaticamente</p>
       </div>
 
       <div class="combine-grid">
         <div class="card">
           <div class="section-label">⚡ Hooks &nbsp;<span class="accent-n" id="hook-count">0</span></div>
           <div class="clip-list" id="hook-list"><span class="clip-empty">Nenhum hook adicionado</span></div>
-          <label for="hook-input" id="hook-dz" class="clip-dz" tabindex="0">
+          <div id="hook-dz" class="clip-dz" tabindex="0">
             <strong>+ Adicionar Hooks</strong>
             Arraste ou clique — múltiplos arquivos
-          </label>
+          </div>
           <input type="file" id="hook-input" accept="video/*" multiple class="hidden-input">
         </div>
         <div class="card">
           <div class="section-label">🎥 Corpos &nbsp;<span class="accent-n" id="body-count">0</span></div>
           <div class="clip-list" id="body-list"><span class="clip-empty">Nenhum corpo adicionado</span></div>
-          <label for="body-input" id="body-dz" class="clip-dz" tabindex="0">
+          <div id="body-dz" class="clip-dz" tabindex="0">
             <strong>+ Adicionar Corpos</strong>
             Arraste ou clique — múltiplos arquivos
-          </label>
+          </div>
           <input type="file" id="body-input" accept="video/*" multiple class="hidden-input">
         </div>
       </div>
 
       <div id="combine-preview" class="card combine-preview-card" style="display:none">
         <div class="combine-formula" id="combine-formula">
-          <span class="cn" id="c-hook-n">0</span> hooks × <span class="cn" id="c-body-n">0</span> corpos
-          = <span class="cn" id="c-total">0</span> vídeos
+          <span class="cn" id="c-hook-n">0</span> hooks × <span class="cn" id="c-body-n">0</span> corpos = <span class="cn" id="c-total">0</span> vídeos
         </div>
         <div id="combine-matrix" class="combine-matrix"></div>
       </div>
@@ -588,31 +549,29 @@
         <div id="combine-det" class="combine-prog-detail"></div>
       </div>
       <div id="combine-error" class="error-msg"></div>
-
       <div id="combine-results" style="display:none">
         <div class="section-label" style="margin:24px 0 0">Vídeos Gerados &nbsp;<span class="accent-n" id="combine-done-n"></span></div>
         <div id="combine-result-grid" class="combine-result-grid"></div>
       </div>
     </div>
 
-    <!-- ══════════════ EXTRAIR TOOL ══════════════ -->
+    <!-- EXTRAIR -->
     <div id="tool-extrair" class="tool-panel" style="display:none">
       <div class="tool-header">
         <h1 class="tool-title">✂️ Extrair</h1>
-        <p class="tool-subtitle">Extraia o vídeo sem áudio, transcreva a fala em texto ou junte um vídeo com um novo áudio</p>
+        <p class="tool-subtitle">Extraia vídeo sem áudio, transcreva a fala ou junte vídeo com novo áudio</p>
       </div>
 
-      <!-- Mode selector -->
       <div class="extr-modes">
         <div class="extr-mode-card em-active" data-mode="video">
           <span class="em-icon">🎬</span>
           <div class="em-title">Extrair Vídeo</div>
-          <div class="em-desc">Remove o áudio — vídeo puro sem som</div>
+          <div class="em-desc">Remove o áudio — vídeo puro</div>
         </div>
         <div class="extr-mode-card" data-mode="transcribe">
           <span class="em-icon">📝</span>
           <div class="em-title">Transcrever</div>
-          <div class="em-desc">Converte a fala do vídeo em texto</div>
+          <div class="em-desc">Fala em texto (IA local)</div>
         </div>
         <div class="extr-mode-card" data-mode="merge">
           <span class="em-icon">🔗</span>
@@ -621,22 +580,41 @@
         </div>
       </div>
 
-      <!-- Video drop zone -->
       <div class="section-label">🎬 Vídeo</div>
       <label for="extr-video-input" id="extr-dz" class="drop-zone card" tabindex="0" style="margin-top:8px">
-        <div class="drop-icon">🎬</div>
-        <div class="drop-title">Arraste o vídeo aqui</div>
-        <div class="drop-sub" id="extr-file-name">ou clique para selecionar</div>
+        <div style="font-size:1.8rem;margin-bottom:8px">🎬</div>
+        <div style="font-weight:700;margin-bottom:4px">Arraste o vídeo aqui</div>
+        <div id="extr-file-name" style="font-size:0.82rem;color:var(--text-muted)">ou clique para selecionar</div>
       </label>
       <input type="file" id="extr-video-input" accept="video/*" class="hidden-input">
 
-      <!-- Audio zone — só aparece no modo Juntar -->
+      <div id="extr-lang-row" class="extr-lang-row" style="display:none">
+        <div>
+          <label>Idioma</label>
+          <select id="extr-lang">
+            <option value="pt" selected>Português</option>
+            <option value="en">Inglês</option>
+            <option value="es">Espanhol</option>
+            <option value="auto">Auto-detectar</option>
+          </select>
+        </div>
+        <div>
+          <label>Modelo Whisper</label>
+          <select id="extr-model">
+            <option value="tiny">Tiny (rápido)</option>
+            <option value="base">Base</option>
+            <option value="small" selected>Small (recomendado)</option>
+            <option value="medium">Medium (preciso)</option>
+          </select>
+        </div>
+      </div>
+
       <div class="extr-audio-zone" id="extr-audio-zone">
         <div class="section-label" style="margin-top:4px">🎵 Novo Áudio</div>
         <label for="extr-audio-input" id="extr-adz" class="drop-zone card" tabindex="0" style="margin-top:8px">
-          <div class="drop-icon">🎵</div>
-          <div class="drop-title">Arraste o áudio aqui</div>
-          <div class="drop-sub" id="extr-audio-name">ou clique para selecionar (MP3, AAC, WAV, MP4…)</div>
+          <div style="font-size:1.8rem;margin-bottom:8px">🎵</div>
+          <div style="font-weight:700;margin-bottom:4px">Arraste o áudio aqui</div>
+          <div id="extr-audio-name" style="font-size:0.82rem;color:var(--text-muted)">ou clique (MP3, AAC, WAV…)</div>
         </label>
         <input type="file" id="extr-audio-input" accept="audio/*,video/*" class="hidden-input">
       </div>
@@ -648,13 +626,11 @@
       </div>
       <div id="extr-error" class="error-msg"></div>
 
-      <!-- Resultado — vídeo (para modos video + merge) -->
       <div id="extr-result-card" class="card result-card" style="display:none">
         <video id="extr-result-video" controls playsinline style="width:100%;border-radius:8px;background:#000"></video>
         <a id="extr-download-btn" class="download-btn" download>⬇ Baixar Vídeo</a>
       </div>
 
-      <!-- Resultado — transcrição -->
       <div id="extr-transcript-wrap" style="display:none">
         <div class="section-label" style="margin-top:4px">📄 Transcrição</div>
         <div class="transcript-result" id="extr-transcript-text"></div>
@@ -662,75 +638,145 @@
       </div>
     </div>
 
-    <!-- ══════════════ LEGENDAS TOOL ══════════════ -->
-    <div id="tool-caption" class="tool-panel" style="display:none">
+    <!-- LIPSYNC -->
+    <div id="tool-lipsync" class="tool-panel" style="display:none">
       <div class="tool-header">
-        <h1 class="tool-title">💬 Legendas Automáticas</h1>
-        <p class="tool-subtitle">Transcrição com IA local (faster-whisper) — sem custo de API</p>
+        <h1 class="tool-title">💋 Lipsync</h1>
+        <p class="tool-subtitle">Sincronize o movimento dos lábios com um novo áudio</p>
+      </div>
+      <div class="lip-grid">
+        <div class="card">
+          <div class="section-label">📹 Vídeo</div>
+          <label for="lip-video-input" id="lip-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
+            <p><strong>Selecione o vídeo</strong></p>
+            <div id="lip-file-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="lip-video-input" accept="video/*" class="hidden-input" />
+        </div>
+        <div class="card">
+          <div class="section-label">🎵 Áudio</div>
+          <label for="lip-audio-input" id="lip-audio-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53L6.75 15.75H4.5A2.25 2.25 0 012.25 13.5v-3A2.25 2.25 0 014.5 8.25h2.25z"/></svg>
+            <p><strong>Selecione o áudio</strong></p>
+            <div id="lip-audio-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="lip-audio-input" accept="audio/*" class="hidden-input" />
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-label">Tecnologia</div>
+        <div class="tech-info">
+          <div class="tech-option active-tech">
+            <span>🎯</span>
+            <div><strong>Wav2Lip</strong><small>Alta precisão no movimento dos lábios</small></div>
+          </div>
+        </div>
+        <button id="lip-submit-btn" class="submit-btn" disabled>Selecione o vídeo e o áudio</button>
+        <div id="lip-progress-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
+        <div id="lip-status" class="status-text"></div>
+        <div id="lip-error-msg" class="error-msg"></div>
+      </div>
+      <div id="lip-result-card" class="result-card" style="display:none">
+        <h3>✓ Lipsync concluído!</h3>
+        <video id="lip-result-video" class="result-video" controls></video><br/>
+        <a id="lip-download-btn" class="download-btn" download>⬇ Baixar vídeo sincronizado</a>
+      </div>
+    </div>
+
+    <!-- GERAR VÍDEO COM HOOK -->
+    <div id="tool-videogen" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🎬 Gerar Vídeo com Hook</h1>
+        <p class="tool-subtitle">IA especialista em hooks refina sua ideia e gera o vídeo via OpenRouter</p>
       </div>
 
-      <!-- Vídeo -->
-      <div class="section-label">🎬 Vídeo</div>
-      <label for="cap-video-input" id="cap-dz" class="drop-zone card" tabindex="0" style="margin-top:8px">
-        <div class="drop-icon">🎬</div>
-        <div class="drop-title">Arraste o vídeo aqui</div>
-        <div class="drop-sub" id="cap-file-name">ou clique para selecionar</div>
-      </label>
-      <input type="file" id="cap-video-input" accept="video/*" class="hidden-input">
-
-      <!-- Modo de saída -->
-      <div class="section-label" style="margin-top:16px">📤 Saída</div>
-      <div class="cap-mode-toggle">
-        <button class="cap-mode-btn active" data-capmode="burn">🎬 Queimar no Vídeo</button>
-        <button class="cap-mode-btn" data-capmode="srt">📄 Baixar SRT</button>
+      <div class="card">
+        <div class="section-label">API Key (OpenRouter)</div>
+        <div class="vg-api-row">
+          <input type="password" id="vg-apikey" placeholder="sk-or-v1-..." autocomplete="off">
+        </div>
+        <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">Obtida em <strong>openrouter.ai/keys</strong> — não é salva no servidor</p>
       </div>
 
-      <!-- Configurações -->
-      <div class="cap-settings">
-        <div class="cap-field">
-          <label>Idioma</label>
-          <select id="cap-lang">
-            <option value="pt" selected>Português</option>
-            <option value="en">Inglês</option>
-            <option value="es">Espanhol</option>
-            <option value="auto">Auto-detectar</option>
+      <div class="card">
+        <div class="section-label">Sua ideia / comando</div>
+        <textarea id="vg-prompt" class="vg-prompt-area" placeholder="Ex: Vídeo impactante sobre benefícios do café para redes sociais, estilo lifestyle moderno..."></textarea>
+
+        <div class="hook-ai-row">
+          <label>IA do Hook:</label>
+          <select id="vg-hook-ai">
+            <option value="google/gemini-flash-1.5">Gemini Flash 1.5 — $0.000075/1k</option>
+            <option value="openai/gpt-4o-mini">GPT-4o Mini — $0.00015/1k</option>
+            <option value="anthropic/claude-haiku-3-5">Claude Haiku 3.5 — $0.001/1k</option>
+            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash — $0.0001/1k</option>
           </select>
         </div>
-        <div class="cap-field">
-          <label>Modelo</label>
-          <select id="cap-model">
-            <option value="tiny">Tiny (rápido)</option>
-            <option value="base">Base</option>
-            <option value="small" selected>Small (recomendado)</option>
-            <option value="medium">Medium (lento, preciso)</option>
-          </select>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Modelo de Geração de Vídeo</div>
+        <div class="vg-models" id="vg-models">
+          <div class="vg-model-card vm-active" data-model="google/veo-3-flash" data-cost="0.10">
+            <div>
+              <div class="vg-model-name">Veo 3 Flash</div>
+              <div class="vg-model-desc">Google — rápido e econômico</div>
+            </div>
+            <div class="vg-model-cost">$0.10/s</div>
+          </div>
+          <div class="vg-model-card" data-model="google/veo-3" data-cost="0.50">
+            <div>
+              <div class="vg-model-name">Veo 3</div>
+              <div class="vg-model-desc">Google — máxima qualidade</div>
+            </div>
+            <div class="vg-model-cost">$0.50/s</div>
+          </div>
+          <div class="vg-model-card" data-model="google/veo-2" data-cost="0.30">
+            <div>
+              <div class="vg-model-name">Veo 2</div>
+              <div class="vg-model-desc">Google — equilíbrio qualidade/custo</div>
+            </div>
+            <div class="vg-model-cost">$0.30/s</div>
+          </div>
+          <div class="vg-model-card" data-model="minimax/video-01" data-cost="0.05">
+            <div>
+              <div class="vg-model-name">MiniMax Video-01</div>
+              <div class="vg-model-desc">Alternativa econômica</div>
+            </div>
+            <div class="vg-model-cost">$0.05/s</div>
+          </div>
+          <div class="vg-model-card" data-model="kling/v1.6-pro" data-cost="0.08">
+            <div>
+              <div class="vg-model-name">Kling v1.6 Pro</div>
+              <div class="vg-model-desc">Movimentos naturais e fluidos</div>
+            </div>
+            <div class="vg-model-cost">$0.08/s</div>
+          </div>
         </div>
-        <div class="cap-field" id="cap-fontsize-wrap">
-          <label>Tamanho da fonte</label>
-          <input type="number" id="cap-font-size" value="18" min="10" max="48">
-        </div>
-        <div class="cap-field" id="cap-fontcolor-wrap">
-          <label>Cor da legenda</label>
-          <select id="cap-font-color">
-            <option value="white" selected>Branco</option>
-            <option value="yellow">Amarelo</option>
-            <option value="cyan">Ciano</option>
-            <option value="black">Preto</option>
-          </select>
+
+        <div class="section-label">Duração do Vídeo</div>
+        <div class="vg-duration-row">
+          <label>Segundos:</label>
+          <input type="range" id="vg-duration" min="4" max="60" step="1" value="8">
+          <span class="vg-duration-val" id="vg-duration-val">8s</span>
+          <span class="vg-cost-badge">custo estimado: <span id="vg-cost-est">$0.80</span></span>
         </div>
       </div>
 
-      <button id="cap-submit-btn" class="submit-btn" disabled style="margin-top:4px">Selecione um vídeo</button>
-      <div id="cap-progress" style="display:none">
-        <div class="progress-wrap" style="display:block;margin-top:0"><div class="progress-bar"></div></div>
-        <div id="cap-status" class="status-text"></div>
-      </div>
-      <div id="cap-error" class="error-msg"></div>
+      <button id="vg-submit-btn" class="submit-btn">🎬 Gerar Vídeo com Hook</button>
+      <div id="vg-progress" class="progress-wrap" style="margin-top:16px"><div class="progress-bar"></div></div>
+      <div id="vg-status" class="status-text"></div>
+      <div id="vg-error" class="error-msg"></div>
 
-      <!-- Resultado vídeo (modo burn) -->
-      <div id="cap-result-card" class="card result-card" style="display:none">
-        <video id="cap-result-video" controls playsinline class="cap-result-video"></video>
-        <a id="cap-download-btn" class="download-btn" download>⬇ Baixar Vídeo com Legendas</a>
+      <div id="vg-refined-prompt" class="vg-refined-prompt">
+        <strong>🤖 Prompt refinado pela IA de Hook:</strong>
+        <span id="vg-refined-text"></span>
+      </div>
+
+      <div id="vg-result-card" class="result-card" style="display:none">
+        <h3>✓ Vídeo gerado!</h3>
+        <video id="vg-result-video" class="vg-result-video" controls></video><br/>
+        <a id="vg-download-btn" class="download-btn" download="video-gerado.mp4">⬇ Baixar Vídeo</a>
       </div>
     </div>
 
