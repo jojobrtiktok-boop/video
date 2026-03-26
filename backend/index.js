@@ -921,14 +921,30 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
       if (statusResp.status >= 400) {
         return res.status(500).json({ error: 'Erro ao verificar status: HTTP ' + statusResp.status, raw: statusResp.body });
       }
-      // Se corpo vazio ou sem status, aguarda próxima iteração
-      if (!statusResp.body || !statusResp.body.status) continue;
-      const { status } = statusResp.body;
+      // Se corpo vazio, aguarda próxima iteração
+      if (!statusResp.body) continue;
+      const body = statusResp.body;
+      const status = body.status || body.finish_reason || '';
+      // Check for failure
       if (status === 'failed' || status === 'error') {
-        return res.status(500).json({ error: 'Geracao falhou: ' + (statusResp.body.error || status) });
+        return res.status(500).json({ error: 'Geracao falhou: ' + (body.error || status) });
       }
+      // Check for completion (handles both "status":"completed" and "finish_reason":"complete")
       if (status === 'completed' || status === 'complete') {
-        // 3) Download video and serve locally
+        // Check if URL is directly in the response
+        const directUrl = body.url || body.video_url || (body.data && body.data[0] && body.data[0].url);
+        if (directUrl) {
+          const dl = await orDownload(directUrl);
+          if (dl.status !== 200 || !dl.buffer.length) {
+            return res.status(500).json({ error: 'Nao foi possivel baixar o video gerado.' });
+          }
+          const outName = `vg-${jobId}.mp4`;
+          const outPath = path.join(UPLOAD_DIR, outName);
+          fs.writeFileSync(outPath, dl.buffer);
+          scheduleDelete(outPath, 3600000);
+          return res.json({ url: `/uploads/${outName}` });
+        }
+        // 3) Download video via content endpoint
         const dl = await orDownload(`/videos/${jobId}/content?index=0`);  // follows redirects
         if (dl.status !== 200 || !dl.buffer.length) {
           return res.status(500).json({ error: 'Nao foi possivel baixar o video gerado.' });
