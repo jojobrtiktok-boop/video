@@ -38,7 +38,6 @@ def main():
         '--face', video_path,
         '--audio', audio_path,
         '--outfile', output_path,
-        '--noenhance'
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=wav2lip_dir)
