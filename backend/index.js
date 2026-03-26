@@ -386,5 +386,71 @@ app.post('/api/extract/transcribe', upload.single('video'), (req, res) => {
   });
 });
 
+// ── LEGENDAS AUTOMÁTICAS (faster-whisper local) ──────────────────────────────
+const captionUpload = multer({ storage }).single('video');
+
+app.post('/api/caption', (req, res) => {
+  captionUpload(req, res, err => {
+    if (err) return res.status(400).json({ error: err.message });
+    if (!req.file) return res.status(400).json({ error: 'no file' });
+
+    const input    = req.file.path;
+    const mode     = req.body.mode || 'srt';      // 'srt' ou 'burn'
+    const lang     = req.body.lang || 'pt';        // 'pt', 'en', 'auto'
+    const model    = req.body.model || 'small';    // 'tiny','base','small','medium'
+    const fontSize = parseInt(req.body.fontSize) || 18;
+    const fontColor= (req.body.fontColor || 'white').replace(/[^a-zA-Z0-9]/g, '');
+
+    const srtPath  = input + '.srt';
+    const python   = process.env.PYTHON_BIN || 'python3';
+    const script   = path.join(__dirname, 'transcribe.py');
+
+    const transcribeCmd = `"${python}" "${script}" "${input}" "${model}" "${lang}"`;
+
+    exec(transcribeCmd, { maxBuffer: 10 * 1024 * 1024, timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
+      if (err) {
+        fs.unlink(input, () => {});
+        return res.status(500).json({ error: 'Transcrição falhou: ' + (stderr || err.message) });
+      }
+
+      const srtContent = stdout.trim();
+      if (!srtContent) {
+        fs.unlink(input, () => {});
+        return res.status(500).json({ error: 'Nenhuma fala detectada no vídeo.' });
+      }
+
+      if (mode === 'srt') {
+        // Retorna o SRT como download
+        fs.unlink(input, () => {});
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Content-Disposition', 'attachment; filename="legendas.srt"');
+        return res.send(srtContent);
+      }
+
+      // mode === 'burn': queima legendas no vídeo com ffmpeg
+      fs.writeFile(srtPath, srtContent, 'utf8', writeErr => {
+        if (writeErr) {
+          fs.unlink(input, () => {});
+          return res.status(500).json({ error: 'Erro ao salvar SRT: ' + writeErr.message });
+        }
+
+        const outputName = 'captioned-' + path.basename(input);
+        const output = path.join(UPLOAD_DIR, outputName);
+        // Escape path separators for ffmpeg subtitles filter
+        const srtEscaped = srtPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+        const burnCmd = `"${FFMPEG}" -y -i "${input}" -vf "subtitles='${srtEscaped}':force_style='FontSize=${fontSize},PrimaryColour=&H00ffffff&,OutlineColour=&H00000000&,BorderStyle=3,Outline=1'" -c:a copy "${output}"`;
+
+        exec(burnCmd, { timeout: 10 * 60 * 1000 }, (burnErr, _stdout, burnStderr) => {
+          fs.unlink(input, () => {});
+          fs.unlink(srtPath, () => {});
+          if (burnErr) return res.status(500).json({ error: 'ffmpeg falhou: ' + burnStderr });
+          scheduleDelete(output, 30 * 60 * 1000);
+          return res.json({ url: `/uploads/${path.basename(output)}` });
+        });
+      });
+    });
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend listening on ${PORT}`));

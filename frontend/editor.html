@@ -207,6 +207,15 @@
     .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
     @media (max-width: 680px) { .extr-modes { grid-template-columns: 1fr 1fr; } }
 
+    /* ── LEGENDAS TOOL ── */
+    .cap-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .cap-field label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px; font-weight: 600; }
+    .cap-field select, .cap-field input[type=number] { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 0.88rem; }
+    .cap-mode-toggle { display: flex; gap: 8px; margin: 16px 0 8px; }
+    .cap-mode-btn { flex: 1; padding: 9px 10px; border: 2px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); font-size: 0.83rem; font-weight: 600; cursor: pointer; transition: all .18s; text-align: center; }
+    .cap-mode-btn.active { border-color: var(--accent); background: rgba(108,99,255,.13); color: var(--accent); }
+    .cap-result-video { width: 100%; border-radius: 10px; margin-top: 8px; outline: none; }
+
     /* ── RESPONSIVE ── */
     @media (max-width: 680px) {
       .sidebar { width: 100%; min-width: 0; height: auto; border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; overflow: visible; }
@@ -265,6 +274,22 @@
       </div>
     </button>
 
+    <button class="nav-item" data-tool="extrair">
+      <span class="nav-icon">✂️</span>
+      <div class="nav-text">
+        <div class="nav-title">Extrair</div>
+        <div class="nav-desc">Vídeo, transcrição e juntar</div>
+      </div>
+    </button>
+
+    <button class="nav-item" data-tool="caption">
+      <span class="nav-icon">💬</span>
+      <div class="nav-text">
+        <div class="nav-title">Legendas</div>
+        <div class="nav-desc">Autocaption com IA local</div>
+      </div>
+    </button>
+
     <div class="nav-section">Em breve</div>
 
     <button class="nav-item" disabled>
@@ -283,14 +308,6 @@
         <div class="nav-desc">MP4, MKV, AVI, MOV…</div>
       </div>
       <span class="pill-soon">breve</span>
-    </button>
-
-    <button class="nav-item" data-tool="extrair">
-      <span class="nav-icon">✂️</span>
-      <div class="nav-text">
-        <div class="nav-title">Extrair</div>
-        <div class="nav-desc">Vídeo, transcrição e juntar</div>
-      </div>
     </button>
 
     <div class="sidebar-footer">
@@ -642,6 +659,78 @@
         <div class="section-label" style="margin-top:4px">📄 Transcrição</div>
         <div class="transcript-result" id="extr-transcript-text"></div>
         <button class="copy-btn" id="extr-copy-btn">📋 Copiar texto</button>
+      </div>
+    </div>
+
+    <!-- ══════════════ LEGENDAS TOOL ══════════════ -->
+    <div id="tool-caption" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">💬 Legendas Automáticas</h1>
+        <p class="tool-subtitle">Transcrição com IA local (faster-whisper) — sem custo de API</p>
+      </div>
+
+      <!-- Vídeo -->
+      <div class="section-label">🎬 Vídeo</div>
+      <label for="cap-video-input" id="cap-dz" class="drop-zone card" tabindex="0" style="margin-top:8px">
+        <div class="drop-icon">🎬</div>
+        <div class="drop-title">Arraste o vídeo aqui</div>
+        <div class="drop-sub" id="cap-file-name">ou clique para selecionar</div>
+      </label>
+      <input type="file" id="cap-video-input" accept="video/*" class="hidden-input">
+
+      <!-- Modo de saída -->
+      <div class="section-label" style="margin-top:16px">📤 Saída</div>
+      <div class="cap-mode-toggle">
+        <button class="cap-mode-btn active" data-capmode="burn">🎬 Queimar no Vídeo</button>
+        <button class="cap-mode-btn" data-capmode="srt">📄 Baixar SRT</button>
+      </div>
+
+      <!-- Configurações -->
+      <div class="cap-settings">
+        <div class="cap-field">
+          <label>Idioma</label>
+          <select id="cap-lang">
+            <option value="pt" selected>Português</option>
+            <option value="en">Inglês</option>
+            <option value="es">Espanhol</option>
+            <option value="auto">Auto-detectar</option>
+          </select>
+        </div>
+        <div class="cap-field">
+          <label>Modelo</label>
+          <select id="cap-model">
+            <option value="tiny">Tiny (rápido)</option>
+            <option value="base">Base</option>
+            <option value="small" selected>Small (recomendado)</option>
+            <option value="medium">Medium (lento, preciso)</option>
+          </select>
+        </div>
+        <div class="cap-field" id="cap-fontsize-wrap">
+          <label>Tamanho da fonte</label>
+          <input type="number" id="cap-font-size" value="18" min="10" max="48">
+        </div>
+        <div class="cap-field" id="cap-fontcolor-wrap">
+          <label>Cor da legenda</label>
+          <select id="cap-font-color">
+            <option value="white" selected>Branco</option>
+            <option value="yellow">Amarelo</option>
+            <option value="cyan">Ciano</option>
+            <option value="black">Preto</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="cap-submit-btn" class="submit-btn" disabled style="margin-top:4px">Selecione um vídeo</button>
+      <div id="cap-progress" style="display:none">
+        <div class="progress-wrap" style="display:block;margin-top:0"><div class="progress-bar"></div></div>
+        <div id="cap-status" class="status-text"></div>
+      </div>
+      <div id="cap-error" class="error-msg"></div>
+
+      <!-- Resultado vídeo (modo burn) -->
+      <div id="cap-result-card" class="card result-card" style="display:none">
+        <video id="cap-result-video" controls playsinline class="cap-result-video"></video>
+        <a id="cap-download-btn" class="download-btn" download>⬇ Baixar Vídeo com Legendas</a>
       </div>
     </div>
 

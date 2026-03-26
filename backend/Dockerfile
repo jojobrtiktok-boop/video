@@ -1,7 +1,8 @@
 FROM node:18-bullseye
 
-# Install ffmpeg from apt (available as 'ffmpeg' command in PATH)
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install ffmpeg + Python + faster-whisper
+RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip && rm -rf /var/lib/apt/lists/*
+RUN pip3 install --no-cache-dir faster-whisper
 
 WORKDIR /usr/src/app
 

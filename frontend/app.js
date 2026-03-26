@@ -949,3 +949,113 @@ subSubmitBtn.addEventListener('click', async () => {
     updateSubSubmit();
   }
 });
+
+// ══════════════════════════════════════════════════════
+// LEGENDAS AUTOMÁTICAS
+// ══════════════════════════════════════════════════════
+(function () {
+  const capDz         = document.getElementById('cap-dz');
+  const capInput      = document.getElementById('cap-video-input');
+  const capFileName   = document.getElementById('cap-file-name');
+  const capSubmitBtn  = document.getElementById('cap-submit-btn');
+  const capProgress   = document.getElementById('cap-progress');
+  const capStatus     = document.getElementById('cap-status');
+  const capError      = document.getElementById('cap-error');
+  const capResultCard = document.getElementById('cap-result-card');
+  const capResultVid  = document.getElementById('cap-result-video');
+  const capDownBtn    = document.getElementById('cap-download-btn');
+  const capLang       = document.getElementById('cap-lang');
+  const capModel      = document.getElementById('cap-model');
+  const capFontSize   = document.getElementById('cap-font-size');
+  const capFontColor  = document.getElementById('cap-font-color');
+  const capFontsizeWrap  = document.getElementById('cap-fontsize-wrap');
+  const capFontcolorWrap = document.getElementById('cap-fontcolor-wrap');
+
+  if (!capDz) return;
+
+  let capFile = null;
+  let capMode = 'burn';
+
+  document.querySelectorAll('.cap-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.cap-mode-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      capMode = btn.dataset.capmode;
+      const showBurn = capMode === 'burn';
+      if (capFontsizeWrap) capFontsizeWrap.style.display = showBurn ? '' : 'none';
+      if (capFontcolorWrap) capFontcolorWrap.style.display = showBurn ? '' : 'none';
+      updateCapSubmit();
+    });
+  });
+
+  makeDrop(capDz, capInput, f => {
+    capFile = f;
+    capFileName.textContent = f.name;
+    updateCapSubmit();
+  });
+
+  capInput.addEventListener('change', () => {
+    if (capInput.files[0]) {
+      capFile = capInput.files[0];
+      capFileName.textContent = capFile.name;
+      updateCapSubmit();
+    }
+  });
+
+  function updateCapSubmit() {
+    if (!capFile) { capSubmitBtn.disabled = true; capSubmitBtn.textContent = 'Selecione um vídeo'; return; }
+    capSubmitBtn.disabled = false;
+    capSubmitBtn.textContent = capMode === 'burn' ? '💬 Gerar Vídeo com Legendas' : '📄 Baixar SRT';
+  }
+
+  capSubmitBtn.addEventListener('click', async () => {
+    if (!capFile) return;
+    capSubmitBtn.disabled = true;
+    capError.style.display = 'none';
+    capResultCard.style.display = 'none';
+    capProgress.style.display = 'block';
+    capStatus.textContent = '⏳ Transcrevendo com IA local… pode levar alguns minutos';
+
+    const fd = new FormData();
+    fd.append('video', capFile);
+    fd.append('mode', capMode);
+    fd.append('lang', capLang.value);
+    fd.append('model', capModel.value);
+    fd.append('fontSize', capFontSize ? capFontSize.value : 18);
+    fd.append('fontColor', capFontColor ? capFontColor.value : 'white');
+
+    try {
+      const resp = await fetch(API + '/api/caption', { method: 'POST', body: fd });
+
+      if (capMode === 'srt') {
+        if (!resp.ok) {
+          const j = await resp.json().catch(() => ({}));
+          throw new Error(j.error || 'HTTP ' + resp.status);
+        }
+        const text = await resp.text();
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'legendas.srt'; a.click();
+        URL.revokeObjectURL(url);
+        capStatus.textContent = '✅ SRT baixado!';
+      } else {
+        const json = await resp.json();
+        if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+        capResultVid.src = API + json.url;
+        capDownBtn.href = API + json.url;
+        capDownBtn.download = json.url.split('/').pop();
+        capResultCard.style.display = 'block';
+        capResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        capStatus.textContent = '✅ Pronto!';
+      }
+    } catch (err) {
+      capError.style.display = 'block';
+      capError.textContent = 'Erro: ' + err.message;
+    } finally {
+      capSubmitBtn.disabled = false;
+      updateCapSubmit();
+      setTimeout(() => { capProgress.style.display = 'none'; }, 2000);
+    }
+  });
+})();
