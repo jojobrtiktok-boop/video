@@ -110,50 +110,30 @@ function showTool(name) {
     p.style.display = p.id === 'tool-' + name ? 'block' : 'none';
   });
   // nav item active state
-  document.querySelectorAll('.cat-dd-item[data-tool], .nav-lib-btn[data-tool]').forEach(item => {
+  document.querySelectorAll('.nav-item[data-tool], .nav-direct[data-tool]').forEach(item => {
     item.classList.toggle('active', item.dataset.tool === name);
   });
-  // category button active state
-  document.querySelectorAll('.nav-cat-btn').forEach(b => b.classList.remove('has-active'));
+  // auto-open the category group that contains this tool
   const cat = CAT_MAP[name];
   if (cat) {
-    const catBtn = document.getElementById('cat-btn-' + cat);
-    if (catBtn) catBtn.classList.add('has-active');
-  }
-  // topbar label
-  const lbl = document.getElementById('topbar-tool-label');
-  const activeItem = document.querySelector('.cat-dd-item[data-tool="' + name + '"]') ||
-                     document.querySelector('.nav-lib-btn[data-tool="' + name + '"]');
-  if (lbl && activeItem) {
-    const icon = activeItem.querySelector('.cat-dd-icon');
-    lbl.textContent = (icon ? icon.textContent + ' ' : '') + activeItem.textContent.replace(icon ? icon.textContent : '', '').trim();
+    const group = document.getElementById('cat-' + cat);
+    if (group && !group.classList.contains('open')) group.classList.add('open');
   }
 }
 
-// ── dropdown click-to-open (fecha ao clicar fora) ──
-document.querySelectorAll('.nav-cat-btn').forEach(btn => {
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    const wrap = btn.closest('.nav-cat-wrap');
-    const isOpen = wrap.classList.contains('open');
-    document.querySelectorAll('.nav-cat-wrap').forEach(w => w.classList.remove('open'));
-    if (!isOpen) wrap.classList.add('open');
+// ── accordion: toggle group open/close on header click ──
+document.querySelectorAll('.nav-group-header').forEach(header => {
+  header.addEventListener('click', () => {
+    const group = header.closest('.nav-group');
+    group.classList.toggle('open');
   });
-});
-document.addEventListener('click', () => {
-  document.querySelectorAll('.nav-cat-wrap').forEach(w => w.classList.remove('open'));
-});
-document.querySelectorAll('.cat-dropdown').forEach(dd => {
-  dd.addEventListener('click', e => e.stopPropagation());
 });
 
-document.querySelectorAll('.cat-dd-item[data-tool]').forEach(item => {
-  item.addEventListener('click', () => {
-    showTool(item.dataset.tool);
-    document.querySelectorAll('.nav-cat-wrap').forEach(w => w.classList.remove('open'));
-  });
+// ── nav item clicks ──
+document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
+  item.addEventListener('click', () => showTool(item.dataset.tool));
 });
-document.querySelectorAll('.nav-lib-btn[data-tool]').forEach(item => {
+document.querySelectorAll('.nav-direct[data-tool]').forEach(item => {
   item.addEventListener('click', () => {
     showTool(item.dataset.tool);
     if (item.dataset.tool === 'video-library') {
