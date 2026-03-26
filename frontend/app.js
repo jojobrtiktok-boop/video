@@ -1129,8 +1129,8 @@ if (lipSubmitBtn) {
   const vgDownBtn   = document.getElementById('vg-download-btn');
   if (!vgSubmit) return;
 
-  let selectedVideoModel = 'google/veo-3-flash';
-  let selectedModelCost  = 0.10;
+  let selectedVideoModel = 'google/veo-3.1';
+  let selectedModelCost  = 0.40;
 
   // Model selection
   document.querySelectorAll('.vg-model-card').forEach(card => {
