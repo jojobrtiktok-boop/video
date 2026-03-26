@@ -25,10 +25,9 @@ function scheduleDelete(filePath, delayMs) {
 
 const app = express();
 
-const FFMPEG = process.env.FFMPEG_BIN
-  || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffmpeg.exe' : 'ffmpeg');
-const FFPROBE = process.env.FFPROBE_BIN
-  || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffprobe.exe' : 'ffprobe');
+const FFMPEG  = process.env.FFMPEG_BIN  || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffmpeg.exe'  : 'ffmpeg');
+const FFPROBE = process.env.FFPROBE_BIN || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffprobe.exe' : 'ffprobe');
+const PYTHON  = process.env.PYTHON_BIN  || (process.platform === 'win32' ? 'python' : 'python3');
 
 // ── JOBS ASSÍNCRONOS (delogo/sora) ─────────────────────────────────────────
 const processJobs = {};
@@ -108,7 +107,7 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     addToLibrary(libEntry);
     res.json({ id: jobId, status: 'processing' });
     const soraScript = path.join(__dirname, 'remove_sora_watermark.py');
-    spawnJob(jobId, ['python3', soraScript, input, output, FFMPEG], input, output, expiry, libEntry);
+    spawnJob(jobId, [PYTHON, soraScript, input, output, FFMPEG], input, output, expiry, libEntry);
     return;
   }
 
@@ -229,7 +228,7 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     addToLibrary(libEntry);
     res.json({ id: jobId, status: 'processing' });
     const scriptPath = path.join(__dirname, 'inpaint_video.py');
-    spawnJob(jobId, ['python3', scriptPath, input, output, String(x), String(y), String(w), String(h), FFMPEG], input, output, expiry, libEntry);
+    spawnJob(jobId, [PYTHON, scriptPath, input, output, String(x), String(y), String(w), String(h), FFMPEG], input, output, expiry, libEntry);
     return;
   }
 
@@ -258,7 +257,7 @@ app.post('/api/lipsync', uploadFields, (req, res) => {
   const lipsyncId = Date.now().toString() + Math.floor(Math.random()*10000).toString();
   const outputName = 'lipsync-' + lipsyncId + '.mp4';
   const output     = path.join(UPLOAD_DIR, outputName);
-  const python     = process.env.PYTHON_BIN || 'python3';
+  const python     = PYTHON;
   const runner     = path.join(__dirname, 'wav2lip_runner.py');
 
   // Inicializa progresso
@@ -474,7 +473,7 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
   const posY     = parseInt(req.body.posY) || null;
   const align    = posX !== null ? 5 : 2;
 
-  const python = process.env.PYTHON_BIN || 'python3';
+  const python = PYTHON;
   const script = path.join(__dirname, 'transcribe.py');
   const transcribeCmd = `"${python}" "${script}" "${input}" "${model}" "${lang}"`;
 
@@ -679,7 +678,7 @@ app.post('/api/extract/transcribe', upload.single('video'), (req, res) => {
   const input  = req.file.path;
   const lang   = req.body.lang  || 'pt';
   const model  = req.body.model || 'small';
-  const python = process.env.PYTHON_BIN || 'python3';
+  const python = PYTHON;
   const script = path.join(__dirname, 'transcribe.py');
   const transcribeCmd = `"${python}" "${script}" "${input}" "${model}" "${lang}"`;
   exec(transcribeCmd, { maxBuffer: 10 * 1024 * 1024, timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
