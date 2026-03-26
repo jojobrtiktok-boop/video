@@ -1,3 +1,52 @@
+// ════════════════════════════════════════════════════════════════════
+// BIBLIOTECA LIPSYNC
+// ════════════════════════════════════════════════════════════════════
+const lipsyncLibrarySection = document.getElementById('lipsync-library-section');
+const lipsyncLibraryList = document.getElementById('lipsync-library-list');
+function renderLipsyncLibrary(items) {
+  if (!lipsyncLibraryList) return;
+  if (!items.length) {
+    lipsyncLibraryList.innerHTML = '<div class="empty-msg">Nenhum vídeo lipsync gerado ainda.</div>';
+    return;
+  }
+  lipsyncLibraryList.innerHTML = items.map(item => `
+    <div class="library-item ${item.status}">
+      <div class="lib-info">
+        <span class="lib-status">${item.status === 'done' ? '✅' : (item.status === 'processing' ? '⏳' : '❌')}</span>
+        <span class="lib-title">${item.url ? item.url.split('/').pop() : 'Vídeo em processamento'}</span>
+        <span class="lib-progress">${item.status === 'done' ? '100%' : (item.progress + '%')}</span>
+        <span class="lib-expiry">${item.expiresAt ? 'Expira em ' + Math.max(0, Math.floor((item.expiresAt - Date.now())/60000)) + ' min' : ''}</span>
+      </div>
+      <div class="lib-actions">
+        ${item.url && item.status === 'done' ? `<a href="${API + item.url}" download class="download-btn">⬇ Baixar</a> <video src="${API + item.url}" controls style="max-width:120px;max-height:60px;"></video>` : ''}
+        ${item.status === 'error' ? `<span class="lib-error">${item.error || 'Erro'}</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function fetchLipsyncLibrary() {
+  try {
+    const resp = await fetch(API + '/api/lipsync-library');
+    const json = await resp.json();
+    if (json.items) renderLipsyncLibrary(json.items);
+  } catch (e) {
+    if (lipsyncLibraryList) lipsyncLibraryList.innerHTML = '<div class="error-msg">Erro ao carregar biblioteca.</div>';
+  }
+}
+
+// Atualiza biblioteca ao abrir a seção
+const navLipsyncLib = document.querySelector('.nav-item[data-tool="lipsync-library"]');
+if (navLipsyncLib) {
+  navLipsyncLib.addEventListener('click', () => {
+    fetchLipsyncLibrary();
+    // Atualiza a cada 10s enquanto estiver visível
+    let interval = setInterval(() => {
+      if (lipsyncLibrarySection && lipsyncLibrarySection.style.display !== 'none') fetchLipsyncLibrary();
+      else clearInterval(interval);
+    }, 10000);
+  });
+}
 const API = '';
 
 // ── TOOL NAVIGATION ────────────────────────────────────────────────────────
@@ -1080,15 +1129,48 @@ if (lipSubmitBtn) {
       const resp = await fetch(API + '/api/lipsync', { method: 'POST', body: fd });
       const json = await resp.json();
       if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-      lipResultVideo.src = API + json.url; lipDownloadBtn.href = API + json.url;
-      lipDownloadBtn.download = json.url.split('/').pop();
-      lipResultCard.style.display = 'block';
-      lipResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (!json.id) throw new Error('Resposta inválida do backend (sem id)');
+      // Polling de progresso
+      let done = false;
+      let errored = false;
+      let lastProgress = 0;
+      while (!done && !errored) {
+        await new Promise(r => setTimeout(r, 1200));
+        let statusResp;
+        try {
+          statusResp = await fetch(API + '/api/lipsync-status/' + json.id);
+        } catch (e) {
+          lipStatus.textContent = 'Erro ao consultar status...';
+          break;
+        }
+        const statusJson = await statusResp.json();
+        if (!statusResp.ok || statusJson.error) {
+          lipStatus.textContent = 'Erro: ' + (statusJson.error || statusResp.status);
+          errored = true;
+          break;
+        }
+        // Atualiza barra de progresso
+        const pct = Math.max(0, Math.min(100, statusJson.progress || 0));
+        lipStatus.textContent = statusJson.status === 'processing' ? `Processando... (${pct}%)` : (statusJson.status === 'done' ? 'Concluído!' : (statusJson.error || 'Erro'));
+        lipProgressWrap.querySelector('.progress-bar').style.width = pct + '%';
+        if (statusJson.status === 'done' && statusJson.url) {
+          lipResultVideo.src = API + statusJson.url; lipDownloadBtn.href = API + statusJson.url;
+          lipDownloadBtn.download = statusJson.url.split('/').pop();
+          lipResultCard.style.display = 'block';
+          lipResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          done = true;
+        } else if (statusJson.status === 'error') {
+          lipErrorMsg.style.display = 'block'; lipErrorMsg.textContent = 'Erro: ' + (statusJson.error || 'Falha desconhecida');
+          errored = true;
+        }
+        lastProgress = pct;
+      }
     } catch (err) {
       lipErrorMsg.style.display = 'block'; lipErrorMsg.textContent = 'Erro: ' + err.message;
     } finally {
       lipSubmitBtn.disabled = false; lipSubmitBtn.textContent = '💋 Sincronizar Lábios';
       lipProgressWrap.style.display = 'none'; lipStatus.textContent = '';
+      lipProgressWrap.querySelector('.progress-bar').style.width = '0%';
     }
   });
 }

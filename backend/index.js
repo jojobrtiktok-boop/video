@@ -1,3 +1,19 @@
+// Endpoint para listar todos os vídeos lipsync gerados (para biblioteca)
+app.get('/api/lipsync-library', (req, res) => {
+  // Retorna todos os jobs que ainda não expiraram
+  const now = Date.now();
+  const list = Object.entries(lipsyncProgress)
+    .filter(([id, job]) => !job.expiresAt || job.expiresAt > now)
+    .map(([id, job]) => ({
+      id,
+      status: job.status,
+      progress: job.progress,
+      url: job.url,
+      error: job.error,
+      expiresAt: job.expiresAt
+    }));
+  res.json({ items: list });
+});
 const express = require('express');
 const multer = require('multer');
 const { exec } = require('child_process');
