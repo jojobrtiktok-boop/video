@@ -3,25 +3,62 @@
 // ════════════════════════════════════════════════════════════════════
 const videoLibrarySection = document.getElementById('tool-video-library');
 const videoLibraryGrid = document.getElementById('video-library-grid');
+const LIB_GROUPS = [
+  { type: 'watermark',  icon: '🚫', title: 'Remoção de Marca d\'água' },
+  { type: 'subtitle',   icon: '💬', title: 'Legendas' },
+  { type: 'video-gen',  icon: '🎬', title: 'Geração de Vídeo' },
+  { type: 'lipsync',    icon: '💋', title: 'Lipsync' },
+];
+
+function renderVideoCard(item) {
+  const filename = item.url ? item.url.split('/').pop() : 'Vídeo';
+  const time     = item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '';
+  const isReady  = !item.status || item.status === 'done';
+  const isProc   = item.status === 'processing';
+  const pct      = item.progress != null ? item.progress : (isReady ? 100 : 0);
+  return `
+    <div class="video-card" data-id="${item.id || ''}">
+      ${isReady && item.url
+        ? `<video src="${API + item.url}" controls muted playsinline preload="metadata"></video>`
+        : `<div class="video-card-placeholder">${isProc ? '⏳' : '❌'}</div>`
+      }
+      <div class="video-card-info">
+        <div class="video-card-label">${item.label || ''}</div>
+        <div class="video-card-title">${filename}</div>
+        ${isProc ? `<div class="lib-progress-bar"><div class="lib-progress-fill" style="width:${pct}%"></div></div><div class="video-card-meta">⏳ ${pct}%</div>` : ''}
+        ${!isProc ? `<div class="video-card-meta">${isReady ? '✅ Pronto' : '❌ Erro'} · ${time}</div>` : ''}
+        <div class="video-card-actions">
+          ${isReady && item.url ? `<a href="${API + item.url}" download class="video-card-dl">⬇ Baixar</a>` : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderVideoLibrary(items) {
   if (!videoLibraryGrid) return;
   if (!items.length) {
-    videoLibraryGrid.innerHTML = '<div class="empty-msg">Nenhum vídeo encontrado ainda.</div>';
+    videoLibraryGrid.innerHTML = '<div class="empty-msg">Nenhum vídeo na biblioteca ainda.</div>';
     return;
   }
-  videoLibraryGrid.innerHTML = items.map(item => `
-    <div class="video-card">
-      <video src="${API + item.url}" controls muted playsinline></video>
-      <div class="video-card-info">
-        <div class="video-card-title">${item.url ? item.url.split('/').pop() : 'Vídeo'}</div>
-        <div class="video-card-meta">${item.status === 'done' ? '✅ Pronto' : (item.status === 'processing' ? '⏳ Processando' : '❌ Erro')}</div>
-        <div class="video-card-meta">${item.createdAt ? (new Date(item.createdAt)).toLocaleString('pt-BR') : ''}</div>
-        <div class="video-card-actions">
-          <a href="${API + item.url}" download class="video-card-dl">⬇ Baixar</a>
-        </div>
-      </div>
-    </div>
-  `).join('');
+  let html = '';
+  LIB_GROUPS.forEach(group => {
+    const groupItems = items.filter(i => i.type === group.type);
+    if (!groupItems.length) return;
+    html += `<div class="lib-section">
+      <div class="lib-section-title">${group.icon} ${group.title}</div>
+      <div class="lib-cards-row">${groupItems.map(renderVideoCard).join('')}</div>
+    </div>`;
+  });
+  // Items sem tipo conhecido
+  const knownTypes = LIB_GROUPS.map(g => g.type);
+  const others = items.filter(i => !knownTypes.includes(i.type));
+  if (others.length) {
+    html += `<div class="lib-section">
+      <div class="lib-section-title">📁 Outros</div>
+      <div class="lib-cards-row">${others.map(renderVideoCard).join('')}</div>
+    </div>`;
+  }
+  videoLibraryGrid.innerHTML = html;
 }
 
 async function fetchVideoLibrary() {

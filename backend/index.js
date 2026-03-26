@@ -159,7 +159,9 @@ app.post('/api/process', upload.single('video'), (req, res) => {
       fs.unlink(filterFile, () => {});
       if (err) return res.status(500).json({ error: String(err), stderr });
       scheduleDelete(output, 30 * 60 * 1000);
-      return res.json({ url: `/uploads/${path.basename(output)}` });
+      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '🌫️ Blur', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+      addToLibrary(libEntry);
+      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
     });
     return;
   }
@@ -174,7 +176,9 @@ app.post('/api/process', upload.single('video'), (req, res) => {
       fs.unlink(input, () => {});
       if (err) return res.status(500).json({ error: String(err), stderr });
       scheduleDelete(output, 30 * 60 * 1000);
-      return res.json({ url: `/uploads/${path.basename(output)}` });
+      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '⚡ Remoção Simples', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+      addToLibrary(libEntry);
+      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
     });
     return;
   }
@@ -190,7 +194,9 @@ app.post('/api/process', upload.single('video'), (req, res) => {
       fs.unlink(input, () => {});
       if (err) return res.status(500).json({ error: String(err), stderr: stderr || stdout });
       scheduleDelete(output, 30 * 60 * 1000);
-      return res.json({ url: `/uploads/${path.basename(output)}` });
+      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '✨ Remoção Limpa', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+      addToLibrary(libEntry);
+      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
     });
     return;
   }
@@ -410,7 +416,9 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
     fs.unlink(assPath, () => {});
     if (err) return res.status(500).json({ error: String(err), stderr });
     scheduleDelete(output, 30 * 60 * 1000);
-    return res.json({ url: `/uploads/${path.basename(output)}` });
+    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'subtitle', label: '💬 Legenda', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+    addToLibrary(libEntry);
+    return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
   });
 });
 
