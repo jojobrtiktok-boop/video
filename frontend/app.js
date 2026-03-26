@@ -3,7 +3,7 @@ const API = '';
 // ════════════════════════════════════════════════════════════════════
 // BIBLIOTECA LIPSYNC
 // ════════════════════════════════════════════════════════════════════
-const lipsyncLibrarySection = document.getElementById('lipsync-library-section');
+const lipsyncLibrarySection = document.getElementById('tool-lipsync-library');
 const lipsyncLibraryList = document.getElementById('lipsync-library-list');
 function renderLipsyncLibrary(items) {
   if (!lipsyncLibraryList) return;
