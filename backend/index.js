@@ -183,10 +183,11 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     const y = parseInt(req.body.y) || 0;
     const w = parseInt(req.body.w) || 100;
     const h = parseInt(req.body.h) || 60;
-    const cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
-    exec(cmd, (err, stdout, stderr) => {
+    const scriptPath = path.join(__dirname, 'inpaint_video.py');
+    const cmd = `python3 "${scriptPath}" "${input}" "${output}" ${x} ${y} ${w} ${h} "${FFMPEG}"`;
+    exec(cmd, { timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
       fs.unlink(input, () => {});
-      if (err) return res.status(500).json({ error: String(err), stderr });
+      if (err) return res.status(500).json({ error: String(err), stderr: stderr || stdout });
       scheduleDelete(output, 30 * 60 * 1000);
       return res.json({ url: `/uploads/${path.basename(output)}` });
     });
