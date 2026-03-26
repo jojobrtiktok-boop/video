@@ -26,6 +26,16 @@ const app = express();
 
 const FFMPEG = process.env.FFMPEG_BIN
   || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffmpeg.exe' : 'ffmpeg');
+const FFPROBE = process.env.FFPROBE_BIN
+  || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffprobe.exe' : 'ffprobe');
+
+// ── BIBLIOTECA GERAL DE VÍDEOS ─────────────────────────────────────────────
+const videoLibrary = [];
+function addToLibrary(entry) {
+  videoLibrary.push(entry);
+  // Mantém só os últimos 100 itens
+  if (videoLibrary.length > 100) videoLibrary.splice(0, videoLibrary.length - 100);
+}
 
 app.use(cors());
 app.use(express.json());
@@ -54,6 +64,53 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   const input = req.file.path;
   const outputName = 'processed-' + path.basename(input);
   const output = path.join(UPLOAD_DIR, outputName);
+
+  if (mode === 'sora' || mode === 'heygen') {
+    // Probe video dimensions
+    const probeCmd = `"${FFPROBE}" -v quiet -print_format json -show_streams "${input}"`;
+    exec(probeCmd, (probeErr, probeOut) => {
+      let vw = 1080, vh = 1920;
+      if (!probeErr) {
+        try {
+          const info = JSON.parse(probeOut);
+          const vs = info.streams.find(s => s.codec_type === 'video');
+          if (vs) { vw = vs.width; vh = vs.height; }
+        } catch (_) {}
+      }
+      let x, y, w, h;
+      if (mode === 'sora') {
+        // Sora: faixa inferior central (TikTok-style)
+        h = Math.round(vh * 0.09);
+        w = Math.round(vw * 0.55);
+        x = Math.round((vw - w) / 2);
+        y = vh - h;
+      } else {
+        // HeyGen: canto inferior direito
+        h = Math.round(vh * 0.13);
+        w = Math.round(vw * 0.38);
+        x = vw - w;
+        y = vh - h;
+      }
+      const cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
+      exec(cmd, (err, stdout, stderr) => {
+        fs.unlink(input, () => {});
+        if (err) return res.status(500).json({ error: String(err), stderr });
+        const expiry = Date.now() + 60 * 60 * 1000;
+        scheduleDelete(output, 60 * 60 * 1000);
+        const libEntry = {
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+          type: 'watermark',
+          label: mode === 'sora' ? '🎵 Sora' : '🤖 HeyGen',
+          url: `/uploads/${path.basename(output)}`,
+          createdAt: Date.now(),
+          expiresAt: expiry
+        };
+        addToLibrary(libEntry);
+        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+      });
+    });
+    return;
+  }
 
   if (mode === 'blur') {
     const x  = parseInt(req.body.x) || 0;
@@ -170,11 +227,19 @@ app.post('/api/lipsync', uploadFields, (req, res) => {
       lipsyncProgress[lipsyncId].error = 'Video nao gerado. ' + stderr;
       return res.status(500).json({ error: lipsyncProgress[lipsyncId].error, id: lipsyncId });
     }
-    scheduleDelete(output, 60 * 60 * 1000); // 1 hora
+    scheduleDelete(output, 60 * 60 * 1000);
     lipsyncProgress[lipsyncId].status = 'done';
     lipsyncProgress[lipsyncId].progress = 100;
     lipsyncProgress[lipsyncId].url = `/uploads/${outputName}`;
     lipsyncProgress[lipsyncId].expiresAt = Date.now() + 60*60*1000;
+    addToLibrary({
+      id: lipsyncId,
+      type: 'lipsync',
+      label: '💋 Lipsync',
+      url: `/uploads/${outputName}`,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60*60*1000
+    });
     return res.json({ url: `/uploads/${outputName}`, id: lipsyncId });
   });
 });
@@ -190,6 +255,15 @@ app.get('/api/lipsync-status/:id', (req, res) => {
     return res.status(404).json({ error: 'Expirado' });
   }
   res.json(prog);
+});
+
+// Endpoint para listar TODOS os vídeos gerados (biblioteca geral)
+app.get('/api/video-library', (req, res) => {
+  const now = Date.now();
+  const items = videoLibrary
+    .filter(item => !item.expiresAt || item.expiresAt > now)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  res.json({ items });
 });
 
 // Endpoint para listar todos os vídeos lipsync gerados (para biblioteca)

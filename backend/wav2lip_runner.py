@@ -39,7 +39,7 @@ def main():
         '--audio', audio_path,
         '--outfile', output_path,
         '--resize_factor', '2',
-        '--nosmooth',
+        '--pads', '0', '10', '0', '0',
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=wav2lip_dir)
