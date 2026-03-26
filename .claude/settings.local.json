@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(where python3:*)",
+      "Bash(where python:*)",
+      "Read(//c/Users/user/.agents/skills/ui-ux-pro-max/scripts/**)",
+      "Bash(\"C:/Program Files/Python313/python.exe\" \"C:/Users/user/.claude/skills/ui-ux-pro-max/scripts/search.py\" \"video editor creative design tool dark professional\" --design-system -p \"VideoForge\" -f markdown)",
+      "Bash(\"C:/Program Files/Python313/python.exe\" \"C:/Users/user/.claude/skills/ui-ux-pro-max/scripts/search.py\" \"video editor creative studio tool dark\" --domain style -n 3)"
+    ]
+  }
+}
