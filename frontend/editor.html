@@ -537,6 +537,44 @@
     .vg-refined-prompt strong { color: var(--accent); display: block; margin-bottom: 6px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
     .vg-result-video { width: 100%; border-radius: var(--radius-sm); margin-top: 8px; }
 
+    /* ── IMAGE GEN ── */
+    .ig-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+    .ig-tab {
+      flex: 1; padding: 10px 14px; border-radius: var(--radius-sm);
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--text-muted); font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .ig-tab:hover { border-color: var(--border-strong); color: var(--text); }
+    .ig-tab.active { background: var(--accent-dim); border-color: rgba(124,113,255,0.5); color: var(--text); }
+    .ig-mode-panel { display: none; }
+    .ig-mode-panel.active { display: block; }
+    .ig-upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+    .ig-upload-label { font-size: 0.78rem; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+    .ig-upload-box {
+      position: relative; min-height: 120px; border-radius: var(--radius-sm);
+      border: 2px dashed var(--border); background: var(--surface2);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; cursor: pointer; transition: border-color .15s; overflow: hidden;
+    }
+    .ig-upload-box:hover { border-color: rgba(124,113,255,0.5); }
+    .ig-upload-box.has-file { border-style: solid; border-color: rgba(124,113,255,0.4); }
+    .ig-upload-box input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .ig-upload-icon { font-size: 1.8rem; line-height: 1; }
+    .ig-upload-hint { font-size: 0.74rem; color: var(--text-muted); text-align: center; padding: 0 8px; }
+    .ig-preview-img { width: 100%; height: 120px; object-fit: cover; display: none; border-radius: 4px; }
+    .ig-preview-img.visible { display: block; }
+    .ig-prompt-area {
+      width: 100%; min-height: 100px; box-sizing: border-box;
+      background: var(--surface3); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px;
+      color: var(--text); font-size: 0.88rem;
+      font-family: inherit; resize: vertical; margin-top: 4px; line-height: 1.6;
+    }
+    .ig-prompt-area:focus { outline: none; border-color: var(--accent); }
+    .ig-prompt-area::placeholder { color: var(--text-muted); }
+    .ig-result-img { width: 100%; border-radius: var(--radius-sm); margin-top: 8px; display: block; }
+
     /* ── RESPONSIVE ── */
     @media (max-width: 680px) {
       .sidebar { width: 100%; min-width: 0; height: auto; border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; overflow: visible; }
@@ -609,6 +647,14 @@
       <div class="nav-text">
         <div class="nav-title">Gerar Vídeo</div>
         <div class="nav-desc">OpenRouter</div>
+      </div>
+    </button>
+
+    <button class="nav-item" data-tool="imagegen">
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span>
+      <div class="nav-text">
+        <div class="nav-title">Gerar Imagem</div>
+        <div class="nav-desc">Clone / Criação com IA</div>
       </div>
     </button>
 
@@ -1022,42 +1068,6 @@
               <div class="vg-opt-info"><span class="vg-opt-name">Veo 3.1</span><span class="vg-opt-desc">Google — melhor qualidade disponível</span></div>
               <span class="vg-opt-price">$0.40/s</span>
             </div>
-            <div class="vg-option" data-model="google/veo-3" data-cost="0.35" data-name="Veo 3" data-desc="Google — alta qualidade, boa velocidade">
-              <div class="vg-opt-info"><span class="vg-opt-name">Veo 3</span><span class="vg-opt-desc">Google — alta qualidade, boa velocidade</span></div>
-              <span class="vg-opt-price">$0.35/s</span>
-            </div>
-            <div class="vg-option" data-model="google/veo-2" data-cost="0.20" data-name="Veo 2" data-desc="Google — versão anterior, econômico">
-              <div class="vg-opt-info"><span class="vg-opt-name">Veo 2</span><span class="vg-opt-desc">Google — versão anterior, econômico</span></div>
-              <span class="vg-opt-price">$0.20/s</span>
-            </div>
-            <div class="vg-option" data-model="bytedance/seedance-1-5-pro" data-cost="0.15" data-name="Seedance 1.5 Pro" data-desc="ByteDance — rápido e econômico">
-              <div class="vg-opt-info"><span class="vg-opt-name">Seedance 1.5 Pro</span><span class="vg-opt-desc">ByteDance — rápido e econômico</span></div>
-              <span class="vg-opt-price">$0.15/s</span>
-            </div>
-            <div class="vg-option" data-model="bytedance/seedance-1-5" data-cost="0.08" data-name="Seedance 1.5" data-desc="ByteDance — versão padrão, mais barato">
-              <div class="vg-opt-info"><span class="vg-opt-name">Seedance 1.5</span><span class="vg-opt-desc">ByteDance — versão padrão, mais barato</span></div>
-              <span class="vg-opt-price">$0.08/s</span>
-            </div>
-            <div class="vg-option" data-model="minimax/video-01-live" data-cost="0.12" data-name="Minimax Video 01 Live" data-desc="Minimax — vídeos rápidos, boa qualidade">
-              <div class="vg-opt-info"><span class="vg-opt-name">Minimax Video 01 Live</span><span class="vg-opt-desc">Minimax — vídeos rápidos, boa qualidade</span></div>
-              <span class="vg-opt-price">$0.12/s</span>
-            </div>
-            <div class="vg-option" data-model="pika-labs/pika-2.2" data-cost="0.15" data-name="Pika 2.2" data-desc="Pika Labs — vídeos criativos, estilos variados">
-              <div class="vg-opt-info"><span class="vg-opt-name">Pika 2.2</span><span class="vg-opt-desc">Pika Labs — vídeos criativos, estilos variados</span></div>
-              <span class="vg-opt-price">$0.15/s</span>
-            </div>
-            <div class="vg-option" data-model="pika-labs/pika-1-3" data-cost="0.13" data-name="Pika 1.3" data-desc="Pika Labs — versão estável, boa compatibilidade">
-              <div class="vg-opt-info"><span class="vg-opt-name">Pika 1.3</span><span class="vg-opt-desc">Pika Labs — versão estável, boa compatibilidade</span></div>
-              <span class="vg-opt-price">$0.13/s</span>
-            </div>
-            <div class="vg-option" data-model="luma/dream-machine-1-5" data-cost="0.14" data-name="Dream Machine 1.5" data-desc="Luma AI — cenas cinemáticas fluidas">
-              <div class="vg-opt-info"><span class="vg-opt-name">Dream Machine 1.5</span><span class="vg-opt-desc">Luma AI — cenas cinemáticas fluidas</span></div>
-              <span class="vg-opt-price">$0.14/s</span>
-            </div>
-            <div class="vg-option" data-model="wan/wan-2.1-i2v-480p" data-cost="0.06" data-name="Wan 2.1 (480p)" data-desc="Wan — image-to-video, ultra econômico">
-              <div class="vg-opt-info"><span class="vg-opt-name">Wan 2.1 (480p)</span><span class="vg-opt-desc">Wan — image-to-video, ultra econômico</span></div>
-              <span class="vg-opt-price">$0.06/s</span>
-            </div>
           </div>
         </div>
 
@@ -1084,6 +1094,124 @@
         <h3>✓ Vídeo gerado!</h3>
         <video id="vg-result-video" class="vg-result-video" controls></video><br/>
         <a id="vg-download-btn" class="download-btn" download="video-gerado.mp4">⬇ Baixar Vídeo</a>
+      </div>
+    </div>
+
+    <!-- GERAR IMAGEM -->
+    <div id="tool-imagegen" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">Gerar Imagem</h1>
+        <p class="tool-subtitle">Crie ou clone imagens com IA via OpenRouter</p>
+      </div>
+
+      <div class="card">
+        <div class="section-label">API Key (OpenRouter)</div>
+        <div class="vg-api-row">
+          <input type="password" id="ig-apikey" placeholder="sk-or-v1-..." autocomplete="off">
+          <button id="ig-save-key" class="btn-secondary">💾 Salvar</button>
+        </div>
+        <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">Obtida em <strong>openrouter.ai/keys</strong> — salva só no seu navegador</p>
+      </div>
+
+      <!-- TABS -->
+      <div class="ig-tabs">
+        <button class="ig-tab active" data-mode="clone">🖼️ Clonar Foto</button>
+        <button class="ig-tab" data-mode="create">✨ Criar do Zero</button>
+      </div>
+
+      <!-- CLONE MODE -->
+      <div class="ig-mode-panel active" id="ig-panel-clone">
+        <div class="card">
+          <div class="section-label">Fotos de referência</div>
+          <div class="ig-upload-grid">
+            <div>
+              <div class="ig-upload-label">Foto Modelo / Pessoa</div>
+              <div class="ig-upload-box" id="ig-ref-box">
+                <input type="file" id="ig-ref-input" accept="image/*">
+                <span class="ig-upload-icon">👤</span>
+                <span class="ig-upload-hint">Clique ou arraste<br>a foto de referência</span>
+                <img class="ig-preview-img" id="ig-ref-preview" alt="">
+              </div>
+            </div>
+            <div>
+              <div class="ig-upload-label">Produto / Objeto</div>
+              <div class="ig-upload-box" id="ig-prod-box">
+                <input type="file" id="ig-prod-input" accept="image/*">
+                <span class="ig-upload-icon">📦</span>
+                <span class="ig-upload-hint">Clique ou arraste<br>o produto ou cena</span>
+                <img class="ig-preview-img" id="ig-prod-preview" alt="">
+              </div>
+            </div>
+          </div>
+          <div class="section-label">Instrução para a IA</div>
+          <textarea id="ig-clone-prompt" class="ig-prompt-area" placeholder="Ex: Coloque o produto na mão da modelo com fundo branco clean, iluminação profissional de estúdio..."></textarea>
+        </div>
+      </div>
+
+      <!-- CREATE MODE -->
+      <div class="ig-mode-panel" id="ig-panel-create">
+        <div class="card">
+          <div class="section-label">Descreva a imagem</div>
+          <textarea id="ig-create-prompt" class="ig-prompt-area" placeholder="Ex: Mulher jovem sorrindo segurando produto de skincare, fundo minimalista branco, foto profissional de estúdio, luz suave lateral..."></textarea>
+        </div>
+      </div>
+
+      <!-- MODEL SELECTOR -->
+      <div class="card">
+        <div class="section-label">Modelo de IA</div>
+        <div class="vg-model-select" id="ig-model-select">
+          <div class="vg-select-trigger" id="ig-select-trigger">
+            <div class="vg-select-left">
+              <span class="vg-select-name" id="ig-select-name">Nano Banana 2.5</span>
+              <span class="vg-select-subdesc" id="ig-select-desc">Google — edição e composição com produto</span>
+            </div>
+            <div class="vg-select-right">
+              <svg class="vg-select-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M2.5 4.5L7 9.5L11.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="vg-select-dropdown" id="ig-select-dropdown">
+            <div class="vg-option active" data-model="google/gemini-3.1-flash-image-preview" data-name="Nano Banana 2.5" data-desc="Google — edição e composição com produto">
+              <div class="vg-opt-info"><span class="vg-opt-name">Nano Banana 2.5</span><span class="vg-opt-desc">🏆 Melhor para clonar fotos e inserir produtos</span></div>
+            </div>
+            <div class="vg-option" data-model="openai/gpt-5-image" data-name="GPT-5 Image" data-desc="OpenAI — texto em imagem e composição realista">
+              <div class="vg-opt-info"><span class="vg-opt-name">GPT-5 Image</span><span class="vg-opt-desc">⭐ Melhor para texto em imagens e precisão</span></div>
+            </div>
+            <div class="vg-option" data-model="openai/gpt-5-image-mini" data-name="GPT-5 Image Mini" data-desc="OpenAI — rápido e acessível">
+              <div class="vg-opt-info"><span class="vg-opt-name">GPT-5 Image Mini</span><span class="vg-opt-desc">⚡ GPT-5 mais rápido e barato para testes</span></div>
+            </div>
+            <div class="vg-option" data-model="sourceful/riverflow-v2-max-preview" data-name="Riverflow v2 Max" data-desc="Sourceful — máxima qualidade artística">
+              <div class="vg-opt-info"><span class="vg-opt-name">Riverflow v2 Max</span><span class="vg-opt-desc">🎨 Melhor qualidade do Riverflow, visual cinematográfico</span></div>
+            </div>
+            <div class="vg-option" data-model="sourceful/riverflow-v2-pro" data-name="Riverflow v2 Pro" data-desc="Sourceful — alta qualidade artística">
+              <div class="vg-opt-info"><span class="vg-opt-name">Riverflow v2 Pro</span><span class="vg-opt-desc">🎨 Alta qualidade artística e fotorrealismo</span></div>
+            </div>
+            <div class="vg-option" data-model="sourceful/riverflow-v2-fast" data-name="Riverflow v2 Fast" data-desc="Sourceful — ultra-rápido para iteração">
+              <div class="vg-opt-info"><span class="vg-opt-name">Riverflow v2 Fast</span><span class="vg-opt-desc">⚡ Ultra-rápido para testar variações</span></div>
+            </div>
+            <div class="vg-option" data-model="black-forest-labs/flux.2-klein-4b" data-name="FLUX.2 Klein 4B" data-desc="Black Forest Labs — detalhes fotorrealistas">
+              <div class="vg-opt-info"><span class="vg-opt-name">FLUX.2 Klein 4B</span><span class="vg-opt-desc">📸 Detalhes fotorrealistas, ótimo para produtos</span></div>
+            </div>
+            <div class="vg-option" data-model="bytedance-seed/seedream-4.5" data-name="Seedream 4.5" data-desc="ByteDance — criativo e expressivo">
+              <div class="vg-opt-info"><span class="vg-opt-name">Seedream 4.5</span><span class="vg-opt-desc">🌟 Criativo, ótimo para lifestyle e moda</span></div>
+            </div>
+            <div class="vg-option" data-model="google/gemini-2.5-flash-image" data-name="Gemini 2.5 Flash Image" data-desc="Google — rápido e eficiente">
+              <div class="vg-opt-info"><span class="vg-opt-name">Gemini 2.5 Flash Image</span><span class="vg-opt-desc">⚡ Google rápido para geração e edição</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button id="ig-submit-btn" class="submit-btn">🖼️ Gerar Imagem</button>
+      <div id="ig-progress" class="progress-wrap" style="margin-top:16px"><div class="progress-bar"></div></div>
+      <div id="ig-status" class="status-text"></div>
+      <div id="ig-error" class="error-msg"></div>
+
+      <div id="ig-result-card" class="result-card" style="display:none">
+        <h3>✓ Imagem gerada!</h3>
+        <img id="ig-result-img" class="ig-result-img" alt="Imagem gerada">
+        <a id="ig-download-btn" class="download-btn" download="imagem-gerada.png" style="margin-top:10px;display:inline-block">⬇ Baixar Imagem</a>
       </div>
     </div>
 

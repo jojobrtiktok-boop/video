@@ -1220,4 +1220,152 @@ if (lipSubmitBtn) {
       vgProgress.style.display = 'none'; vgStatus.textContent = '';
     }
   });
+
+  // ─── IMAGE GENERATION ─────────────────────────────────────────────────────
+  (function initImageGen() {
+    const igApiKey    = document.getElementById('ig-apikey');
+    const igSaveKey   = document.getElementById('ig-save-key');
+    const igSubmit    = document.getElementById('ig-submit-btn');
+    if (!igSubmit) return;
+
+    // Restore saved key (shared with video gen)
+    const saved = localStorage.getItem('or_api_key');
+    if (saved && igApiKey) igApiKey.value = saved;
+
+    if (igSaveKey) igSaveKey.addEventListener('click', () => {
+      if (igApiKey && igApiKey.value.trim()) {
+        localStorage.setItem('or_api_key', igApiKey.value.trim());
+        igSaveKey.textContent = '✅ Salvo!';
+        setTimeout(() => { igSaveKey.textContent = '💾 Salvar'; }, 1500);
+      }
+    });
+
+    // Tabs
+    let currentMode = 'clone';
+    document.querySelectorAll('.ig-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.ig-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.ig-mode-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        currentMode = tab.dataset.mode;
+        const panel = document.getElementById('ig-panel-' + currentMode);
+        if (panel) panel.classList.add('active');
+      });
+    });
+
+    // Upload previews
+    function setupUpload(inputId, previewId, boxId) {
+      const input = document.getElementById(inputId);
+      const preview = document.getElementById(previewId);
+      const box = document.getElementById(boxId);
+      if (!input || !preview) return;
+      input.addEventListener('change', () => {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = e => {
+          preview.src = e.target.result;
+          preview.classList.add('visible');
+          if (box) box.classList.add('has-file');
+          // hide hint/icon
+          box.querySelectorAll('.ig-upload-icon, .ig-upload-hint').forEach(el => el.style.display = 'none');
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    setupUpload('ig-ref-input', 'ig-ref-preview', 'ig-ref-box');
+    setupUpload('ig-prod-input', 'ig-prod-preview', 'ig-prod-box');
+
+    // Model dropdown
+    let selectedModel = 'google/gemini-3.1-flash-image-preview';
+    let selectedModelName = 'Nano Banana 2.5';
+    const igTrigger   = document.getElementById('ig-select-trigger');
+    const igDropdown  = document.getElementById('ig-select-dropdown');
+    const igSelName   = document.getElementById('ig-select-name');
+    const igSelDesc   = document.getElementById('ig-select-desc');
+
+    if (igTrigger) igTrigger.addEventListener('click', e => {
+      e.stopPropagation();
+      igTrigger.classList.toggle('open');
+      igDropdown.classList.toggle('open');
+    });
+    document.addEventListener('click', () => {
+      if (igTrigger) igTrigger.classList.remove('open');
+      if (igDropdown) igDropdown.classList.remove('open');
+    });
+    if (igDropdown) igDropdown.addEventListener('click', e => {
+      const opt = e.target.closest('.vg-option');
+      if (!opt) return;
+      igDropdown.querySelectorAll('.vg-option').forEach(o => o.classList.remove('active'));
+      opt.classList.add('active');
+      selectedModel = opt.dataset.model;
+      selectedModelName = opt.dataset.name;
+      if (igSelName) igSelName.textContent = opt.dataset.name;
+      if (igSelDesc) igSelDesc.textContent = opt.dataset.desc;
+      igTrigger.classList.remove('open');
+      igDropdown.classList.remove('open');
+    });
+
+    // Submit
+    const igProgress = document.getElementById('ig-progress');
+    const igStatus   = document.getElementById('ig-status');
+    const igError    = document.getElementById('ig-error');
+    const igResult   = document.getElementById('ig-result-card');
+    const igImg      = document.getElementById('ig-result-img');
+    const igDown     = document.getElementById('ig-download-btn');
+
+    igSubmit.addEventListener('click', async () => {
+      const apiKey = igApiKey ? igApiKey.value.trim() : '';
+      if (!apiKey) { alert('Informe sua API key da OpenRouter'); return; }
+
+      const prompt = currentMode === 'clone'
+        ? (document.getElementById('ig-clone-prompt')?.value.trim() || '')
+        : (document.getElementById('ig-create-prompt')?.value.trim() || '');
+      if (!prompt) { alert('Escreva um prompt'); return; }
+
+      let referenceBase64 = null;
+      let productBase64 = null;
+      if (currentMode === 'clone') {
+        const refInput = document.getElementById('ig-ref-input');
+        const prodInput = document.getElementById('ig-prod-input');
+        if (refInput?.files?.[0])  referenceBase64 = await fileToDataUrl(refInput.files[0]);
+        if (prodInput?.files?.[0]) productBase64   = await fileToDataUrl(prodInput.files[0]);
+      }
+
+      igSubmit.disabled = true; igSubmit.textContent = '⏳ Gerando...';
+      igProgress.style.display = 'block';
+      igStatus.textContent = '🖼️ Enviando para ' + selectedModelName + '...';
+      igError.style.display = 'none'; igResult.style.display = 'none';
+
+      try {
+        const resp = await fetch(API + '/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, referenceBase64, productBase64 })
+        });
+        const json = await resp.json();
+        if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+        if (json.url) {
+          igImg.src = json.url;
+          igDown.href = json.url;
+          igDown.download = 'imagem-gerada.png';
+          igResult.style.display = 'block';
+          igResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      } catch (err) {
+        igError.style.display = 'block'; igError.textContent = 'Erro: ' + err.message;
+      } finally {
+        igSubmit.disabled = false; igSubmit.textContent = '🖼️ Gerar Imagem';
+        igProgress.style.display = 'none'; igStatus.textContent = '';
+      }
+    });
+
+    function fileToDataUrl(file) {
+      return new Promise(resolve => {
+        const r = new FileReader();
+        r.onload = e => resolve(e.target.result);
+        r.readAsDataURL(file);
+      });
+    }
+  })();
 })();

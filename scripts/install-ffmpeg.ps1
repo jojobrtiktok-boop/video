@@ -52,7 +52,7 @@ Copy-Item -Path (Join-Path $sourceFolder '*') -Destination $destRoot -Recurse -F
 
 # Ensure bin exists
 if (-not (Test-Path $ffmpegBin)) {
-    Write-Error "Unexpected: bin folder not found at $ffmpegBin"
+    Write-Error "Unexpected: bin folder not found at $ffmpegBin"qna
     exit 1
 }
 

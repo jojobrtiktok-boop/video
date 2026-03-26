@@ -4,6 +4,9 @@ FROM node:18-bullseye
 RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --no-cache-dir faster-whisper
 RUN pip3 install --no-cache-dir opencv-python-headless librosa numpy audioread scipy numba
+# Torch CPU (para Wav2Lip dentro do container)
+RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+RUN pip3 install --no-cache-dir face_alignment
 
 WORKDIR /usr/src/app
 

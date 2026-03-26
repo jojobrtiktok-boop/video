@@ -511,13 +511,19 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
     });
   }
 
-  function orDownload(alphaPath) {
+  function orDownload(url, hops = 0) {
+    if (hops > 5) return Promise.reject(new Error('Too many redirects downloading video'));
     return new Promise((resolve, reject) => {
-      https.get({
-        hostname: 'openrouter.ai',
-        path: `/api/alpha${alphaPath}`,
+      const parsedUrl = url.startsWith('http') ? new URL(url) : new URL(`https://openrouter.ai/api/alpha${url}`);
+      const lib = parsedUrl.protocol === 'https:' ? https : require('http');
+      lib.get({
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
         headers: { 'Authorization': `Bearer ${apiKey}` }
       }, resp => {
+        if (resp.statusCode === 301 || resp.statusCode === 302 || resp.statusCode === 307 || resp.statusCode === 308) {
+          return orDownload(resp.headers.location, hops + 1).then(resolve).catch(reject);
+        }
         const chunks = [];
         resp.on('data', c => chunks.push(c));
         resp.on('end', () => resolve({ status: resp.statusCode, buffer: Buffer.concat(chunks) }));
@@ -547,24 +553,27 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
       return res.status(500).json({ error: 'API nao retornou job ID.', raw: submitResp.body });
     }
 
-    // 2) Poll until completed (max 3 min)
-    const maxWait = 180000;
+    // 2) Poll until completed (max 5 min)
+    const maxWait = 300000;
     const poll = 6000;
     const deadline = Date.now() + maxWait;
 
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, poll));
       const statusResp = await orRequest('GET', `/videos/${jobId}`, null);
-      if (statusResp.status !== 200) {
-        return res.status(500).json({ error: 'Erro ao verificar status.', raw: statusResp.body });
+      // 4xx = erro real; 202/200/outros = ainda processando
+      if (statusResp.status >= 400) {
+        return res.status(500).json({ error: 'Erro ao verificar status: HTTP ' + statusResp.status, raw: statusResp.body });
       }
+      // Se corpo vazio ou sem status, aguarda próxima iteração
+      if (!statusResp.body || !statusResp.body.status) continue;
       const { status } = statusResp.body;
       if (status === 'failed' || status === 'error') {
         return res.status(500).json({ error: 'Geracao falhou: ' + (statusResp.body.error || status) });
       }
       if (status === 'completed') {
         // 3) Download video and serve locally
-        const dl = await orDownload(`/videos/${jobId}/content?index=0`);
+        const dl = await orDownload(`/videos/${jobId}/content?index=0`);  // follows redirects
         if (dl.status !== 200 || !dl.buffer.length) {
           return res.status(500).json({ error: 'Nao foi possivel baixar o video gerado.' });
         }
@@ -577,7 +586,128 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
       // still processing — continue polling
     }
 
-    return res.status(504).json({ error: 'Tempo limite atingido (3 min). Tente um prompt mais curto ou menor duracao.' });
+    return res.status(504).json({ error: 'Tempo limite atingido (5 min). Tente um prompt mais curto ou menor duracao.' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Erro: ' + err.message });
+  }
+});
+
+// ─── IMAGE GENERATION ────────────────────────────────────────────────────────
+app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res) => {
+  const { prompt, imageModel, apiKey, mode, referenceBase64, productBase64 } = req.body || {};
+  if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
+  if (!apiKey)  return res.status(400).json({ error: 'Informe sua API key da OpenRouter.' });
+
+  try {
+    const model = imageModel || 'google/gemini-3.1-flash-image-preview';
+
+    // Build message content — include reference images for clone mode
+    let messageContent;
+    if (mode === 'clone' && (referenceBase64 || productBase64)) {
+      messageContent = [];
+      if (referenceBase64) messageContent.push({ type: 'image_url', image_url: { url: referenceBase64 } });
+      if (productBase64)   messageContent.push({ type: 'image_url', image_url: { url: productBase64 } });
+      messageContent.push({ type: 'text', text: prompt });
+    } else {
+      messageContent = prompt;
+    }
+
+    const payload = JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: messageContent }]
+    });
+
+    const result = await new Promise((resolve, reject) => {
+      const req2 = https.request({
+        hostname: 'openrouter.ai',
+        path: '/api/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'HTTP-Referer': 'https://videoforge.app',
+          'X-Title': 'VideoForge'
+        }
+      }, resp => {
+        let raw = '';
+        resp.on('data', c => raw += c);
+        resp.on('end', () => {
+          try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+          catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
+        });
+      });
+      req2.on('error', reject);
+      req2.write(payload);
+      req2.end();
+    });
+
+    if (result.status >= 400) {
+      const msg = result.body?.error?.message || result.body?.error || JSON.stringify(result.body).slice(0, 300);
+      return res.status(500).json({ error: 'Erro da API: ' + msg });
+    }
+
+    // Parse image from response
+    const content = result.body?.choices?.[0]?.message?.content;
+    let imageUrl = null;
+
+    if (Array.isArray(content)) {
+      const imgPart = content.find(p => p.type === 'image_url');
+      if (imgPart) imageUrl = imgPart.image_url?.url;
+      // some models return inline_data
+      const inlinePart = content.find(p => p.type === 'image' || p.inline_data);
+      if (!imageUrl && inlinePart) {
+        const b64 = inlinePart.inline_data?.data || inlinePart.image;
+        const mime = inlinePart.inline_data?.mime_type || 'image/png';
+        if (b64) imageUrl = `data:${mime};base64,${b64}`;
+      }
+    } else if (typeof content === 'string') {
+      if (content.startsWith('data:image') || content.startsWith('http')) {
+        imageUrl = content;
+      } else {
+        const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+        if (mdMatch) imageUrl = mdMatch[1];
+        else {
+          const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(png|jpg|jpeg|webp)/i);
+          if (urlMatch) imageUrl = urlMatch[0];
+        }
+      }
+    }
+
+    if (!imageUrl) {
+      return res.status(500).json({ error: 'Modelo não retornou imagem. Tente outro modelo.', debug: typeof content === 'string' ? content.slice(0, 200) : JSON.stringify(content).slice(0, 200) });
+    }
+
+    // Save to disk and serve
+    const ext = imageUrl.includes('png') ? 'png' : 'jpg';
+    const fname = `img-${Date.now()}.${ext}`;
+    const fpath = path.join(UPLOAD_DIR, fname);
+
+    if (imageUrl.startsWith('data:image')) {
+      const b64 = imageUrl.split(',')[1];
+      fs.writeFileSync(fpath, Buffer.from(b64, 'base64'));
+    } else {
+      // Download from URL
+      const dlBuf = await new Promise((resolve, reject) => {
+        const u = new URL(imageUrl);
+        const lib = u.protocol === 'https:' ? https : require('http');
+        const doReq = (urlStr, hops) => {
+          if (hops > 5) return reject(new Error('Too many redirects'));
+          const pu = new URL(urlStr);
+          lib.get({ hostname: pu.hostname, path: pu.pathname + pu.search }, resp => {
+            if ([301,302,307,308].includes(resp.statusCode)) return doReq(resp.headers.location, hops+1);
+            const chunks = [];
+            resp.on('data', c => chunks.push(c));
+            resp.on('end', () => resolve(Buffer.concat(chunks)));
+          }).on('error', reject);
+        };
+        doReq(imageUrl, 0);
+      });
+      fs.writeFileSync(fpath, dlBuf);
+    }
+
+    scheduleDelete(fpath, 3600000);
+    return res.json({ url: `/uploads/${fname}` });
   } catch (err) {
     return res.status(500).json({ error: 'Erro: ' + err.message });
   }
