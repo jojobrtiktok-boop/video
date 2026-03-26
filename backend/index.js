@@ -67,19 +67,7 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     const cy = y >= 0 ? y : `ih-${h}`;
     const oy = y >= 0 ? y : `main_h-${h}`;
 
-    // Feathered blur: soft edges fade naturally into the video.
-    // feather = number of pixels over which alpha ramps from 0â†’255 at each edge.
-    // In filter_complex option values, literal commas must be escaped as \,
-    // (JS \\, â†’ string \, â†’ ffmpeg sees escaped comma â†’ geq gets literal comma).
-    const feather = Math.max(20, Math.min(Math.round(Math.min(w > 0 ? w : h, h) * 0.35), 70));
-    const maskExpr = `clip(min(min(X\\,W-1-X)\\,min(Y\\,H-1-Y))*255/${feather}\\,0\\,255)`;
-    const blurFilter = [
-      `[0:v]crop=${cw}:${h}:${x}:${cy},gblur=sigma=50,split[blur1][blur2]`,
-      `[blur1]geq=lum=${maskExpr}[alphamsk]`,
-      `[blur2]format=yuva420p[crop_yuva]`,
-      `[crop_yuva][alphamsk]alphamerge[blr_soft]`,
-      `[0:v][blr_soft]overlay=${x}:${oy}`
-    ].join(';');
+    const blurFilter = `[0:v]split[main][tmp];[tmp]crop=${cw}:${h}:${x}:${cy},gblur=sigma=20[blurred];[main][blurred]overlay=${x}:${oy}`;
     const cmd = `"${FFMPEG}" -y -i "${input}" -filter_complex "${blurFilter}" -c:a copy "${output}"`;
     exec(cmd, (err, stdout, stderr) => {
       fs.unlink(input, () => {});
