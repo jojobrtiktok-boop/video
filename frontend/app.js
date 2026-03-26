@@ -48,55 +48,6 @@ if (navVideoLib) {
 }
 const API = '';
 
-// ════════════════════════════════════════════════════════════════════
-// BIBLIOTECA LIPSYNC
-// ════════════════════════════════════════════════════════════════════
-const lipsyncLibrarySection = document.getElementById('tool-lipsync-library');
-const lipsyncLibraryList = document.getElementById('lipsync-library-list');
-function renderLipsyncLibrary(items) {
-  if (!lipsyncLibraryList) return;
-  if (!items.length) {
-    lipsyncLibraryList.innerHTML = '<div class="empty-msg">Nenhum vídeo lipsync gerado ainda.</div>';
-    return;
-  }
-  lipsyncLibraryList.innerHTML = items.map(item => `
-    <div class="library-item ${item.status}">
-      <div class="lib-info">
-        <span class="lib-status">${item.status === 'done' ? '✅' : (item.status === 'processing' ? '⏳' : '❌')}</span>
-        <span class="lib-title">${item.url ? item.url.split('/').pop() : 'Vídeo em processamento'}</span>
-        <span class="lib-progress">${item.status === 'done' ? '100%' : (item.progress + '%')}</span>
-        <span class="lib-expiry">${item.expiresAt ? 'Expira em ' + Math.max(0, Math.floor((item.expiresAt - Date.now())/60000)) + ' min' : ''}</span>
-      </div>
-      <div class="lib-actions">
-        ${item.url && item.status === 'done' ? `<a href="${API + item.url}" download class="download-btn">⬇ Baixar</a> <video src="${API + item.url}" controls style="max-width:120px;max-height:60px;"></video>` : ''}
-        ${item.status === 'error' ? `<span class="lib-error">${item.error || 'Erro'}</span>` : ''}
-      </div>
-    </div>
-  `).join('');
-}
-
-async function fetchLipsyncLibrary() {
-  try {
-    const resp = await fetch(API + '/api/lipsync-library');
-    const json = await resp.json();
-    if (json.items) renderLipsyncLibrary(json.items);
-  } catch (e) {
-    if (lipsyncLibraryList) lipsyncLibraryList.innerHTML = '<div class="error-msg">Erro ao carregar biblioteca.</div>';
-  }
-}
-
-// Atualiza biblioteca ao abrir a seção
-const navLipsyncLib = document.querySelector('.nav-item[data-tool="lipsync-library"]');
-if (navLipsyncLib) {
-  navLipsyncLib.addEventListener('click', () => {
-    fetchLipsyncLibrary();
-    // Atualiza a cada 10s enquanto estiver visível
-    let interval = setInterval(() => {
-      if (lipsyncLibrarySection && lipsyncLibrarySection.style.display !== 'none') fetchLipsyncLibrary();
-      else clearInterval(interval);
-    }, 10000);
-  });
-}
 // ── TOOL NAVIGATION ────────────────────────────────────────────────────────
 function showTool(name) {
   document.querySelectorAll('.tool-panel').forEach(p => {
