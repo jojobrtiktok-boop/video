@@ -1223,20 +1223,75 @@ if (lipSubmitBtn) {
 
   // ─── IMAGE GENERATION ─────────────────────────────────────────────────────
   (function initImageGen() {
-    const igApiKey    = document.getElementById('ig-apikey');
-    const igSaveKey   = document.getElementById('ig-save-key');
-    const igSubmit    = document.getElementById('ig-submit-btn');
+    const igSubmit = document.getElementById('ig-submit-btn');
     if (!igSubmit) return;
 
-    // Restore saved key (shared with video gen)
-    const saved = localStorage.getItem('or_api_key');
-    if (saved && igApiKey) igApiKey.value = saved;
+    let currentProvider = localStorage.getItem('ig_provider') || 'openrouter';
+    let selectedModel = 'google/gemini-3.1-flash-image-preview';
+    let selectedModelName = 'Nano Banana 2.5';
 
+    // Restore saved keys
+    const igApikeyOR     = document.getElementById('ig-apikey');
+    const igApikeyGoogle = document.getElementById('ig-google-apikey');
+    const savedOR     = localStorage.getItem('or_api_key');
+    const savedGoogle = localStorage.getItem('google_api_key');
+    if (igApikeyOR && savedOR)         igApikeyOR.value = savedOR;
+    if (igApikeyGoogle && savedGoogle) igApikeyGoogle.value = savedGoogle;
+
+    // Provider toggle
+    const igTrigger  = document.getElementById('ig-select-trigger');
+    const igDropdown = document.getElementById('ig-select-dropdown');
+    const igSelName  = document.getElementById('ig-select-name');
+    const igSelDesc  = document.getElementById('ig-select-desc');
+
+    function setProvider(p) {
+      currentProvider = p;
+      localStorage.setItem('ig_provider', p);
+      document.querySelectorAll('.ig-provider-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.provider === p);
+      });
+      const orWrap     = document.getElementById('ig-or-key-wrap');
+      const googleWrap = document.getElementById('ig-google-key-wrap');
+      if (orWrap)     orWrap.style.display     = p === 'openrouter' ? '' : 'none';
+      if (googleWrap) googleWrap.style.display = p === 'google'     ? '' : 'none';
+      // Show/hide model options by provider
+      if (igDropdown) {
+        igDropdown.querySelectorAll('.vg-option').forEach(opt => {
+          opt.style.display = opt.dataset.provider === p ? '' : 'none';
+        });
+        // Auto-select first visible option for the new provider
+        const first = igDropdown.querySelector(`.vg-option[data-provider="${p}"]`);
+        if (first) {
+          igDropdown.querySelectorAll('.vg-option').forEach(o => o.classList.remove('active'));
+          first.classList.add('active');
+          selectedModel     = first.dataset.model;
+          selectedModelName = first.dataset.name;
+          if (igSelName) igSelName.textContent = first.dataset.name;
+          if (igSelDesc) igSelDesc.textContent = first.dataset.desc;
+        }
+      }
+    }
+
+    document.querySelectorAll('.ig-provider-btn').forEach(btn => {
+      btn.addEventListener('click', () => setProvider(btn.dataset.provider));
+    });
+    setProvider(currentProvider);
+
+    // Save keys
+    const igSaveKey = document.getElementById('ig-save-key');
     if (igSaveKey) igSaveKey.addEventListener('click', () => {
-      if (igApiKey && igApiKey.value.trim()) {
-        localStorage.setItem('or_api_key', igApiKey.value.trim());
+      if (igApikeyOR && igApikeyOR.value.trim()) {
+        localStorage.setItem('or_api_key', igApikeyOR.value.trim());
         igSaveKey.textContent = '✅ Salvo!';
         setTimeout(() => { igSaveKey.textContent = '💾 Salvar'; }, 1500);
+      }
+    });
+    const igGoogleSaveKey = document.getElementById('ig-google-save-key');
+    if (igGoogleSaveKey) igGoogleSaveKey.addEventListener('click', () => {
+      if (igApikeyGoogle && igApikeyGoogle.value.trim()) {
+        localStorage.setItem('google_api_key', igApikeyGoogle.value.trim());
+        igGoogleSaveKey.textContent = '✅ Salvo!';
+        setTimeout(() => { igGoogleSaveKey.textContent = '💾 Salvar'; }, 1500);
       }
     });
 
@@ -1255,9 +1310,9 @@ if (lipSubmitBtn) {
 
     // Upload previews
     function setupUpload(inputId, previewId, boxId) {
-      const input = document.getElementById(inputId);
+      const input   = document.getElementById(inputId);
       const preview = document.getElementById(previewId);
-      const box = document.getElementById(boxId);
+      const box     = document.getElementById(boxId);
       if (!input || !preview) return;
       input.addEventListener('change', () => {
         const file = input.files[0];
@@ -1267,30 +1322,22 @@ if (lipSubmitBtn) {
           preview.src = e.target.result;
           preview.classList.add('visible');
           if (box) box.classList.add('has-file');
-          // hide hint/icon
           box.querySelectorAll('.ig-upload-icon, .ig-upload-hint').forEach(el => el.style.display = 'none');
         };
         reader.readAsDataURL(file);
       });
     }
-    setupUpload('ig-ref-input', 'ig-ref-preview', 'ig-ref-box');
+    setupUpload('ig-ref-input',  'ig-ref-preview',  'ig-ref-box');
     setupUpload('ig-prod-input', 'ig-prod-preview', 'ig-prod-box');
 
     // Model dropdown
-    let selectedModel = 'google/gemini-3.1-flash-image-preview';
-    let selectedModelName = 'Nano Banana 2.5';
-    const igTrigger   = document.getElementById('ig-select-trigger');
-    const igDropdown  = document.getElementById('ig-select-dropdown');
-    const igSelName   = document.getElementById('ig-select-name');
-    const igSelDesc   = document.getElementById('ig-select-desc');
-
     if (igTrigger) igTrigger.addEventListener('click', e => {
       e.stopPropagation();
       igTrigger.classList.toggle('open');
       igDropdown.classList.toggle('open');
     });
     document.addEventListener('click', () => {
-      if (igTrigger) igTrigger.classList.remove('open');
+      if (igTrigger)  igTrigger.classList.remove('open');
       if (igDropdown) igDropdown.classList.remove('open');
     });
     if (igDropdown) igDropdown.addEventListener('click', e => {
@@ -1298,7 +1345,7 @@ if (lipSubmitBtn) {
       if (!opt) return;
       igDropdown.querySelectorAll('.vg-option').forEach(o => o.classList.remove('active'));
       opt.classList.add('active');
-      selectedModel = opt.dataset.model;
+      selectedModel     = opt.dataset.model;
       selectedModelName = opt.dataset.name;
       if (igSelName) igSelName.textContent = opt.dataset.name;
       if (igSelDesc) igSelDesc.textContent = opt.dataset.desc;
@@ -1315,8 +1362,13 @@ if (lipSubmitBtn) {
     const igDown     = document.getElementById('ig-download-btn');
 
     igSubmit.addEventListener('click', async () => {
-      const apiKey = igApiKey ? igApiKey.value.trim() : '';
-      if (!apiKey) { alert('Informe sua API key da OpenRouter'); return; }
+      const apiKey = currentProvider === 'google'
+        ? (igApikeyGoogle ? igApikeyGoogle.value.trim() : '')
+        : (igApikeyOR     ? igApikeyOR.value.trim()     : '');
+      if (!apiKey) {
+        alert('Informe sua API key do ' + (currentProvider === 'google' ? 'Google AI Studio (aistudio.google.com)' : 'OpenRouter'));
+        return;
+      }
 
       const prompt = currentMode === 'clone'
         ? (document.getElementById('ig-clone-prompt')?.value.trim() || '')
@@ -1324,9 +1376,9 @@ if (lipSubmitBtn) {
       if (!prompt) { alert('Escreva um prompt'); return; }
 
       let referenceBase64 = null;
-      let productBase64 = null;
+      let productBase64   = null;
       if (currentMode === 'clone') {
-        const refInput = document.getElementById('ig-ref-input');
+        const refInput  = document.getElementById('ig-ref-input');
         const prodInput = document.getElementById('ig-prod-input');
         if (refInput?.files?.[0])  referenceBase64 = await fileToDataUrl(refInput.files[0]);
         if (prodInput?.files?.[0]) productBase64   = await fileToDataUrl(prodInput.files[0]);
@@ -1341,7 +1393,7 @@ if (lipSubmitBtn) {
         const resp = await fetch(API + '/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, referenceBase64, productBase64 })
+          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, provider: currentProvider, referenceBase64, productBase64 })
         });
         const json = await resp.json();
         if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);

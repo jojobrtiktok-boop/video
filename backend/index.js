@@ -594,92 +594,163 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
 
 // ─── IMAGE GENERATION ────────────────────────────────────────────────────────
 app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res) => {
-  const { prompt, imageModel, apiKey, mode, referenceBase64, productBase64 } = req.body || {};
+  const { prompt, imageModel, apiKey, mode, provider, referenceBase64, productBase64 } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
-  if (!apiKey)  return res.status(400).json({ error: 'Informe sua API key da OpenRouter.' });
+  if (!apiKey)  return res.status(400).json({ error: 'Informe sua API key.' });
 
   try {
-    const model = imageModel || 'google/gemini-3.1-flash-image-preview';
-
-    // Build message content — include reference images for clone mode
-    let messageContent;
-    if (mode === 'clone' && (referenceBase64 || productBase64)) {
-      messageContent = [];
-      if (referenceBase64) messageContent.push({ type: 'image_url', image_url: { url: referenceBase64 } });
-      if (productBase64)   messageContent.push({ type: 'image_url', image_url: { url: productBase64 } });
-      messageContent.push({ type: 'text', text: prompt });
-    } else {
-      messageContent = prompt;
-    }
-
-    const payload = JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: messageContent }]
-    });
-
-    const result = await new Promise((resolve, reject) => {
-      const req2 = https.request({
-        hostname: 'openrouter.ai',
-        path: '/api/v1/chat/completions',
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-          'HTTP-Referer': 'https://videoforge.app',
-          'X-Title': 'VideoForge'
-        }
-      }, resp => {
-        let raw = '';
-        resp.on('data', c => raw += c);
-        resp.on('end', () => {
-          try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-          catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
-        });
-      });
-      req2.on('error', reject);
-      req2.write(payload);
-      req2.end();
-    });
-
-    if (result.status >= 400) {
-      const msg = result.body?.error?.message || result.body?.error || JSON.stringify(result.body).slice(0, 300);
-      return res.status(500).json({ error: 'Erro da API: ' + msg });
-    }
-
-    // Parse image from response
-    const content = result.body?.choices?.[0]?.message?.content;
     let imageUrl = null;
 
-    if (Array.isArray(content)) {
-      const imgPart = content.find(p => p.type === 'image_url');
-      if (imgPart) imageUrl = imgPart.image_url?.url;
-      // some models return inline_data
-      const inlinePart = content.find(p => p.type === 'image' || p.inline_data);
-      if (!imageUrl && inlinePart) {
-        const b64 = inlinePart.inline_data?.data || inlinePart.image;
-        const mime = inlinePart.inline_data?.mime_type || 'image/png';
-        if (b64) imageUrl = `data:${mime};base64,${b64}`;
-      }
-    } else if (typeof content === 'string') {
-      if (content.startsWith('data:image') || content.startsWith('http')) {
-        imageUrl = content;
+    if (provider === 'google') {
+      // ── Google AI (generativelanguage.googleapis.com) ──────────────────────
+      const model    = imageModel || 'gemini-2.0-flash-exp-image-generation';
+      const isImagen = model.startsWith('imagen-');
+
+      let apiPath, payload;
+      if (isImagen) {
+        // Imagen 3 — text-to-image only
+        apiPath = `/v1beta/models/${model}:predict?key=${apiKey}`;
+        payload = JSON.stringify({
+          instances:  [{ prompt }],
+          parameters: { sampleCount: 1, aspectRatio: '1:1' }
+        });
       } else {
-        const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
-        if (mdMatch) imageUrl = mdMatch[1];
-        else {
-          const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(png|jpg|jpeg|webp)/i);
-          if (urlMatch) imageUrl = urlMatch[0];
+        // Gemini image generation — supports reference images for clone mode
+        const parts = [];
+        if (mode === 'clone' && referenceBase64) {
+          const b64data   = referenceBase64.includes(',') ? referenceBase64.split(',')[1] : referenceBase64;
+          const mimeMatch = referenceBase64.match(/data:([^;]+);/);
+          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
+        }
+        if (mode === 'clone' && productBase64) {
+          const b64data   = productBase64.includes(',') ? productBase64.split(',')[1] : productBase64;
+          const mimeMatch = productBase64.match(/data:([^;]+);/);
+          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
+        }
+        parts.push({ text: prompt });
+        apiPath = `/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        payload = JSON.stringify({
+          contents:         [{ parts }],
+          generationConfig: { responseModalities: ['IMAGE'] }
+        });
+      }
+
+      const gResult = await new Promise((resolve, reject) => {
+        const req2 = https.request({
+          hostname: 'generativelanguage.googleapis.com',
+          path:     apiPath,
+          method:   'POST',
+          headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+        }, resp => {
+          let raw = '';
+          resp.on('data', c => raw += c);
+          resp.on('end', () => {
+            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+            catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
+          });
+        });
+        req2.on('error', reject);
+        req2.write(payload);
+        req2.end();
+      });
+
+      if (gResult.status >= 400) {
+        const msg = gResult.body?.error?.message || JSON.stringify(gResult.body).slice(0, 300);
+        return res.status(500).json({ error: 'Erro Google AI: ' + msg });
+      }
+
+      if (isImagen) {
+        const pred = gResult.body?.predictions?.[0];
+        if (pred?.bytesBase64Encoded) {
+          imageUrl = `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
+        }
+      } else {
+        const gParts = gResult.body?.candidates?.[0]?.content?.parts;
+        if (Array.isArray(gParts)) {
+          const imgPart = gParts.find(p => p.inlineData);
+          if (imgPart) imageUrl = `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`;
+        }
+      }
+
+    } else {
+      // ── OpenRouter ─────────────────────────────────────────────────────────
+      const model = imageModel || 'google/gemini-3.1-flash-image-preview';
+
+      let messageContent;
+      if (mode === 'clone' && (referenceBase64 || productBase64)) {
+        messageContent = [];
+        if (referenceBase64) messageContent.push({ type: 'image_url', image_url: { url: referenceBase64 } });
+        if (productBase64)   messageContent.push({ type: 'image_url', image_url: { url: productBase64 } });
+        messageContent.push({ type: 'text', text: prompt });
+      } else {
+        messageContent = prompt;
+      }
+
+      const payload = JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: messageContent }]
+      });
+
+      const orResult = await new Promise((resolve, reject) => {
+        const req2 = https.request({
+          hostname: 'openrouter.ai',
+          path:     '/api/v1/chat/completions',
+          method:   'POST',
+          headers:  {
+            'Authorization':  `Bearer ${apiKey}`,
+            'Content-Type':   'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+            'HTTP-Referer':   'https://videoforge.app',
+            'X-Title':        'VideoForge'
+          }
+        }, resp => {
+          let raw = '';
+          resp.on('data', c => raw += c);
+          resp.on('end', () => {
+            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+            catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
+          });
+        });
+        req2.on('error', reject);
+        req2.write(payload);
+        req2.end();
+      });
+
+      if (orResult.status >= 400) {
+        const msg = orResult.body?.error?.message || orResult.body?.error || JSON.stringify(orResult.body).slice(0, 300);
+        return res.status(500).json({ error: 'Erro da API: ' + msg });
+      }
+
+      const content = orResult.body?.choices?.[0]?.message?.content;
+      if (Array.isArray(content)) {
+        const imgPart = content.find(p => p.type === 'image_url');
+        if (imgPart) imageUrl = imgPart.image_url?.url;
+        const inlinePart = content.find(p => p.type === 'image' || p.inline_data);
+        if (!imageUrl && inlinePart) {
+          const b64  = inlinePart.inline_data?.data || inlinePart.image;
+          const mime = inlinePart.inline_data?.mime_type || 'image/png';
+          if (b64) imageUrl = `data:${mime};base64,${b64}`;
+        }
+      } else if (typeof content === 'string') {
+        if (content.startsWith('data:image') || content.startsWith('http')) {
+          imageUrl = content;
+        } else {
+          const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+          if (mdMatch) imageUrl = mdMatch[1];
+          else {
+            const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(png|jpg|jpeg|webp)/i);
+            if (urlMatch) imageUrl = urlMatch[0];
+          }
         }
       }
     }
 
     if (!imageUrl) {
-      return res.status(500).json({ error: 'Modelo não retornou imagem. Tente outro modelo.', debug: typeof content === 'string' ? content.slice(0, 200) : JSON.stringify(content).slice(0, 200) });
+      return res.status(500).json({ error: 'Modelo não retornou imagem. Tente outro modelo.' });
     }
 
     // Save to disk and serve
-    const ext = imageUrl.includes('png') ? 'png' : 'jpg';
+    const ext   = imageUrl.includes('png') ? 'png' : 'jpg';
     const fname = `img-${Date.now()}.${ext}`;
     const fpath = path.join(UPLOAD_DIR, fname);
 
