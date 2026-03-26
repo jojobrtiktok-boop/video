@@ -192,22 +192,30 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   }
 
   if (mode === 'simple') {
-    const x = parseInt(req.body.x) || 0;
-    const y = parseInt(req.body.y) || 0;
-    const w = parseInt(req.body.w) || 100;
-    const h = parseInt(req.body.h) || 60;
-    const cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
-    exec(cmd, (err, stdout, stderr) => {
-      fs.unlink(input, () => {});
-      if (err) return res.status(500).json({ error: String(err), stderr });
-      scheduleDelete(output, 30 * 60 * 1000);
-      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '⚡ Remoção Simples', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
-      addToLibrary(libEntry);
-      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+    const M = 3;
+    let x = Math.max(M, parseInt(req.body.x) || 0);
+    let y = Math.max(M, parseInt(req.body.y) || 0);
+    let w = parseInt(req.body.w) || 100;
+    let h = parseInt(req.body.h) || 60;
+    // Precisamos do tamanho real do vídeo para o clamp direito
+    exec(`"${FFPROBE}" -v quiet -print_format json -show_streams "${input}"`, (pe, po) => {
+      let vw = 9999, vh = 9999;
+      if (!pe) { try { const vs = JSON.parse(po).streams.find(s => s.codec_type === 'video'); if (vs) { vw = vs.width; vh = vs.height; } } catch(_){} }
+      if (x + w >= vw - M) w = vw - M - x;
+      if (y + h >= vh - M) h = vh - M - y;
+      w = Math.max(1, w); h = Math.max(1, h);
+      const cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
+      exec(cmd, (err, stdout, stderr) => {
+        fs.unlink(input, () => {});
+        if (err) return res.status(500).json({ error: String(err), stderr });
+        scheduleDelete(output, 30 * 60 * 1000);
+        const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '⚡ Remoção Simples', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+        addToLibrary(libEntry);
+        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+      });
     });
     return;
   }
-
   if (mode === 'delogo') {
     const x = parseInt(req.body.x) || 0;
     const y = parseInt(req.body.y) || 0;
