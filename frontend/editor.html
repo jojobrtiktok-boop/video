@@ -695,23 +695,14 @@
         <div class="section-label">API Key (OpenRouter)</div>
         <div class="vg-api-row">
           <input type="password" id="vg-apikey" placeholder="sk-or-v1-..." autocomplete="off">
+          <button id="vg-save-key" style="padding:9px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s">💾 Salvar</button>
         </div>
-        <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">Obtida em <strong>openrouter.ai/keys</strong> — não é salva no servidor</p>
+        <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">Obtida em <strong>openrouter.ai/keys</strong> — salva só no seu navegador</p>
       </div>
 
       <div class="card">
-        <div class="section-label">Sua ideia / comando</div>
-        <textarea id="vg-prompt" class="vg-prompt-area" placeholder="Ex: Vídeo impactante sobre benefícios do café para redes sociais, estilo lifestyle moderno..."></textarea>
-
-        <div class="hook-ai-row">
-          <label>IA do Hook:</label>
-          <select id="vg-hook-ai">
-            <option value="google/gemini-flash-1.5">Gemini Flash 1.5 — $0.000075/1k</option>
-            <option value="openai/gpt-4o-mini">GPT-4o Mini — $0.00015/1k</option>
-            <option value="anthropic/claude-haiku-3-5">Claude Haiku 3.5 — $0.001/1k</option>
-            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash — $0.0001/1k</option>
-          </select>
-        </div>
+        <div class="section-label">Seu comando / prompt</div>
+        <textarea id="vg-prompt" class="vg-prompt-area" placeholder="Ex: Vídeo impactante de 8s sobre benefícios do café, estilo lifestyle moderno, câmera dinâmica..."></textarea>
       </div>
 
       <div class="card">

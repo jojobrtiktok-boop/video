@@ -1104,12 +1104,17 @@ if (lipSubmitBtn) {
   const savedKey = localStorage.getItem('or_api_key');
   if (savedKey && vgApiKey) vgApiKey.value = savedKey;
 
-  // Save key on input
-  if (vgApiKey) vgApiKey.addEventListener('input', () => {
-    if (vgApiKey.value.trim()) localStorage.setItem('or_api_key', vgApiKey.value.trim());
-    else localStorage.removeItem('or_api_key');
+  // Save key button
+  const vgSaveKey = document.getElementById('vg-save-key');
+  if (vgSaveKey) vgSaveKey.addEventListener('click', () => {
+    if (vgApiKey && vgApiKey.value.trim()) {
+      localStorage.setItem('or_api_key', vgApiKey.value.trim());
+      vgSaveKey.textContent = '✅ Salvo!';
+      setTimeout(() => { vgSaveKey.textContent = '💾 Salvar'; }, 1500);
+    } else {
+      localStorage.removeItem('or_api_key');
+    }
   });
-  const vgHookAi    = document.getElementById('vg-hook-ai');
   const vgDuration  = document.getElementById('vg-duration');
   const vgDurVal    = document.getElementById('vg-duration-val');
   const vgCostEst   = document.getElementById('vg-cost-est');
@@ -1158,7 +1163,7 @@ if (lipSubmitBtn) {
     if (!prompt) { alert('Escreva sua ideia no campo de comando'); return; }
 
     vgSubmit.disabled = true; vgSubmit.textContent = '⏳ Gerando...';
-    vgProgress.style.display = 'block'; vgStatus.textContent = '🤖 Hook IA refinando sua ideia...';
+    vgProgress.style.display = 'block'; vgStatus.textContent = '🎬 Enviando para ' + selectedVideoModel + '...';
     vgError.style.display = 'none'; vgRefined.style.display = 'none'; vgResultCard.style.display = 'none';
 
     try {
@@ -1168,20 +1173,14 @@ if (lipSubmitBtn) {
         body: JSON.stringify({
           prompt,
           videoModel: selectedVideoModel,
-          hookModel: vgHookAi ? vgHookAi.value : 'google/gemini-flash-1.5',
           duration: vgDuration ? parseInt(vgDuration.value) : 8,
           apiKey
         })
       });
 
-      vgStatus.textContent = '🎬 Gerando vídeo com ' + selectedVideoModel + '...';
+      vgStatus.textContent = '🎬 Aguardando resposta de ' + selectedVideoModel + '...';
       const json = await resp.json();
       if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-
-      if (json.refinedPrompt) {
-        vgRefinedTx.textContent = json.refinedPrompt;
-        vgRefined.style.display = 'block';
-      }
 
       if (json.url) {
         vgResultVid.src = json.url;
@@ -1192,7 +1191,7 @@ if (lipSubmitBtn) {
     } catch (err) {
       vgError.style.display = 'block'; vgError.textContent = 'Erro: ' + err.message;
     } finally {
-      vgSubmit.disabled = false; vgSubmit.textContent = '🎬 Gerar Vídeo com Hook';
+      vgSubmit.disabled = false; vgSubmit.textContent = '🎬 Gerar Vídeo';
       vgProgress.style.display = 'none'; vgStatus.textContent = '';
     }
   });

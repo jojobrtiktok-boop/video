@@ -478,11 +478,9 @@ app.post('/api/extract/transcribe', upload.single('video'), (req, res) => {
 
 // ── GENERATE VIDEO via OpenRouter ─────────────────────────────────────────────
 app.post('/api/generate-video', express.json(), async (req, res) => {
-  const { prompt, videoModel, hookModel, duration, apiKey } = req.body || {};
+  const { prompt, videoModel, duration, apiKey } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'Prompt e obrigatorio.' });
   if (!apiKey)  return res.status(400).json({ error: 'Informe sua API key da OpenRouter.' });
-
-  const OPENROUTER_URL = 'https://openrouter.ai/api/v1';
 
   function openrouterFetch(endpoint, body) {
     return new Promise((resolve, reject) => {
@@ -514,49 +512,28 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
   }
 
   try {
-    // Step 1: Hook specialist AI refines prompt
-    const hookSystemMsg = 'Voce e um especialista em hooks virais para video. Transforme a ideia do usuario em um prompt visual otimizado para geracao de video. Foque em: abertura visual forte, acao dinamica, sujeito claro, iluminacao, angulo de camera, mood. Maximo 250 caracteres. Responda APENAS com o prompt de video, sem explicacoes.';
-    const selectedHookModel = hookModel || 'google/gemini-flash-1.5';
-
-    const hookResp = await openrouterFetch('chat/completions', {
-      model: selectedHookModel,
-      messages: [
-        { role: 'system', content: hookSystemMsg },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 300
-    });
-
-    if (hookResp.status !== 200 || hookResp.body.error) {
-      return res.status(500).json({ error: 'Hook AI falhou: ' + (hookResp.body.error?.message || JSON.stringify(hookResp.body)) });
-    }
-
-    const refinedPrompt = hookResp.body.choices?.[0]?.message?.content?.trim() || prompt;
-
-    // Step 2: Generate video
     const selectedVideoModel = videoModel || 'google/veo-3-flash';
     const videoDuration = Math.max(4, Math.min(60, parseInt(duration) || 8));
 
     const videoResp = await openrouterFetch('images/generations', {
       model: selectedVideoModel,
-      prompt: refinedPrompt,
+      prompt,
       duration: videoDuration,
       n: 1
     });
 
     if (videoResp.status !== 200 || videoResp.body.error) {
       return res.status(500).json({
-        error: 'Geracao de video falhou: ' + (videoResp.body.error?.message || JSON.stringify(videoResp.body)),
-        refinedPrompt
+        error: 'Geracao de video falhou: ' + (videoResp.body.error?.message || JSON.stringify(videoResp.body))
       });
     }
 
     const videoUrl = videoResp.body.data?.[0]?.url;
     if (!videoUrl) {
-      return res.status(500).json({ error: 'API nao retornou URL do video.', raw: videoResp.body, refinedPrompt });
+      return res.status(500).json({ error: 'API nao retornou URL do video.', raw: videoResp.body });
     }
 
-    return res.json({ url: videoUrl, refinedPrompt });
+    return res.json({ url: videoUrl });
   } catch (err) {
     return res.status(500).json({ error: 'Erro: ' + err.message });
   }
