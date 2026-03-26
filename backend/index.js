@@ -661,49 +661,30 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
 app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res) => {
   const { prompt, imageModel, apiKey, mode, referenceBase64, productBase64 } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
-  if (!apiKey)  return res.status(400).json({ error: 'Informe sua API key.' });
+  const authHeader = req.headers['authorization'] || '';
+  const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!accessToken) return res.status(400).json({ error: 'Informe seu Access Token OAuth2 do Vertex AI no header Authorization.' });
 
   try {
-    // Google AI Studio (generativelanguage.googleapis.com)
+    // Vertex AI (vertex.googleapis.com)
     let imageUrl = null;
-    const model    = imageModel || 'gemini-2.0-flash-exp-image-generation';
-    const isImagen = model.startsWith('imagen-');
-
-    let apiPath, payload;
-    if (isImagen) {
-      // Imagen 3 — text-to-image only
-      apiPath = `/v1beta/models/${model}:predict?key=${apiKey}`;
-      payload = JSON.stringify({
-        instances:  [{ prompt }],
-        parameters: { sampleCount: 1, aspectRatio: '1:1' }
-      });
-    } else {
-      // Gemini image generation — supports reference images for clone mode
-      const parts = [];
-      if (mode === 'clone' && referenceBase64) {
-        const b64data   = referenceBase64.includes(',') ? referenceBase64.split(',')[1] : referenceBase64;
-        const mimeMatch = referenceBase64.match(/data:([^;]+);/);
-        parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
-      }
-      if (mode === 'clone' && productBase64) {
-        const b64data   = productBase64.includes(',') ? productBase64.split(',')[1] : productBase64;
-        const mimeMatch = productBase64.match(/data:([^;]+);/);
-        parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
-      }
-      parts.push({ text: prompt });
-      apiPath = `/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      payload = JSON.stringify({
-        contents:         [{ parts }],
-        generationConfig: { responseModalities: ['IMAGE'] }
-      });
-    }
+    const model = imageModel || 'imagen-3';
+    const endpoint = `/v1/projects/YOUR_PROJECT_ID/locations/us-central1/publishers/google/models/${model}:predict`;
+    const payload = JSON.stringify({
+      instances: [{ prompt }],
+      parameters: { sampleCount: 1, aspectRatio: '1:1' }
+    });
 
     const gResult = await new Promise((resolve, reject) => {
       const req2 = https.request({
-        hostname: 'generativelanguage.googleapis.com',
-        path:     apiPath,
-        method:   'POST',
-        headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+        hostname: 'us-central1-aiplatform.googleapis.com',
+        path: endpoint,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'Authorization': 'Bearer ' + accessToken
+        }
       }, resp => {
         let raw = '';
         resp.on('data', c => raw += c);

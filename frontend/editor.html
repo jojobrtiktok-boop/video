@@ -1126,26 +1126,25 @@
     <div id="tool-imagegen" class="tool-panel" style="display:none">
       <div class="tool-header">
         <h1 class="tool-title">Gerar Imagem</h1>
-        <p class="tool-subtitle">Crie ou clone imagens com IA — OpenRouter, AI Studio ou Vertex AI</p>
+        <p class="tool-subtitle">Crie ou clone imagens com IA — Vertex AI</p>
       </div>
 
       <div class="card">
         <div class="section-label">Provedor de IA</div>
         <div class="ig-provider-row">
-          <button class="ig-provider-btn active" data-provider="google">🟢 AI Studio</button>
+          <button class="ig-provider-btn active" data-provider="vertex">🟢 Vertex AI</button>
         </div>
-        <div id="ig-google-key-wrap" style="margin-top:14px">
-          <div class="section-label">API Key (Google AI Studio)</div>
+        <div id="ig-vertex-key-wrap" style="margin-top:14px">
+          <div class="section-label">Access Token (OAuth2 Vertex AI)</div>
           <div class="vg-api-row">
-            <input type="password" id="ig-google-apikey" placeholder="AIzaSy..." autocomplete="off">
-            <button id="ig-google-save-key" class="btn-secondary">💾 Salvar</button>
+            <input type="password" id="ig-vertex-token" placeholder="ya29..." autocomplete="off">
+            <button id="ig-vertex-save-token" class="btn-secondary">💾 Salvar</button>
           </div>
           <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">
-            Obtenha grátis em <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">aistudio.google.com/apikey</a>
-            &nbsp;—&nbsp; use esta opção para o plano gratuito do Google
+            Gere um Access Token OAuth2 do Google Cloud com permissão Vertex AI.<br>
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">Saiba como gerar</a>
           </p>
         </div>
-        <!-- Vertex AI removido -->
       </div>
 
       <!-- TABS -->

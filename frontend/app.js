@@ -1462,8 +1462,8 @@ if (lipSubmitBtn) {
 
     igSubmit.addEventListener('click', async () => {
       // Só AI Studio
-      const apiKey = igApikeyGoogle ? igApikeyGoogle.value.trim() : '';
-      if (!apiKey) { alert('Informe sua API key do Google AI Studio (aistudio.google.com/apikey)'); return; }
+      const accessToken = igVertexToken ? igVertexToken.value.trim() : '';
+      if (!accessToken) { alert('Informe seu Access Token OAuth2 do Vertex AI'); return; }
 
       const prompt = currentMode === 'clone'
         ? (document.getElementById('ig-clone-prompt')?.value.trim() || '')
@@ -1487,8 +1487,8 @@ if (lipSubmitBtn) {
       try {
         const resp = await fetch(API + '/api/generate-image', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, referenceBase64, productBase64 })
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+          body: JSON.stringify({ prompt, imageModel: selectedModel, mode: currentMode, referenceBase64, productBase64 })
         });
         const json = await resp.json();
         if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
@@ -1501,13 +1501,8 @@ if (lipSubmitBtn) {
         }
       } catch (err) {
         igError.style.display = 'block';
-        let errMsg = err.message;
-        if (errMsg.includes('has not been used') || errMsg.includes('is disabled') || errMsg.includes('Enable it by visiting')) {
-          errMsg = '❌ Chave do Google Cloud detectada! Você deve usar uma chave do AI Studio, não do Google Cloud Console.\n\nAcesse: aistudio.google.com/apikey \u2192 “Create API Key” \u2192 copie a chave (começa com AIzaSy...)';
-        }
-        igError.style.display = 'block';
         igError.style.whiteSpace = 'pre-line';
-        igError.textContent = errMsg;
+        igError.textContent = err.message;
       } finally {
         igSubmit.disabled = false; igSubmit.textContent = '🖼️ Gerar Imagem';
         igProgress.style.display = 'none'; igStatus.textContent = '';
