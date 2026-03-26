@@ -115,7 +115,7 @@ const modeDesc = {
   blur:   'Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.',
   simple: '⚡ Remoção rápida via FFmpeg — ideal para testes. Pode deixar leve artefato na borda.',
   delogo: '✨ Reconstrução avançada de pixels com OpenCV — mais lento, resultado muito mais realista.',
-  sora:   '🎵 Remove automaticamente a marca d\'água do Sora (faixa inferior central, estilo TikTok). Sem precisar selecionar região.',
+  sora:   '🎵 Detecta automaticamente onde a marca d\'água do Sora está em cada frame e reconstrói apenas ali — sem apagar área fixa.',
   heygen: '🤖 Remove automaticamente a marca d\'água do HeyGen (canto inferior direito). Sem precisar selecionar região.',
   ai:     'Inpainting com IA — em breve neste servidor.'
 };

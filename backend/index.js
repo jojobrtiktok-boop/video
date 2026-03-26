@@ -65,7 +65,29 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   const outputName = 'processed-' + path.basename(input);
   const output = path.join(UPLOAD_DIR, outputName);
 
-  if (mode === 'sora' || mode === 'heygen') {
+  if (mode === 'sora') {
+    // Detecção automática por diferença temporal + inpainting por frame
+    const soraScript = path.join(__dirname, 'remove_sora_watermark.py');
+    const cmd = `python3 "${soraScript}" "${input}" "${output}" "${FFMPEG}"`;
+    exec(cmd, { timeout: 15 * 60 * 1000 }, (err, stdout, stderr) => {
+      fs.unlink(input, () => {});
+      if (err) return res.status(500).json({ error: String(err), stderr: stderr || stdout });
+      const expiry = Date.now() + 60 * 60 * 1000;
+      scheduleDelete(output, expiry - Date.now());
+      const libEntry = {
+        id: Date.now().toString() + Math.random().toString(36).slice(2),
+        type: 'watermark', label: '🎵 Sora',
+        url: `/uploads/${path.basename(output)}`,
+        createdAt: Date.now(), expiresAt: expiry
+      };
+      addToLibrary(libEntry);
+      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+    });
+    return;
+  }
+
+  if (mode === 'heygen') {
+    // HeyGen: watermark ESTÁTICA — delogo no canto inferior direito
     const probeCmd = `"${FFPROBE}" -v quiet -print_format json -show_streams "${input}"`;
     exec(probeCmd, (probeErr, probeOut) => {
       let vw = 1080, vh = 1920;
@@ -76,68 +98,32 @@ app.post('/api/process', upload.single('video'), (req, res) => {
           if (vs) { vw = vs.width; vh = vs.height; }
         } catch (_) {}
       }
-
-      let cmd;
-      // delogo precisa de pelo menos 2px de margem de todas as bordas
-      function clampDelogo(x, y, w, h, vw, vh) {
+      function clampDelogo(x, y, w, h) {
         const M = 3;
         x = Math.max(M, x);
         y = Math.max(M, y);
         if (x + w >= vw - M) w = vw - M - x;
         if (y + h >= vh - M) h = vh - M - y;
-        w = Math.max(1, w);
-        h = Math.max(1, h);
-        return { x, y, w, h };
+        return { x, y, w: Math.max(1, w), h: Math.max(1, h) };
       }
-
-      function runDelogo(x, y, w, h, label, cb) {
-        ({ x, y, w, h } = clampDelogo(x, y, w, h, vw, vh));
-        const c = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
-        exec(c, cb);
-      }
-
-      if (mode === 'sora') {
-        // Sora/TikTok: watermark MÓVEL — delogo na faixa inferior (25% altura, largura quase total)
-        // A marca fica sempre nessa faixa, reconstrução de pixels cobre todas as posições
-        const h0 = Math.round(vh * 0.25);
-        const w0 = Math.round(vw * 0.90);
-        const x0 = Math.round((vw - w0) / 2);
-        const y0 = vh - h0;
-        runDelogo(x0, y0, w0, h0, '🎵 Sora', (err, stdout, stderr) => {
-          fs.unlink(input, () => {});
-          if (err) return res.status(500).json({ error: String(err), stderr });
-          const expiry = Date.now() + 60 * 60 * 1000;
-          scheduleDelete(output, expiry - Date.now());
-          const libEntry = {
-            id: Date.now().toString() + Math.random().toString(36).slice(2),
-            type: 'watermark', label: '🎵 Sora',
-            url: `/uploads/${path.basename(output)}`,
-            createdAt: Date.now(), expiresAt: expiry
-          };
-          addToLibrary(libEntry);
-          return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
-        });
-      } else {
-        // HeyGen: watermark ESTÁTICA — delogo no canto inferior direito
-        const h0 = Math.round(vh * 0.13);
-        const w0 = Math.round(vw * 0.38);
-        const x0 = vw - w0;
-        const y0 = vh - h0;
-        runDelogo(x0, y0, w0, h0, '🤖 HeyGen', (err, stdout, stderr) => {
-          fs.unlink(input, () => {});
-          if (err) return res.status(500).json({ error: String(err), stderr });
-          const expiry = Date.now() + 60 * 60 * 1000;
-          scheduleDelete(output, expiry - Date.now());
-          const libEntry = {
-            id: Date.now().toString() + Math.random().toString(36).slice(2),
-            type: 'watermark', label: '🤖 HeyGen',
-            url: `/uploads/${path.basename(output)}`,
-            createdAt: Date.now(), expiresAt: expiry
-          };
-          addToLibrary(libEntry);
-          return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
-        });
-      }
+      const h0 = Math.round(vh * 0.13);
+      const w0 = Math.round(vw * 0.38);
+      const { x, y, w, h } = clampDelogo(vw - w0, vh - h0, w0, h0);
+      const c = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
+      exec(c, (err, stdout, stderr) => {
+        fs.unlink(input, () => {});
+        if (err) return res.status(500).json({ error: String(err), stderr });
+        const expiry = Date.now() + 60 * 60 * 1000;
+        scheduleDelete(output, expiry - Date.now());
+        const libEntry = {
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+          type: 'watermark', label: '🤖 HeyGen',
+          url: `/uploads/${path.basename(output)}`,
+          createdAt: Date.now(), expiresAt: expiry
+        };
+        addToLibrary(libEntry);
+        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+      });
     });
     return;
   }
