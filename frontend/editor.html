@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoForge — Editor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0d17; --surface: #111420; --surface2: #181c2e; --surface3: #1d2135;
+      --border: #252a42; --accent: #6c63ff; --accent-hover: #5a52e8;
+      --success: #22c55e; --error: #ef4444; --text: #e2e8f0; --text-muted: #8892b0;
+      --radius: 12px;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; overflow: hidden; height: 100vh; }
+
+    /* ── LAYOUT ── */
+    .editor-layout { display: flex; height: 100vh; }
+
+    /* ── SIDEBAR ── */
+    .sidebar { width: 240px; min-width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100vh; overflow-y: auto; }
+    .sidebar-logo { font-size: 1.25rem; font-weight: 900; letter-spacing: -0.5px; padding: 22px 20px 0; }
+    .sidebar-logo span { color: var(--accent); }
+    .sidebar-subtitle { font-size: 0.68rem; color: var(--text-muted); padding: 4px 20px 18px; border-bottom: 1px solid var(--border); }
+    .nav-section { padding: 16px 14px 6px; font-size: 0.62rem; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--text-muted); }
+    .nav-item { display: flex; align-items: center; gap: 12px; width: calc(100% - 16px); margin: 2px 8px; padding: 11px 12px; background: transparent; border: 1px solid transparent; border-radius: 10px; cursor: pointer; color: var(--text-muted); font-size: 0.86rem; text-align: left; transition: all 0.15s; }
+    .nav-item:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: rgba(108,99,255,0.14); border-color: rgba(108,99,255,0.28); color: var(--text); }
+    .nav-item:disabled { opacity: 0.38; cursor: not-allowed; }
+    .nav-icon { font-size: 1.2rem; width: 26px; text-align: center; flex-shrink: 0; }
+    .nav-text { flex: 1; }
+    .nav-title { font-weight: 700; font-size: 0.84rem; }
+    .nav-desc { font-size: 0.7rem; color: var(--text-muted); margin-top: 1px; }
+    .nav-item.active .nav-title { color: var(--text); }
+    .pill-soon { font-size: 0.58rem; font-weight: 700; padding: 2px 7px; background: rgba(148,163,184,0.09); border: 1px solid rgba(148,163,184,0.14); border-radius: 99px; color: var(--text-muted); flex-shrink: 0; }
+    .sidebar-footer { margin-top: auto; padding: 16px 10px; border-top: 1px solid var(--border); }
+    .back-btn { display: flex; align-items: center; gap: 8px; padding: 9px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.8rem; font-weight: 700; text-decoration: none; width: 100%; transition: color 0.15s, border-color 0.15s; }
+    .back-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── MAIN ── */
+    .editor-main { flex: 1; overflow-y: auto; background: var(--bg); }
+    .tool-panel { padding: 32px 40px 60px; max-width: 800px; }
+    .tool-header { margin-bottom: 26px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .tool-title { font-size: 1.55rem; font-weight: 900; letter-spacing: -0.5px; }
+    .tool-subtitle { color: var(--text-muted); font-size: 0.88rem; margin-top: 6px; }
+
+    /* ── CARD ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 18px; }
+
+    /* ── DROP ZONE ── */
+    .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; display: block; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(108,99,255,.06); }
+    .drop-zone.has-file { border-color: var(--success); background: rgba(34,197,94,.04); border-style: solid; }
+    .drop-zone svg { width: 30px; height: 30px; color: var(--text-muted); margin: 0 auto 10px; display: block; }
+    .drop-zone p { color: var(--text-muted); font-size: 0.84rem; line-height: 1.6; }
+    .drop-zone strong { color: var(--accent); }
+    .drop-zone.has-file p { color: var(--success); }
+    .dz-filename { margin-top: 8px; font-size: 0.8rem; color: var(--success); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hidden-input { position: fixed; top: -9999px; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+
+    /* ── CANVAS ── */
+    .section-label { font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin: 20px 0 10px; }
+    .canvas-hint { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 8px; }
+    .canvas-hint strong { color: var(--accent); }
+    #canvas-wrap { position: relative; border-radius: 8px 8px 0 0; overflow: hidden; border: 1px solid var(--border); border-bottom: none; cursor: crosshair; }
+    #preview-canvas { display: block; user-select: none; -webkit-user-select: none; }
+    /* ── VIDEO CONTROLS ── */
+    .video-controls { display: flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 0 0 8px 8px; padding: 7px 10px; margin-bottom: 6px; }
+    #vc-play { background: none; border: none; cursor: pointer; font-size: 1rem; color: var(--text); padding: 0 4px; line-height: 1; flex-shrink: 0; }
+    #vc-play:hover { color: var(--accent); }
+    #vc-time { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 88px; text-align: center; flex-shrink: 0; }
+    #vc-seek { flex: 1; cursor: pointer; accent-color: var(--accent); height: 4px; min-width: 0; }
+    #vc-speed { background: var(--bg-card); border: 1px solid var(--border); color: var(--text); border-radius: 5px; padding: 3px 6px; font-size: 0.75rem; cursor: pointer; flex-shrink: 0; }
+    #vc-speed:focus { outline: none; border-color: var(--accent); }
+    #region-info { margin-top: 4px; font-size: 0.78rem; color: var(--text-muted); min-height: 20px; }
+    #region-info span { color: var(--text); font-weight: 700; }
+
+    /* ── MODE TOGGLE ── */
+    .mode-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
+    .mode-btn { flex: 1; min-width: 130px; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px; justify-content: center; }
+    .mode-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+    .mode-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .mode-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+    .mode-desc { margin-top: 10px; padding: 10px 14px; background: var(--surface2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; font-size: 0.78rem; color: var(--text-muted); line-height: 1.55; }
+
+    /* ── SUBMIT ── */
+    .submit-btn { width: 100%; margin-top: 20px; padding: 13px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-size: 0.96rem; font-weight: 800; cursor: pointer; transition: background .15s, opacity .15s; }
+    .submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .submit-btn:disabled { opacity: .38; cursor: not-allowed; }
+
+    /* ── PROGRESS ── */
+    .progress-wrap { display: none; margin-top: 16px; background: var(--surface2); border-radius: 99px; height: 6px; overflow: hidden; }
+    .progress-bar { height: 100%; width: 60%; background: linear-gradient(90deg, var(--accent), #9b6cff); border-radius: 99px; animation: inde 1.4s infinite linear; }
+    @keyframes inde { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+    .status-text { text-align: center; font-size: 0.82rem; color: var(--text-muted); margin-top: 10px; min-height: 18px; }
+
+    /* ── RESULT ── */
+    .result-card { background: var(--surface); border: 1px solid var(--success); border-radius: var(--radius); padding: 20px 24px; margin-top: 18px; }
+    .result-card h3 { color: var(--success); font-size: 0.95rem; margin-bottom: 14px; }
+    .result-video { width: 100%; border-radius: 8px; background: #000; max-height: 320px; }
+    .download-btn { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 22px; background: var(--success); border: none; border-radius: 8px; color: #fff; font-size: 0.86rem; font-weight: 700; cursor: pointer; text-decoration: none; transition: opacity .15s; }
+    .download-btn:hover { opacity: .85; }
+
+    /* ── ERROR ── */
+    .error-msg { display: none; margin-top: 14px; padding: 12px 16px; background: rgba(239,68,68,.08); border: 1px solid var(--error); border-radius: 8px; color: var(--error); font-size: 0.82rem; }
+
+    /* ── LIPSYNC ── */
+    .lip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .tech-info { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+    .tech-option { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border); }
+    .tech-option.active-tech { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+    .tech-option.coming { opacity: 0.42; }
+    .tech-option > span { font-size: 1.4rem; flex-shrink: 0; }
+    .tech-option strong { display: block; font-size: 0.86rem; margin-bottom: 3px; }
+    .tech-option small { font-size: 0.74rem; color: var(--text-muted); }
+    .tech-option .pill-soon { margin-left: auto; }
+
+    /* ── SUBTITLE TOOL ── */
+    .sub-entries { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; min-height: 0; }
+    .sub-entry { display: flex; align-items: center; gap: 8px; background: var(--surface3); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+    .sub-num { color: var(--text-muted); font-size: 0.7rem; font-weight: 700; min-width: 18px; text-align: center; flex-shrink: 0; }
+    .sub-time { width: 62px; flex-shrink: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; color: var(--text); font-size: 0.8rem; font-family: 'Courier New', monospace; text-align: center; }
+    .sub-time:focus { outline: none; border-color: var(--accent); }
+    .sub-arrow { color: var(--text-muted); font-size: 0.72rem; flex-shrink: 0; }
+    .sub-text-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 0.85rem; min-width: 0; }
+    .sub-text-input:focus { outline: none; border-color: var(--accent); }
+    .sub-text-input::placeholder { color: var(--text-muted); }
+    .sub-remove { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1rem; padding: 4px 6px; border-radius: 5px; flex-shrink: 0; transition: all .15s; }
+    .sub-remove:hover { color: var(--error); background: rgba(239,68,68,.12); }
+    .sub-add-btn { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 16px; background: var(--surface2); border: 1px dashed var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.83rem; font-weight: 700; cursor: pointer; width: 100%; transition: all .15s; }
+    .sub-add-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.07); }
+    .sub-empty { padding: 18px; text-align: center; color: var(--text-muted); font-size: 0.82rem; background: var(--surface3); border-radius: 8px; border: 1px dashed var(--border); margin-bottom: 10px; }
+    /* Presets */
+    .presets-grid { display: flex; gap: 9px; flex-wrap: wrap; }
+    .preset-card { flex: 1; min-width: 80px; padding: 14px 8px; border-radius: 10px; border: 2px solid var(--border); cursor: pointer; text-align: center; background: var(--surface3); transition: border-color .15s, transform .12s; position: relative; }
+    .preset-card:hover { border-color: rgba(108,99,255,.55); transform: translateY(-2px); }
+    .preset-card.sp-active { border-color: var(--accent); background: rgba(108,99,255,.08); }
+    .preset-card.sp-active::after { content: '✓'; position: absolute; top: 5px; right: 8px; font-size: 0.7rem; color: var(--accent); font-weight: 900; }
+    .preset-preview { font-size: 1rem; font-weight: 900; padding: 4px 0; max-height: 36px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .preset-name { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-top: 6px; }
+    /* Position & Size */
+    .pos-group { display: flex; gap: 8px; }
+    .pos-btn { flex: 1; padding: 9px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all .15s; }
+    .pos-btn:hover { border-color: var(--accent); color: var(--text); }
+    .pos-btn.pp-active { background: rgba(108,99,255,.14); border-color: var(--accent); color: var(--text); }
+    .size-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+    .size-row label { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; white-space: nowrap; }
+    .size-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .size-row .size-val { font-size: 0.82rem; color: var(--text); font-weight: 700; min-width: 32px; text-align: right; }
+    /* Anim toggle */
+    .anim-toggle-row { margin-top: 18px; }
+    .anim-toggle-row .section-label { margin-top: 0; }
+    .anim-btns { display: flex; gap: 8px; }
+    .anim-btn { flex: 1; padding: 11px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: all .15s; text-align: center; }
+    .anim-btn:hover { border-color: var(--accent); color: var(--text); }
+    .anim-btn.pa-active { background: rgba(108,99,255,.18); border-color: var(--accent); color: var(--text); }
+    .anim-btn .anim-desc { font-size: 0.68rem; font-weight: 400; color: var(--text-muted); display: block; margin-top: 3px; }
+    .anim-btn.pa-active .anim-desc { color: rgba(226,232,240,.6); }
+
+    /* ── COMBINER TOOL ── */
+    .combine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+    .clip-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; min-height: 28px; }
+    .clip-empty { color: var(--text-muted); font-size: 0.76rem; padding: 4px 0; }
+    .clip-item { display: flex; align-items: center; gap: 8px; background: var(--surface3); border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px; }
+    .clip-num { color: var(--accent); font-weight: 800; font-size: 0.7rem; min-width: 18px; text-align: center; flex-shrink: 0; }
+    .clip-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; }
+    .clip-sz { color: var(--text-muted); font-size: 0.7rem; flex-shrink: 0; }
+    .clip-rm { background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 0.88rem; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; transition: all .15s; }
+    .clip-rm:hover { color: var(--error); background: rgba(239,68,68,.12); }
+    .clip-dz { border: 1.5px dashed var(--border); border-radius: 8px; padding: 13px; text-align: center; color: var(--text-muted); font-size: 0.82rem; cursor: pointer; transition: all .15s; }
+    .clip-dz:hover, .clip-dz.drag-over { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.05); }
+    .clip-dz strong { display: block; font-size: 0.86rem; margin-bottom: 2px; }
+    .accent-n { color: var(--accent); font-size: 0.84rem; }
+    .combine-preview-card { text-align: center; padding: 16px 24px; margin-bottom: 18px; }
+    .combine-formula { font-size: 1rem; color: var(--text-muted); margin-bottom: 12px; line-height: 1.7; }
+    .combine-formula .cn { color: var(--accent); font-size: 1.32rem; font-weight: 900; }
+    .combine-matrix { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; max-height: 88px; overflow-y: auto; }
+    .combo-tag { padding: 3px 9px; background: var(--surface2); border: 1px solid var(--border); border-radius: 99px; font-size: 0.7rem; color: var(--text-muted); white-space: nowrap; }
+    .combine-prog-detail { font-size: 0.82rem; color: var(--accent); text-align: center; margin-top: 6px; font-weight: 700; min-height: 20px; }
+    .combine-result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+    .combo-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: border-color .15s; }
+    .combo-card:hover { border-color: rgba(108,99,255,.4); }
+    .combo-card video { width: 100%; display: block; background: #000; max-height: 155px; object-fit: contain; }
+    .combo-card-info { padding: 10px 12px; }
+    .combo-card-label { font-size: 0.73rem; color: var(--text-muted); margin-bottom: 8px; }
+    .combo-card-label strong { color: var(--text); display: block; }
+    .combo-dl { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; text-decoration: none; transition: all .15s; }
+    .combo-dl:hover { border-color: var(--accent); color: var(--accent); }
+    .combo-card.combo-processing { border-style: dashed; opacity: .6; }
+    .combo-card.combo-processing .combo-card-info { text-align: center; padding: 22px 12px; }
+    .combo-card.combo-err { border-color: var(--error); }
+    .combo-card.combo-err .combo-card-label { color: var(--error); }
+    @media (max-width: 680px) { .combine-grid { grid-template-columns: 1fr; } }
+
+    /* ── EXTRAIR TOOL ── */
+    .extr-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .extr-mode-card { border: 2px solid var(--border); border-radius: 12px; padding: 14px 10px; cursor: pointer; text-align: center; transition: all .18s; background: var(--surface); user-select: none; }
+    .extr-mode-card:hover { border-color: var(--accent); background: var(--surface2); }
+    .extr-mode-card.em-active { border-color: var(--accent); background: rgba(108,99,255,.13); }
+    .extr-mode-card .em-icon { font-size: 1.6rem; display: block; margin-bottom: 6px; }
+    .extr-mode-card .em-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 3px; }
+    .extr-mode-card .em-desc { font-size: 0.73rem; color: var(--text-muted); line-height: 1.4; }
+    .extr-audio-zone { display: none; margin-top: 16px; }
+    .extr-audio-zone.show { display: block; }
+    .transcript-result { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; font-size: 0.9rem; line-height: 1.75; color: var(--text); min-height: 100px; white-space: pre-wrap; word-break: break-word; margin-top: 10px; }
+    .copy-btn { margin-top: 10px; padding: 8px 22px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; font-size: 0.85rem; transition: all .18s; }
+    .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    @media (max-width: 680px) { .extr-modes { grid-template-columns: 1fr 1fr; } }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 680px) {
+      .sidebar { width: 100%; min-width: 0; height: auto; border-right: none; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; overflow: visible; }
+      .editor-layout { flex-direction: column; }
+      .editor-main { height: auto; overflow: visible; }
+      body { overflow: auto; height: auto; }
+      .sidebar-footer, .sidebar-logo, .sidebar-subtitle, .nav-section { display: none; }
+      .tool-panel { padding: 20px 16px 40px; }
+      .lip-grid { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 681px) and (max-width: 900px) {
+      .sidebar { width: 190px; min-width: 190px; }
+      .tool-panel { padding: 24px 24px 50px; }
+    }
+  </style>
+</head>
+<body>
+<div class="editor-layout">
+
+  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">Video<span>Forge</span></div>
+    <div class="sidebar-subtitle">Editor de Vídeo Online</div>
+
+    <div class="nav-section">Ferramentas</div>
+
+    <button class="nav-item active" data-tool="watermark">
+      <span class="nav-icon">🎭</span>
+      <div class="nav-text">
+        <div class="nav-title">Marca d'Água</div>
+        <div class="nav-desc">Blur ou remoção limpa</div>
+      </div>
+    </button>
+
+    <button class="nav-item" data-tool="lipsync">
+      <span class="nav-icon">💋</span>
+      <div class="nav-text">
+        <div class="nav-title">Lipsync</div>
+        <div class="nav-desc">Sincronizar lábios</div>
+      </div>
+    </button>
+
+    <button class="nav-item" data-tool="subtitle">
+      <span class="nav-icon">💬</span>
+      <div class="nav-text">
+        <div class="nav-title">Legendas</div>
+        <div class="nav-desc">CapCut-style captions</div>
+      </div>
+    </button>
+
+    <button class="nav-item" data-tool="combine">
+      <span class="nav-icon">⚡</span>
+      <div class="nav-text">
+        <div class="nav-title">Combinador</div>
+        <div class="nav-desc">Hooks × Corpos em massa</div>
+      </div>
+    </button>
+
+    <div class="nav-section">Em breve</div>
+
+    <button class="nav-item" disabled>
+      <span class="nav-icon">✂️</span>
+      <div class="nav-text">
+        <div class="nav-title">Cortar Vídeo</div>
+        <div class="nav-desc">Trim sem reencoding</div>
+      </div>
+      <span class="pill-soon">breve</span>
+    </button>
+
+    <button class="nav-item" disabled>
+      <span class="nav-icon">🔄</span>
+      <div class="nav-text">
+        <div class="nav-title">Converter</div>
+        <div class="nav-desc">MP4, MKV, AVI, MOV…</div>
+      </div>
+      <span class="pill-soon">breve</span>
+    </button>
+
+    <button class="nav-item" data-tool="extrair">
+      <span class="nav-icon">✂️</span>
+      <div class="nav-text">
+        <div class="nav-title">Extrair</div>
+        <div class="nav-desc">Vídeo, transcrição e juntar</div>
+      </div>
+    </button>
+
+    <div class="sidebar-footer">
+      <a href="index.html" class="back-btn">← Página Inicial</a>
+    </div>
+  </aside>
+
+  <!-- ═══════════ MAIN ═══════════ -->
+  <main class="editor-main">
+
+    <!-- ─── TOOL: MARCA D'ÁGUA ─── -->
+    <div id="tool-watermark" class="tool-panel">
+      <div class="tool-header">
+        <h1 class="tool-title">🎭 Remover Marca d'Água</h1>
+        <p class="tool-subtitle">Selecione a região no vídeo e escolha o modo de remoção</p>
+      </div>
+
+      <div class="card">
+        <label for="file-input" id="drop-zone" class="drop-zone" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+          </svg>
+          <p><strong>Clique ou arraste</strong> um vídeo aqui</p>
+          <p>MP4, MKV, AVI, MOV — até 2 GB</p>
+          <div id="file-name" class="dz-filename"></div>
+        </label>
+        <input type="file" id="file-input" accept="video/*" class="hidden-input" />
+
+        <div id="preview-section" style="display:none">
+          <div class="section-label">Selecione a região</div>
+          <p class="canvas-hint"><strong>Arraste</strong> para criar &nbsp;·&nbsp; <strong>Mova</strong> para reposicionar &nbsp;·&nbsp; <strong>Handles</strong> para redimensionar</p>
+          <div id="canvas-wrap"><canvas id="preview-canvas"></canvas></div>
+          <div class="video-controls">
+            <button id="vc-play" title="Play / Pause">⏸</button>
+            <span id="vc-time">0:00 / 0:00</span>
+            <input type="range" id="vc-seek" min="0" max="1000" step="1" value="0">
+            <select id="vc-speed" title="Velocidade">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+            </select>
+          </div>
+          <div id="region-info">Nenhuma região selecionada — arraste para marcar</div>
+        </div>
+
+        <div class="section-label">Modo de remoção</div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" data-mode="blur">🌫️ Blur Suave</button>
+          <button class="mode-btn" data-mode="delogo">✨ Remoção Limpa</button>
+          <button class="mode-btn" data-mode="ai" disabled>🤖 IA Inpainting</button>
+        </div>
+        <div id="mode-desc" class="mode-desc">Blur gaussiano com bordas suaves — rápido, funciona em qualquer tipo de fundo.</div>
+
+        <button id="submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
+        <div id="progress-bar-wrap" class="progress-wrap"><div id="progress-bar" class="progress-bar"></div></div>
+        <div id="status-text" class="status-text"></div>
+        <div id="error-msg" class="error-msg"></div>
+      </div>
+
+      <div id="result-card" class="result-card" style="display:none">
+        <h3>✓ Processado com sucesso!</h3>
+        <video id="result-video" class="result-video" controls></video>
+        <br/>
+        <a id="download-btn" class="download-btn" download>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+          </svg>
+          Baixar vídeo processado
+        </a>
+      </div>
+    </div>
+
+    <!-- ─── TOOL: LIPSYNC ─── -->
+    <div id="tool-lipsync" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">💋 Lipsync</h1>
+        <p class="tool-subtitle">Sincronize o movimento dos lábios com um novo áudio (dublagem automática)</p>
+      </div>
+
+      <div class="lip-grid">
+        <div class="card">
+          <div class="section-label">📹 Vídeo</div>
+          <label for="lip-video-input" id="lip-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/>
+            </svg>
+            <p><strong>Selecione o vídeo</strong></p>
+            <p>MP4, MKV, AVI, MOV</p>
+            <div id="lip-file-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="lip-video-input" accept="video/*" class="hidden-input" />
+        </div>
+
+        <div class="card">
+          <div class="section-label">🎵 Áudio</div>
+          <label for="lip-audio-input" id="lip-audio-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53L6.75 15.75H4.5A2.25 2.25 0 012.25 13.5v-3A2.25 2.25 0 014.5 8.25h2.25z"/>
+            </svg>
+            <p><strong>Selecione o áudio</strong></p>
+            <p>MP3, WAV, AAC, OGG</p>
+            <div id="lip-audio-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="lip-audio-input" accept="audio/*" class="hidden-input" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Tecnologia</div>
+        <div class="tech-info">
+          <div class="tech-option active-tech">
+            <span>🎯</span>
+            <div><strong>Wav2Lip</strong><small>Alta precisão no movimento dos lábios — modelo open-source</small></div>
+          </div>
+          <div class="tech-option coming">
+            <span>🧠</span>
+            <div><strong>SadTalker</strong><small>Animação facial completa, expressões e movimento de cabeça</small></div>
+            <span class="pill-soon">Em breve</span>
+          </div>
+        </div>
+        <button id="lip-submit-btn" class="submit-btn" disabled>Selecione o vídeo e o áudio</button>
+        <div id="lip-progress-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
+        <div id="lip-status" class="status-text"></div>
+        <div id="lip-error-msg" class="error-msg"></div>
+      </div>
+
+      <div id="lip-result-card" class="result-card" style="display:none">
+        <h3>✓ Lipsync concluído!</h3>
+        <video id="lip-result-video" class="result-video" controls></video>
+        <br/>
+        <a id="lip-download-btn" class="download-btn" download>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+          </svg>
+          Baixar vídeo sincronizado
+        </a>
+      </div>
+    </div>
+
+    <!-- ─── TOOL: LEGENDAS ─── -->
+    <div id="tool-subtitle" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">💬 Adicionar Legendas</h1>
+        <p class="tool-subtitle">Crie legendas estilosas e grave no vídeo — 5 estilos CapCut prontos p/ usar</p>
+      </div>
+
+      <div class="card">
+        <label for="sub-file-input" id="sub-drop-zone" class="drop-zone" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+          </svg>
+          <p><strong>Clique ou arraste</strong> um vídeo aqui</p>
+          <p>MP4, MKV, AVI, MOV — até 2 GB</p>
+          <div id="sub-file-name" class="dz-filename"></div>
+        </label>
+        <input type="file" id="sub-file-input" accept="video/*" class="hidden-input" />
+      </div>
+
+      <div class="card">
+        <div class="section-label">Estilo das legendas</div>
+        <div class="presets-grid" id="presets-grid">
+          <div class="preset-card sp-active" data-preset="classico">
+            <div class="preset-preview" style="color:#fff;text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000">Abc</div>
+            <div class="preset-name">Clássico</div>
+          </div>
+          <div class="preset-card" data-preset="amarelo">
+            <div class="preset-preview" style="color:#FFFF00;text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000">Abc</div>
+            <div class="preset-name">Amarelo</div>
+          </div>
+          <div class="preset-card" data-preset="caixa">
+            <div class="preset-preview"><span style="color:#fff;background:rgba(0,0,0,0.82);padding:2px 9px;border-radius:3px">Abc</span></div>
+            <div class="preset-name">Caixa</div>
+          </div>
+          <div class="preset-card" data-preset="neon">
+            <div class="preset-preview" style="color:#00FF41;text-shadow:0 0 8px #00FF41,0 0 2px #000">Abc</div>
+            <div class="preset-name">Néon</div>
+          </div>
+          <div class="preset-card" data-preset="capcut">
+            <div class="preset-preview" style="color:#fff;text-shadow:-2px -2px 0 #FF00FF,2px -2px 0 #FF00FF,-2px 2px 0 #FF00FF,2px 2px 0 #FF00FF">Abc</div>
+            <div class="preset-name">CapCut</div>
+          </div>
+        </div>
+
+        <div class="section-label" style="margin-top:18px">Posição</div>
+        <div class="pos-group">
+          <button class="pos-btn" data-pos="top">▲ Topo</button>
+          <button class="pos-btn pp-active" data-pos="bottom">▼ Base</button>
+        </div>
+
+        <div class="size-row">
+          <label>Fonte</label>
+          <input type="range" id="sub-fontsize" min="36" max="120" step="4" value="72">
+          <span class="size-val" id="sub-fontsize-val">72</span>
+        </div>
+
+        <div class="anim-toggle-row">
+          <div class="section-label">Animação</div>
+          <div class="anim-btns">
+            <button class="anim-btn pa-active" data-anim="block">
+              📝 Bloco completo
+              <span class="anim-desc">Frase inteira aparece de uma vez</span>
+            </button>
+            <button class="anim-btn" data-anim="word">
+              ✨ Palavra por palavra
+              <span class="anim-desc">Cada palavra aparece em sequência</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">Legendas &nbsp;<span id="sub-count" style="color:var(--accent);font-size:0.8rem">0</span></div>
+        <div id="sub-entries"></div>
+        <div id="sub-empty" class="sub-empty">🗨️ Clique em <strong>+ Adicionar Legenda</strong> para começar</div>
+        <button id="sub-add-btn" class="sub-add-btn">+ Adicionar Legenda</button>
+      </div>
+
+      <button id="sub-submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
+      <div id="sub-progress-wrap" class="progress-wrap" style="display:none"><div class="progress-bar"></div></div>
+      <div id="sub-status" class="status-text"></div>
+      <div id="sub-error" class="error-msg"></div>
+
+      <div id="sub-result-card" class="result-card" style="display:none">
+        <h3>✓ Legendas gravadas com sucesso!</h3>
+        <video id="sub-result-video" class="result-video" controls></video>
+        <br/>
+        <a id="sub-download-btn" class="download-btn" download>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+          </svg>
+          Baixar vídeo com legendas
+        </a>
+      </div>
+    </div>
+
+    <!-- ─── TOOL: COMBINADOR DE CRIATIVOS ─── -->
+    <div id="tool-combine" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">⚡ Combinador de Criativos</h1>
+        <p class="tool-subtitle">Adicione hooks e corpos — gera automaticamente todas as combinações: 5 hooks × 3 corpos = 15 vídeos</p>
+      </div>
+
+      <div class="combine-grid">
+        <div class="card">
+          <div class="section-label">⚡ Hooks &nbsp;<span class="accent-n" id="hook-count">0</span></div>
+          <div class="clip-list" id="hook-list"><span class="clip-empty">Nenhum hook adicionado</span></div>
+          <label for="hook-input" id="hook-dz" class="clip-dz" tabindex="0">
+            <strong>+ Adicionar Hooks</strong>
+            Arraste ou clique — múltiplos arquivos
+          </label>
+          <input type="file" id="hook-input" accept="video/*" multiple class="hidden-input">
+        </div>
+        <div class="card">
+          <div class="section-label">🎥 Corpos &nbsp;<span class="accent-n" id="body-count">0</span></div>
+          <div class="clip-list" id="body-list"><span class="clip-empty">Nenhum corpo adicionado</span></div>
+          <label for="body-input" id="body-dz" class="clip-dz" tabindex="0">
+            <strong>+ Adicionar Corpos</strong>
+            Arraste ou clique — múltiplos arquivos
+          </label>
+          <input type="file" id="body-input" accept="video/*" multiple class="hidden-input">
+        </div>
+      </div>
+
+      <div id="combine-preview" class="card combine-preview-card" style="display:none">
+        <div class="combine-formula" id="combine-formula">
+          <span class="cn" id="c-hook-n">0</span> hooks × <span class="cn" id="c-body-n">0</span> corpos
+          = <span class="cn" id="c-total">0</span> vídeos
+        </div>
+        <div id="combine-matrix" class="combine-matrix"></div>
+      </div>
+
+      <button id="combine-btn" class="submit-btn" disabled>Adicione hooks e corpos</button>
+      <div id="combine-prog" style="display:none">
+        <div class="progress-wrap" style="display:block;margin-top:0"><div class="progress-bar"></div></div>
+        <div id="combine-status" class="status-text"></div>
+        <div id="combine-det" class="combine-prog-detail"></div>
+      </div>
+      <div id="combine-error" class="error-msg"></div>
+
+      <div id="combine-results" style="display:none">
+        <div class="section-label" style="margin:24px 0 0">Vídeos Gerados &nbsp;<span class="accent-n" id="combine-done-n"></span></div>
+        <div id="combine-result-grid" class="combine-result-grid"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════ EXTRAIR TOOL ══════════════ -->
+    <div id="tool-extrair" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">✂️ Extrair</h1>
+        <p class="tool-subtitle">Extraia o vídeo sem áudio, transcreva a fala em texto ou junte um vídeo com um novo áudio</p>
+      </div>
+
+      <!-- Mode selector -->
+      <div class="extr-modes">
+        <div class="extr-mode-card em-active" data-mode="video">
+          <span class="em-icon">🎬</span>
+          <div class="em-title">Extrair Vídeo</div>
+          <div class="em-desc">Remove o áudio — vídeo puro sem som</div>
+        </div>
+        <div class="extr-mode-card" data-mode="transcribe">
+          <span class="em-icon">📝</span>
+          <div class="em-title">Transcrever</div>
+          <div class="em-desc">Converte a fala do vídeo em texto</div>
+        </div>
+        <div class="extr-mode-card" data-mode="merge">
+          <span class="em-icon">🔗</span>
+          <div class="em-title">Juntar</div>
+          <div class="em-desc">Substitui o áudio do vídeo</div>
+        </div>
+      </div>
+
+      <!-- Video drop zone -->
+      <div class="section-label">🎬 Vídeo</div>
+      <label for="extr-video-input" id="extr-dz" class="drop-zone card" tabindex="0" style="margin-top:8px">
+        <div class="drop-icon">🎬</div>
+        <div class="drop-title">Arraste o vídeo aqui</div>
+        <div class="drop-sub" id="extr-file-name">ou clique para selecionar</div>
+      </label>
+      <input type="file" id="extr-video-input" accept="video/*" class="hidden-input">
+
+      <!-- Audio zone — só aparece no modo Juntar -->
+      <div class="extr-audio-zone" id="extr-audio-zone">
+        <div class="section-label" style="margin-top:4px">🎵 Novo Áudio</div>
+        <label for="extr-audio-input" id="extr-adz" class="drop-zone card" tabindex="0" style="margin-top:8px">
+          <div class="drop-icon">🎵</div>
+          <div class="drop-title">Arraste o áudio aqui</div>
+          <div class="drop-sub" id="extr-audio-name">ou clique para selecionar (MP3, AAC, WAV, MP4…)</div>
+        </label>
+        <input type="file" id="extr-audio-input" accept="audio/*,video/*" class="hidden-input">
+      </div>
+
+      <button id="extr-submit-btn" class="submit-btn" disabled style="margin-top:20px">Selecione um vídeo</button>
+      <div id="extr-progress" style="display:none">
+        <div class="progress-wrap" style="display:block;margin-top:0"><div class="progress-bar"></div></div>
+        <div id="extr-status" class="status-text"></div>
+      </div>
+      <div id="extr-error" class="error-msg"></div>
+
+      <!-- Resultado — vídeo (para modos video + merge) -->
+      <div id="extr-result-card" class="card result-card" style="display:none">
+        <video id="extr-result-video" controls playsinline style="width:100%;border-radius:8px;background:#000"></video>
+        <a id="extr-download-btn" class="download-btn" download>⬇ Baixar Vídeo</a>
+      </div>
+
+      <!-- Resultado — transcrição -->
+      <div id="extr-transcript-wrap" style="display:none">
+        <div class="section-label" style="margin-top:4px">📄 Transcrição</div>
+        <div class="transcript-result" id="extr-transcript-text"></div>
+        <button class="copy-btn" id="extr-copy-btn">📋 Copiar texto</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  const s = document.createElement('script');
+  s.src = 'app.js?v=' + Date.now();
+  document.body.appendChild(s);
+</script>
+</body>
+</html>

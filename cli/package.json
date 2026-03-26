@@ -1,0 +1,9 @@
+{
+  "name": "wm-cleaner-cli",
+  "version": "0.1.0",
+  "dependencies": {
+    "axios": "^1.4.0",
+    "form-data": "^4.0.0",
+    "commander": "^10.0.0"
+  }
+}

@@ -1,0 +1,113 @@
+﻿<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoForge — Editor de Vídeo Online</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #080b14; --surface: #0f1222; --surface2: #131728;
+      --border: #1d2240; --accent: #6c63ff; --accent2: #9b6cff;
+      --text: #e2e8f0; --text-muted: #7c85a6;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 60px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; background: rgba(8,11,20,0.9); backdrop-filter: blur(12px); }
+    .logo { font-size: 1.4rem; font-weight: 900; letter-spacing: -0.5px; }
+    .logo span { color: var(--accent); }
+    .btn-nav { padding: 9px 22px; background: var(--accent); color: #fff; border-radius: 8px; font-weight: 700; font-size: 0.88rem; text-decoration: none; transition: opacity 0.15s; }
+    .btn-nav:hover { opacity: 0.85; }
+    .hero { text-align: center; padding: 100px 24px 80px; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; top: -60px; left: 50%; transform: translateX(-50%); width: 900px; height: 600px; background: radial-gradient(ellipse at center, rgba(108,99,255,0.13) 0%, transparent 65%); pointer-events: none; }
+    .hero-badge { display: inline-block; padding: 5px 16px; background: rgba(108,99,255,0.12); border: 1px solid rgba(108,99,255,0.3); border-radius: 99px; font-size: 0.78rem; color: #a89fff; margin-bottom: 28px; font-weight: 700; letter-spacing: 0.5px; }
+    .hero h1 { font-size: clamp(2.2rem, 5vw, 4rem); font-weight: 900; line-height: 1.12; letter-spacing: -1.5px; max-width: 800px; margin: 0 auto 22px; }
+    .hero h1 span { background: linear-gradient(135deg, #6c63ff, #b89bff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p { color: var(--text-muted); font-size: 1.1rem; max-width: 520px; margin: 0 auto 44px; line-height: 1.7; }
+    .btn-cta { display: inline-flex; align-items: center; gap: 10px; padding: 16px 40px; background: linear-gradient(135deg, #6c63ff, #9b6cff); color: #fff; border-radius: 12px; font-weight: 800; font-size: 1.05rem; text-decoration: none; box-shadow: 0 0 40px rgba(108,99,255,0.4); transition: transform 0.15s, box-shadow 0.15s; }
+    .btn-cta:hover { transform: translateY(-2px); box-shadow: 0 6px 48px rgba(108,99,255,0.55); }
+    .features { padding: 80px 24px; max-width: 1100px; margin: 0 auto; }
+    .section-tag { text-align: center; font-size: 0.72rem; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+    .section-title { text-align: center; font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 900; margin-bottom: 56px; letter-spacing: -0.5px; }
+    .tools-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; }
+    .tool-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px 26px; transition: border-color 0.2s, transform 0.2s; position: relative; overflow: hidden; }
+    .tool-card::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent2)); opacity: 0; transition: opacity 0.2s; }
+    .tool-card:hover { border-color: rgba(108,99,255,0.45); transform: translateY(-4px); }
+    .tool-card:hover::after { opacity: 1; }
+    .tool-card.soon { opacity: 0.5; }
+    .tool-card.soon:hover { transform: none; border-color: var(--border); }
+    .tool-card.soon:hover::after { opacity: 0; }
+    .tc-icon { font-size: 2.2rem; margin-bottom: 18px; display: block; }
+    .tool-card h3 { font-size: 1.1rem; font-weight: 800; margin-bottom: 10px; }
+    .tool-card p { color: var(--text-muted); font-size: 0.86rem; line-height: 1.65; }
+    .badge-soon { display: inline-block; margin-top: 12px; padding: 3px 10px; background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.18); border-radius: 99px; font-size: 0.7rem; color: var(--text-muted); font-weight: 700; }
+    .steps-section { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 80px 24px; }
+    .steps-inner { max-width: 900px; margin: 0 auto; }
+    .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 40px; margin-top: 50px; }
+    .step { text-align: center; }
+    .step-num { width: 52px; height: 52px; background: linear-gradient(135deg, #6c63ff, #9b6cff); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1.3rem; margin: 0 auto 16px; }
+    .step h4 { font-weight: 800; margin-bottom: 8px; }
+    .step p { font-size: 0.84rem; color: var(--text-muted); line-height: 1.6; }
+    footer { text-align: center; padding: 36px 24px; color: var(--text-muted); font-size: 0.8rem; border-top: 1px solid var(--border); }
+    .footer-logo { font-size: 1.1rem; font-weight: 900; margin-bottom: 8px; color: var(--text); }
+    .footer-logo span { color: var(--accent); }
+  </style>
+</head>
+<body>
+<nav>
+  <div class="logo">Video<span>Forge</span></div>
+  <a href="editor.html" class="btn-nav">Abrir Editor →</a>
+</nav>
+<section class="hero">
+  <div class="hero-badge">⚡ Powered by FFmpeg 8.1 &nbsp;·&nbsp; 100% Grátis</div>
+  <h1>Edite seus vídeos<br><span>com poder profissional</span></h1>
+  <p>Remova marcas d'água, sincronize lábios e muito mais — direto no browser, sem instalar nada. Arquivos deletados automaticamente após 30 min.</p>
+  <a href="editor.html" class="btn-cta">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+    Começar a Editar
+  </a>
+</section>
+<section class="features">
+  <div class="section-tag">Ferramentas</div>
+  <h2 class="section-title">Tudo que você precisa em um lugar</h2>
+  <div class="tools-grid">
+    <div class="tool-card">
+      <span class="tc-icon">🎭</span>
+      <h3>Remover Marca d'Água</h3>
+      <p>Selecione visualmente a região e remova legendas ou marcas d'água com blur suave feathered ou reconstrução limpa via delogo.</p>
+    </div>
+    <div class="tool-card">
+      <span class="tc-icon">💋</span>
+      <h3>Lipsync</h3>
+      <p>Faça upload de um vídeo e um novo áudio. O sistema sincroniza automaticamente o movimento dos lábios para dublagem perfeita.</p>
+    </div>
+    <div class="tool-card soon">
+      <span class="tc-icon">✂️</span>
+      <h3>Cortar Vídeo</h3>
+      <p>Defina ponto de início e fim e extraia exatamente o trecho que precisa, sem reencoding.</p>
+      <span class="badge-soon">Em breve</span>
+    </div>
+    <div class="tool-card soon">
+      <span class="tc-icon">🔄</span>
+      <h3>Converter Formato</h3>
+      <p>Converta entre MP4, MKV, AVI, MOV, WebM com controle de qualidade e codec.</p>
+      <span class="badge-soon">Em breve</span>
+    </div>
+  </div>
+</section>
+<section class="steps-section">
+  <div class="steps-inner">
+    <div class="section-tag">Como funciona</div>
+    <h2 class="section-title" style="text-align:center">3 passos simples</h2>
+    <div class="steps-grid">
+      <div class="step"><div class="step-num">1</div><h4>Faça o Upload</h4><p>Arraste ou selecione seu vídeo. Suporta MP4, MKV, AVI, MOV — até 2 GB.</p></div>
+      <div class="step"><div class="step-num">2</div><h4>Configure a Edição</h4><p>Escolha a ferramenta, marque a região ou suba o áudio, selecione o modo.</p></div>
+      <div class="step"><div class="step-num">3</div><h4>Baixe o Resultado</h4><p>Processamento com ffmpeg. Arquivo disponível por 30 minutos, depois deletado.</p></div>
+    </div>
+  </div>
+</section>
+<footer>
+  <div class="footer-logo">Video<span>Forge</span></div>
+  Arquivos deletados automaticamente após 30 minutos &nbsp;·&nbsp; Processamento no servidor
+</footer>
+</body>
+</html>
