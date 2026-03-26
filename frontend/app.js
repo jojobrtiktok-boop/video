@@ -1039,9 +1039,8 @@ if (combineBtn) {
     });
 
     let done = 0;
-    for (const { card, hId, bId, hi, bi } of cards) {
-      combineStatusEl.textContent = 'Gerando vídeo ' + (done + 1) + ' de ' + total + '...';
-      combineDetEl.textContent = 'H' + (hi + 1) + ' + C' + (bi + 1);
+    combineStatusEl.textContent = 'Gerando ' + total + ' vídeos em paralelo…';
+    await Promise.all(cards.map(async ({ card, hId, bId, hi, bi }) => {
       try {
         const resp = await fetch(API + '/api/concat/run', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1061,7 +1060,8 @@ if (combineBtn) {
       }
       done++;
       if (combineDoneN) combineDoneN.textContent = done + ' / ' + total;
-    }
+      combineStatusEl.textContent = done + ' de ' + total + ' concluídos…';
+    }));
 
     combineProgEl.style.display = 'none'; combineStatusEl.textContent = ''; combineDetEl.textContent = '';
     combineBtn.disabled = false;
@@ -1636,6 +1636,9 @@ if (lipSubmitBtn) {
           igDown.download = 'imagem-gerada.png';
           igResult.style.display = 'block';
           igResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          // show resize tools
+          document.getElementById('ig-resize-btn').style.display = 'block';
+          document.querySelectorAll('.ig-sz-btn').forEach(b => b.classList.remove('active'));
         }
       } catch (err) {
         igError.style.display = 'block';
@@ -1655,6 +1658,49 @@ if (lipSubmitBtn) {
       });
     }
   })();
+
+  // ── Image resize presets ──
+  document.querySelectorAll('.ig-sz-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.ig-sz-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const isCustom = btn.dataset.w === '0';
+      const customEl = document.getElementById('ig-custom-size');
+      if (customEl) customEl.style.display = isCustom ? 'block' : 'none';
+    });
+  });
+
+  document.getElementById('ig-resize-btn')?.addEventListener('click', () => {
+    const img = document.getElementById('ig-result-img');
+    if (!img || !img.src) return;
+    const active = document.querySelector('.ig-sz-btn.active');
+    let w = active ? parseInt(active.dataset.w) : 0;
+    let h = active ? parseInt(active.dataset.h) : 0;
+    if (!w || !h) {
+      w = parseInt(document.getElementById('ig-custom-w')?.value) || 0;
+      h = parseInt(document.getElementById('ig-custom-h')?.value) || 0;
+    }
+    if (!w || !h) { alert('Escolha um tamanho ou informe largura e altura'); return; }
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,w,h);
+    const src = new Image();
+    src.crossOrigin = 'anonymous';
+    src.onload = () => {
+      const sc = Math.min(w/src.width, h/src.height);
+      const sw = src.width*sc, sh = src.height*sc;
+      ctx.drawImage(src, (w-sw)/2, (h-sh)/2, sw, sh);
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'image-' + w + 'x' + h + '.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 'image/png');
+    };
+    src.src = img.src;
+  });
 })();
 
 // ════════════════════════════════════════════════════════════════════
@@ -1761,20 +1807,196 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
   });
 }
 
-// ── CORTAR VÍDEO ──
-makeSimpleTool({
-  fileInputId: 'trim-file-input', dropZoneId: 'trim-dz', fileNameId: 'trim-file-name',
-  submitBtnId: 'trim-submit-btn', progressId: 'trim-progress', statusId: 'trim-status',
-  errorId: 'trim-error', resultCardId: 'trim-result-card', resultVideoId: 'trim-result-video',
-  downloadBtnId: 'trim-download-btn', endpoint: '/api/trim',
-  buildFormData: (file) => {
-    const fd = new FormData();
-    fd.append('video', file);
-    fd.append('start', document.getElementById('trim-start').value || '0:00:00');
-    fd.append('end', document.getElementById('trim-end').value || '0:00:10');
-    return fd;
+// ── CORTAR VÍDEO (timeline customizada) ──────────────────────────────────────
+(function() {
+  const fileInput  = document.getElementById('trim-file-input');
+  const dropZone   = document.getElementById('trim-dz');
+  const fileNameEl = document.getElementById('trim-file-name');
+  const editor     = document.getElementById('trim-editor');
+  const previewVid = document.getElementById('trim-preview-video');
+  const timeline   = document.getElementById('trim-timeline');
+  const thumbsEl   = document.getElementById('trim-thumbs');
+  const rangeEl    = document.getElementById('trim-range');
+  const hleft      = document.getElementById('trim-hleft');
+  const hright     = document.getElementById('trim-hright');
+  const playheadEl = document.getElementById('trim-playhead');
+  const startInput = document.getElementById('trim-start');
+  const endInput   = document.getElementById('trim-end');
+  const durLabel   = document.getElementById('trim-dur-label');
+  const addSegBtn  = document.getElementById('trim-add-segment');
+  const segsEl     = document.getElementById('trim-segments');
+  const submitBtn  = document.getElementById('trim-submit-btn');
+  const progressEl = document.getElementById('trim-progress');
+  const statusEl   = document.getElementById('trim-status');
+  const errorEl    = document.getElementById('trim-error');
+  const resultCard = document.getElementById('trim-result-card');
+  const resultVid  = document.getElementById('trim-result-video');
+  const dlBtn      = document.getElementById('trim-download-btn');
+  if (!fileInput || !submitBtn) return;
+
+  let currentFile = null, duration = 0;
+  let trimStart = 0, trimEnd = 0;
+  let segments = [];
+
+  function ts(s) { // seconds → H:MM:SS
+    s = Math.max(0, s);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+    return h + ':' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
   }
-});
+  function st(str) { // H:MM:SS / MM:SS → seconds
+    if (!str) return 0;
+    const parts = String(str).split(':').map(Number);
+    if (parts.length === 3) return (parts[0]||0)*3600+(parts[1]||0)*60+(parts[2]||0);
+    if (parts.length === 2) return (parts[0]||0)*60+(parts[1]||0);
+    return parseFloat(str)||0;
+  }
+
+  function loadFile(f) {
+    currentFile = f;
+    fileNameEl.textContent = '✓ ' + f.name + ' (' + fmtBytes(f.size) + ')';
+    dropZone.classList.add('has-file');
+    previewVid.src = URL.createObjectURL(f);
+    previewVid.onloadedmetadata = () => {
+      duration = previewVid.duration;
+      trimStart = 0; trimEnd = duration;
+      startInput.value = ts(trimStart); endInput.value = ts(trimEnd);
+      if (durLabel) durLabel.textContent = ts(duration);
+      editor.style.display = '';
+      submitBtn.disabled = false; submitBtn.textContent = '✂ Cortar';
+      errorEl.style.display = 'none';
+      extractThumbs();
+      updateHandles();
+    };
+  }
+
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+  if (dropZone) {
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => e.preventDefault());
+    let cnt = 0;
+    dropZone.addEventListener('dragenter', e => { e.preventDefault(); cnt++; dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => { cnt--; if (cnt<=0){cnt=0;dropZone.classList.remove('drag-over');} });
+    dropZone.addEventListener('drop', e => { e.preventDefault(); cnt=0; dropZone.classList.remove('drag-over'); const f=e.dataTransfer.files[0]; if(f) loadFile(f); });
+  }
+
+  // ── Thumbnails ──
+  async function extractThumbs() {
+    thumbsEl.innerHTML = '';
+    const COLS = 20;
+    const tl_w = timeline.clientWidth || 600;
+    const tl_h = 68;
+    const thumb_w = Math.floor(tl_w / COLS);
+    const vid = document.createElement('video');
+    vid.muted = true; vid.preload = 'metadata';
+    vid.src = URL.createObjectURL(currentFile);
+    await new Promise(r => { vid.onloadeddata = r; vid.onerror = r; });
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < COLS; i++) {
+      const t = (i / (COLS - 1)) * duration;
+      vid.currentTime = t;
+      await new Promise(r => { vid.onseeked = r; vid.onerror = r; });
+      const c = document.createElement('canvas');
+      c.width = thumb_w; c.height = tl_h;
+      c.getContext('2d').drawImage(vid, 0, 0, thumb_w, tl_h);
+      const img = document.createElement('img');
+      img.src = c.toDataURL('image/jpeg', 0.6);
+      img.className = 'trim-thumb-img';
+      img.style.width = thumb_w + 'px';
+      frag.appendChild(img);
+    }
+    thumbsEl.appendChild(frag);
+    URL.revokeObjectURL(vid.src);
+  }
+
+  // ── Handles ──
+  function posToTime(x) { const w=timeline.clientWidth||1; return Math.max(0,Math.min(duration,(x/w)*duration)); }
+  function updateHandles() {
+    if (!duration) return;
+    const lp = (trimStart/duration)*100, rp = (trimEnd/duration)*100;
+    hleft.style.left = lp + '%';
+    hright.style.left = rp + '%';
+    rangeEl.style.left = lp + '%';
+    rangeEl.style.width = (rp - lp) + '%';
+  }
+  function makeDragHandle(handle, isLeft) {
+    let dragging = false;
+    const move = ex => {
+      if (!dragging || !duration) return;
+      const rect = timeline.getBoundingClientRect();
+      const t = posToTime(ex - rect.left);
+      if (isLeft) { trimStart = Math.max(0, Math.min(t, trimEnd - 0.1)); startInput.value = ts(trimStart); previewVid.currentTime = trimStart; }
+      else        { trimEnd = Math.max(trimStart + 0.1, Math.min(t, duration)); endInput.value = ts(trimEnd); previewVid.currentTime = trimEnd; }
+      updateHandles();
+    };
+    handle.addEventListener('mousedown', e => { dragging=true; e.stopPropagation(); e.preventDefault(); });
+    window.addEventListener('mousemove', e => move(e.clientX));
+    window.addEventListener('mouseup', () => { dragging=false; });
+    handle.addEventListener('touchstart', e => { dragging=true; e.stopPropagation(); e.preventDefault(); }, {passive:false});
+    window.addEventListener('touchmove', e => { if(dragging) move(e.touches[0].clientX); }, {passive:false});
+    window.addEventListener('touchend', () => { dragging=false; });
+  }
+  makeDragHandle(hleft, true);
+  makeDragHandle(hright, false);
+
+  // Click timeline to seek
+  timeline.addEventListener('click', e => {
+    const rect = timeline.getBoundingClientRect();
+    previewVid.currentTime = posToTime(e.clientX - rect.left);
+  });
+
+  // Playhead sync
+  previewVid?.addEventListener('timeupdate', () => {
+    if (duration && playheadEl) playheadEl.style.left = (previewVid.currentTime/duration*100) + '%';
+  });
+
+  // Time inputs → update
+  startInput?.addEventListener('change', () => { trimStart = Math.max(0,Math.min(st(startInput.value),trimEnd-0.1)); startInput.value=ts(trimStart); updateHandles(); });
+  endInput?.addEventListener('change', () => { trimEnd = Math.max(trimStart+0.1,Math.min(st(endInput.value),duration)); endInput.value=ts(trimEnd); updateHandles(); });
+
+  // ── Segment queue ──
+  addSegBtn?.addEventListener('click', () => { segments.push({start:ts(trimStart),end:ts(trimEnd)}); renderSegs(); });
+  function renderSegs() {
+    if (!segments.length) { segsEl.innerHTML=''; return; }
+    segsEl.innerHTML = segments.map((s,i) => `
+      <div class="trim-segment-item">
+        <span>Corte ${i+1}</span>
+        <strong>${s.start} → ${s.end}</strong>
+        <button class="trim-segment-del" data-i="${i}">✕</button>
+      </div>`).join('');
+    segsEl.querySelectorAll('.trim-segment-del').forEach(b => b.addEventListener('click', () => { segments.splice(+b.dataset.i,1); renderSegs(); }));
+  }
+
+  // ── Submit ──
+  submitBtn.addEventListener('click', async () => {
+    if (!currentFile) return;
+    const toProcess = segments.length ? segments : [{start: startInput.value, end: endInput.value}];
+    submitBtn.disabled = true; submitBtn.textContent = '⏳ Cortando…';
+    progressEl.style.display = 'block'; statusEl.textContent = '';
+    errorEl.style.display = 'none'; resultCard.style.display = 'none';
+    const bar = progressEl.querySelector('.progress-bar');
+    let lastUrl = null;
+    for (let i = 0; i < toProcess.length; i++) {
+      const seg = toProcess[i];
+      statusEl.textContent = 'Cortando ' + (i+1) + ' / ' + toProcess.length + '…';
+      if (bar) { bar.style.animation='none'; bar.style.width = Math.round((i/toProcess.length)*100) + '%'; }
+      const fd = new FormData();
+      fd.append('video', currentFile); fd.append('start', seg.start); fd.append('end', seg.end);
+      try {
+        const r = await fetch(API + '/api/trim', { method:'POST', body:fd });
+        const j = await r.json();
+        if (!r.ok || j.error) throw new Error(j.error || 'Erro ' + r.status);
+        lastUrl = j.url;
+      } catch (e) { errorEl.style.display='block'; errorEl.textContent='Erro no corte '+(i+1)+': '+e.message; }
+    }
+    if (lastUrl) {
+      resultVid.src = API + lastUrl; dlBtn.href = API + lastUrl; dlBtn.download = lastUrl.split('/').pop();
+      resultCard.style.display = 'block'; resultCard.scrollIntoView({behavior:'smooth',block:'nearest'});
+    }
+    submitBtn.disabled = false; submitBtn.textContent = '✂ Cortar';
+    progressEl.style.display = 'none'; statusEl.textContent = '';
+    if (bar) { bar.style.width=''; bar.style.animation=''; }
+  });
+})();
 
 // ── REDIMENSIONAR ──
 // ── RESIZE ──────────────────────────────────────────────────────────────────

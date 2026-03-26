@@ -28,7 +28,8 @@
       "Bash(python scripts/search.py \"video editor creative tool futuristic dark modern\" --design-system -p \"Video Forge\" -f markdown)",
       "Bash(python scripts/search.py \"dark glassmorphism neon futuristic\" --domain style -n 3)",
       "Bash(python scripts/search.py \"video editor creative dark\" --domain color -n 2)",
-      "Bash(\"H:\\\\projeto novo\\\\frontend\\\\app.js\")"
+      "Bash(\"H:\\\\projeto novo\\\\frontend\\\\app.js\")",
+      "Bash(node -e \"require\\(''''./backend/index.js''''\\)\")"
     ]
   }
 }

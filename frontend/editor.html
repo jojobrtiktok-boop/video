@@ -57,15 +57,15 @@
       height: 100vh; overflow-y: auto; flex-shrink: 0;
     }
     .sidebar-logo {
-      padding: 22px 20px 6px;
+      padding: 20px 18px 4px;
       display: flex; align-items: center; gap: 10px;
     }
     .sidebar-logo-img {
-      width: 32px; height: 32px; object-fit: contain; flex-shrink: 0;
-      filter: drop-shadow(0 0 8px var(--accent-glow));
+      width: 44px; height: 44px; object-fit: contain; flex-shrink: 0;
+      filter: drop-shadow(0 0 10px var(--accent-glow));
     }
     .sidebar-logo-text {
-      font-size: 1.1rem; font-weight: 900; letter-spacing: -0.5px;
+      font-size: 1.25rem; font-weight: 900; letter-spacing: -0.6px;
       background: linear-gradient(135deg, #fff 20%, var(--accent) 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -657,6 +657,48 @@
   .trim-time-field { flex: 1; }
   .trim-time-field label { display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
   .trim-time-arrow { color: var(--text-muted); font-size: 1.2rem; padding-bottom: 10px; }
+
+  /* ── TRIM TIMELINE ── */
+  .trim-video-player { width: 100%; border-radius: var(--radius-sm); max-height: 300px; background:#000; display:block; margin-bottom:10px; }
+  .trim-timeline-outer { position: relative; user-select: none; margin: 6px 0 10px; }
+  .trim-timeline {
+    position: relative; height: 68px; border-radius: 8px; overflow: hidden;
+    border: 2px solid var(--border-strong); cursor: crosshair; background: #111;
+  }
+  .trim-thumbs { display: flex; height: 100%; position: absolute; inset: 0; pointer-events: none; }
+  .trim-thumb-img { flex-shrink: 0; height: 100%; object-fit: cover; display: block; }
+  .trim-range {
+    position: absolute; top: 0; bottom: 0;
+    background: rgba(124,113,255,0.22);
+    border-top: 2px solid var(--accent); border-bottom: 2px solid var(--accent);
+    pointer-events: none;
+  }
+  .trim-handle {
+    position: absolute; top: 0; bottom: 0; width: 12px;
+    background: var(--accent); cursor: ew-resize; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; border-radius: 4px 0 0 4px;
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .trim-handle-right { border-radius: 0 4px 4px 0; margin-left: -12px; }
+  .trim-handle::after { content:''; width:2px; height:24px; background:rgba(255,255,255,0.75); border-radius:2px; }
+  .trim-playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; pointer-events: none; z-index: 8; border-radius: 1px; }
+  .trim-time-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .trim-duration-label { font-size: 0.72rem; color: var(--text-muted); margin-left: auto; }
+  .trim-segments { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .trim-segment-item {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 0.82rem;
+  }
+  .trim-segment-item strong { color: var(--accent); }
+  .trim-segment-del { margin-left: auto; background: none; border: none; color: var(--error); cursor: pointer; font-size: 1rem; padding: 0 4px; line-height: 1; }
+  .trim-add-btn {
+    width: 100%; background: transparent; border: 1.5px dashed var(--border-strong);
+    color: var(--text-muted); border-radius: var(--radius-sm); padding: 8px 16px;
+    font-family: inherit; font-size: 0.8rem; cursor: pointer; transition: all .15s; margin-top: 6px;
+  }
+  .trim-add-btn:hover { border-color: var(--accent); color: var(--accent); }
   .time-input {
     width: 100%; background: var(--surface3); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 10px 12px;
@@ -1438,6 +1480,21 @@
         <h3>✓ Imagem gerada!</h3>
         <img id="ig-result-img" class="ig-result-img" alt="Imagem gerada">
         <a id="ig-download-btn" class="download-btn" download="imagem-gerada.png" style="margin-top:10px;display:inline-block">⬇ Baixar Imagem</a>
+        <div class="section-label" style="margin-top:18px">Redimensionar para plataforma</div>
+        <div class="mode-toggle" id="ig-size-toggle" style="flex-wrap:wrap;gap:6px">
+          <button class="mode-btn ig-sz-btn" data-w="1080" data-h="1920">Stories 9:16</button>
+          <button class="mode-btn ig-sz-btn" data-w="1080" data-h="1080">Feed 1:1</button>
+          <button class="mode-btn ig-sz-btn" data-w="1080" data-h="1350">Feed 4:5</button>
+          <button class="mode-btn ig-sz-btn" data-w="0" data-h="0">Personalizado</button>
+        </div>
+        <div id="ig-custom-size" style="display:none;margin-top:10px;display:none">
+          <div style="display:flex;gap:10px;align-items:center">
+            <input type="number" id="ig-custom-w" class="time-input" placeholder="Largura px" style="width:110px">
+            <span style="color:var(--text-muted)">×</span>
+            <input type="number" id="ig-custom-h" class="time-input" placeholder="Altura px" style="width:110px">
+          </div>
+        </div>
+        <button id="ig-resize-btn" class="submit-btn" style="margin-top:12px;display:none">Redimensionar e Baixar</button>
       </div>
     </div>
 
@@ -1445,7 +1502,7 @@
     <div id="tool-trim" class="tool-panel" style="display:none">
       <div class="tool-header">
         <h1 class="tool-title">Cortar Vídeo</h1>
-        <p class="tool-subtitle">Extraia um trecho definindo o início e o fim</p>
+        <p class="tool-subtitle">Arraste os marcadores na timeline para definir o corte</p>
       </div>
       <div class="card">
         <label for="trim-file-input" id="trim-dz" class="drop-zone" tabindex="0">
@@ -1454,19 +1511,38 @@
           <div id="trim-file-name" class="dz-filename"></div>
         </label>
         <input type="file" id="trim-file-input" accept="video/*" class="hidden-input">
-        <div class="section-label" style="margin-top:20px">Intervalo de corte</div>
-        <div class="trim-time-row">
-          <div class="trim-time-field">
-            <label>Início</label>
-            <input type="text" id="trim-start" class="time-input" placeholder="0:00:00" value="0:00:00">
+
+        <!-- editor aparece após subir o vídeo -->
+        <div id="trim-editor" style="display:none;margin-top:14px">
+          <video id="trim-preview-video" class="trim-video-player" controls preload="metadata"></video>
+
+          <div class="section-label">Timeline — arraste os marcadores</div>
+          <div class="trim-timeline-outer">
+            <div class="trim-timeline" id="trim-timeline">
+              <div class="trim-thumbs" id="trim-thumbs"></div>
+              <div class="trim-range" id="trim-range"></div>
+              <div class="trim-handle" id="trim-hleft" title="Início"></div>
+              <div class="trim-handle trim-handle-right" id="trim-hright" title="Fim"></div>
+              <div class="trim-playhead" id="trim-playhead"></div>
+            </div>
           </div>
-          <div class="trim-time-arrow">→</div>
-          <div class="trim-time-field">
-            <label>Fim</label>
-            <input type="text" id="trim-end" class="time-input" placeholder="0:00:10" value="0:00:10">
+
+          <div class="trim-time-bar">
+            <div class="trim-time-field">
+              <label>Início</label>
+              <input type="text" id="trim-start" class="time-input" value="0:00:00">
+            </div>
+            <div class="trim-time-arrow">→</div>
+            <div class="trim-time-field">
+              <label>Fim</label>
+              <input type="text" id="trim-end" class="time-input" value="0:00:10">
+            </div>
+            <span class="trim-duration-label" id="trim-dur-label"></span>
           </div>
+
+          <button id="trim-add-segment" class="trim-add-btn">+ Adicionar à fila de corte</button>
+          <div id="trim-segments" class="trim-segments"></div>
         </div>
-        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:8px">Formato: H:MM:SS ou MM:SS — ex: 1:30 ou 0:01:30</p>
       </div>
       <button id="trim-submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
       <div id="trim-progress" class="progress-wrap"><div class="progress-bar"></div></div>

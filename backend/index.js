@@ -671,16 +671,16 @@ app.post('/api/concat/run', (req, res) => {
   const output = path.join(UPLOAD_DIR, outputName);
   const scale = 'scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=PTS-STARTPTS';
   const filterAV = `[0:v]${scale}[v0];[1:v]${scale}[v1];[0:a]aresample=44100[a0];[1:a]aresample=44100[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]`;
-  const cmdAV = `"${FFMPEG}" -y -i "${hookPath}" -i "${bodyPath}" -filter_complex "${filterAV}" -map "[outv]" -map "[outa]" -c:v libx264 -preset fast -crf 23 -c:a aac "${output}"`;
+  const cmdAV = `"${FFMPEG}" -y -i "${hookPath}" -i "${bodyPath}" -filter_complex "${filterAV}" -map "[outv]" -map "[outa]" -c:v libx264 -preset ultrafast -crf 26 -c:a aac "${output}"`;
 
-  exec(cmdAV, (err) => {
+  exec(cmdAV, { timeout: 120000 }, (err) => {
     if (!err) {
       scheduleDelete(output, 30 * 60 * 1000);
       return res.json({ url: `/uploads/${outputName}` });
     }
     const filterV = `[0:v]${scale}[v0];[1:v]${scale}[v1];[v0][v1]concat=n=2:v=1:a=0[outv]`;
-    const cmdV = `"${FFMPEG}" -y -i "${hookPath}" -i "${bodyPath}" -filter_complex "${filterV}" -map "[outv]" -c:v libx264 -preset fast -crf 23 -an "${output}"`;
-    exec(cmdV, (err2, _out, stderr2) => {
+    const cmdV = `"${FFMPEG}" -y -i "${hookPath}" -i "${bodyPath}" -filter_complex "${filterV}" -map "[outv]" -c:v libx264 -preset ultrafast -crf 26 -an "${output}"`;
+    exec(cmdV, { timeout: 120000 }, (err2, _out, stderr2) => {
       if (err2) return res.status(500).json({ error: String(err2), stderr: stderr2 });
       scheduleDelete(output, 30 * 60 * 1000);
       return res.json({ url: `/uploads/${outputName}` });
