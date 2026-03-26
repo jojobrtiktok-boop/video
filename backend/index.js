@@ -476,28 +476,28 @@ app.post('/api/extract/transcribe', upload.single('video'), (req, res) => {
   });
 });
 
-// ── GENERATE VIDEO via OpenRouter ─────────────────────────────────────────────
+// ── GENERATE VIDEO via OpenRouter Alpha ───────────────────────────────────────
 app.post('/api/generate-video', express.json(), async (req, res) => {
   const { prompt, videoModel, duration, apiKey } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'Prompt e obrigatorio.' });
   if (!apiKey)  return res.status(400).json({ error: 'Informe sua API key da OpenRouter.' });
 
-  function openrouterFetch(endpoint, body) {
+  function orRequest(method, alphaPath, body) {
     return new Promise((resolve, reject) => {
-      const data = JSON.stringify(body);
-      const options = {
-        hostname: 'openrouter.ai',
-        path: `/api/v1/${endpoint}`,
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(data),
-          'HTTP-Referer': 'https://videoforge.app',
-          'X-Title': 'VideoForge'
-        }
+      const data = body ? JSON.stringify(body) : null;
+      const headers = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://videoforge.app',
+        'X-Title': 'VideoForge'
       };
-      const req2 = https.request(options, resp => {
+      if (data) headers['Content-Length'] = Buffer.byteLength(data);
+      const req2 = https.request({
+        hostname: 'openrouter.ai',
+        path: `/api/alpha${alphaPath}`,
+        method,
+        headers
+      }, resp => {
         let raw = '';
         resp.on('data', c => { raw += c; });
         resp.on('end', () => {
@@ -506,51 +506,78 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
         });
       });
       req2.on('error', reject);
-      req2.write(data);
+      if (data) req2.write(data);
       req2.end();
     });
   }
 
+  function orDownload(alphaPath) {
+    return new Promise((resolve, reject) => {
+      https.get({
+        hostname: 'openrouter.ai',
+        path: `/api/alpha${alphaPath}`,
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      }, resp => {
+        const chunks = [];
+        resp.on('data', c => chunks.push(c));
+        resp.on('end', () => resolve({ status: resp.statusCode, buffer: Buffer.concat(chunks) }));
+      }).on('error', reject);
+    });
+  }
+
   try {
-    const selectedVideoModel = videoModel || 'google/veo-3-flash';
+    const selectedVideoModel = videoModel || 'google/veo-3.1';
     const videoDuration = Math.max(4, Math.min(60, parseInt(duration) || 8));
 
-    const videoResp = await openrouterFetch('chat/completions', {
+    // 1) Submit generation job
+    const submitResp = await orRequest('POST', '/videos', {
       model: selectedVideoModel,
-      messages: [{ role: 'user', content: prompt }],
+      prompt,
       duration: videoDuration
     });
 
-    if (videoResp.status !== 200 || videoResp.body.error) {
+    if (submitResp.status !== 200 && submitResp.status !== 202) {
       return res.status(500).json({
-        error: 'Geracao de video falhou: ' + (videoResp.body.error?.message || JSON.stringify(videoResp.body))
+        error: 'Falha ao iniciar geracao: ' + (submitResp.body.error?.message || JSON.stringify(submitResp.body))
       });
     }
 
-    // Extract video URL from response — OpenRouter video models return it in the message content
-    const msg = videoResp.body.choices?.[0]?.message;
-    let videoUrl = null;
+    const jobId = submitResp.body.id;
+    if (!jobId) {
+      return res.status(500).json({ error: 'API nao retornou job ID.', raw: submitResp.body });
+    }
 
-    if (Array.isArray(msg?.content)) {
-      // Structured content: [{type:'video_url', video_url:{url:'...'}}, ...]
-      const part = msg.content.find(p => p.type === 'video_url' || p.type === 'video');
-      videoUrl = part?.video_url?.url || part?.url || null;
-      // Fallback: check for image_url type (some models)
-      if (!videoUrl) {
-        const img = msg.content.find(p => p.type === 'image_url');
-        videoUrl = img?.image_url?.url || null;
+    // 2) Poll until completed (max 3 min)
+    const maxWait = 180000;
+    const poll = 6000;
+    const deadline = Date.now() + maxWait;
+
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, poll));
+      const statusResp = await orRequest('GET', `/videos/${jobId}`, null);
+      if (statusResp.status !== 200) {
+        return res.status(500).json({ error: 'Erro ao verificar status.', raw: statusResp.body });
       }
-    } else if (typeof msg?.content === 'string') {
-      // Plain text URL
-      const match = msg.content.match(/https?:\/\/\S+\.(mp4|webm|mov)[^\s]*/i);
-      videoUrl = match ? match[0] : msg.content.trim();
+      const { status } = statusResp.body;
+      if (status === 'failed' || status === 'error') {
+        return res.status(500).json({ error: 'Geracao falhou: ' + (statusResp.body.error || status) });
+      }
+      if (status === 'completed') {
+        // 3) Download video and serve locally
+        const dl = await orDownload(`/videos/${jobId}/content?index=0`);
+        if (dl.status !== 200 || !dl.buffer.length) {
+          return res.status(500).json({ error: 'Nao foi possivel baixar o video gerado.' });
+        }
+        const outName = `vg-${jobId}.mp4`;
+        const outPath = path.join(UPLOAD_DIR, outName);
+        fs.writeFileSync(outPath, dl.buffer);
+        scheduleDelete(outPath, 3600000); // delete after 1h
+        return res.json({ url: `/uploads/${outName}` });
+      }
+      // still processing — continue polling
     }
 
-    if (!videoUrl) {
-      return res.status(500).json({ error: 'API nao retornou URL do video.', raw: videoResp.body });
-    }
-
-    return res.json({ url: videoUrl });
+    return res.status(504).json({ error: 'Tempo limite atingido (3 min). Tente um prompt mais curto ou menor duracao.' });
   } catch (err) {
     return res.status(500).json({ error: 'Erro: ' + err.message });
   }
