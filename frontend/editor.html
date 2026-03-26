@@ -1116,19 +1116,9 @@
       <div class="card">
         <div class="section-label">Provedor de IA</div>
         <div class="ig-provider-row">
-          <button class="ig-provider-btn active" data-provider="openrouter">🔵 OpenRouter</button>
-          <button class="ig-provider-btn" data-provider="google">🟢 AI Studio</button>
-          <button class="ig-provider-btn" data-provider="vertex">🟡 Vertex AI</button>
+          <button class="ig-provider-btn active" data-provider="google">🟢 AI Studio</button>
         </div>
-        <div id="ig-or-key-wrap" style="margin-top:14px">
-          <div class="section-label">API Key (OpenRouter)</div>
-          <div class="vg-api-row">
-            <input type="password" id="ig-apikey" placeholder="sk-or-v1-..." autocomplete="off">
-            <button id="ig-save-key" class="btn-secondary">💾 Salvar</button>
-          </div>
-          <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">Obtida em <strong>openrouter.ai/keys</strong> — salva só no seu navegador</p>
-        </div>
-        <div id="ig-google-key-wrap" style="display:none;margin-top:14px">
+        <div id="ig-google-key-wrap" style="margin-top:14px">
           <div class="section-label">API Key (Google AI Studio)</div>
           <div class="vg-api-row">
             <input type="password" id="ig-google-apikey" placeholder="AIzaSy..." autocomplete="off">
@@ -1139,24 +1129,7 @@
             &nbsp;—&nbsp; use esta opção para o plano gratuito do Google
           </p>
         </div>
-        <div id="ig-vertex-key-wrap" style="display:none;margin-top:14px">
-          <div class="section-label">Google Cloud — Vertex AI</div>
-          <div style="margin-bottom:10px">
-            <label style="font-size:0.72rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:5px">Project ID</label>
-            <div class="vg-api-row">
-              <input type="text" id="ig-vertex-project" placeholder="meu-projeto-123456" autocomplete="off" style="flex:1;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-size:0.87rem;font-family:inherit">
-              <button id="ig-vertex-save-key" class="btn-secondary">💾 Salvar</button>
-            </div>
-          </div>
-          <div>
-            <label style="font-size:0.72rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:5px">API Key ou Access Token</label>
-            <input type="password" id="ig-vertex-token" placeholder="AIzaSy... ou ya29...." autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-size:0.87rem;font-family:inherit">
-          </div>
-          <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px;line-height:1.5">
-            <b>API Key</b> (começa com <code style="background:var(--surface3);padding:1px 5px;border-radius:4px;font-size:0.7rem">AIza</code>): crie em <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent)">Cloud Console &rarr; Credenciais</a> — ative a API do Vertex AI no projeto.<br>
-            <b>Access Token</b>: rode <code style="background:var(--surface3);padding:1px 5px;border-radius:4px;font-size:0.7rem">gcloud auth print-access-token</code> no Cloud Shell — válido por 1h.
-          </p>
-        </div>
+        <!-- Vertex AI removido -->
       </div>
 
       <!-- TABS -->
@@ -1254,16 +1227,6 @@
             </div>
             <div class="vg-option" data-provider="google" data-model="imagen-3.0-fast-generate-001" data-name="Imagen 3 Fast" data-desc="Google — rápido para iteração" style="display:none">
               <div class="vg-opt-info"><span class="vg-opt-name">Imagen 3 Fast</span><span class="vg-opt-desc">⚡ Imagen 3 rápido, ótimo para testes e iterações</span></div>
-            </div>
-            <!-- Vertex AI models (shown only when provider=vertex) -->
-            <div class="vg-option" data-provider="vertex" data-model="gemini-2.0-flash-exp-image-generation" data-name="Gemini 2.0 Flash (Vertex)" data-desc="Vertex AI — geração e edição, suporta fotos de referência" style="display:none">
-              <div class="vg-opt-info"><span class="vg-opt-name">Gemini 2.0 Flash (Vertex)</span><span class="vg-opt-desc">🏆 Suporta imagens de referência — ideal para clonar fotos</span></div>
-            </div>
-            <div class="vg-option" data-provider="vertex" data-model="imagen-3.0-generate-001" data-name="Imagen 3 (Vertex)" data-desc="Vertex AI — máxima qualidade fotorrealista" style="display:none">
-              <div class="vg-opt-info"><span class="vg-opt-name">Imagen 3 (Vertex)</span><span class="vg-opt-desc">⭐ Melhor qualidade, acessível pelo seu projeto Cloud</span></div>
-            </div>
-            <div class="vg-option" data-provider="vertex" data-model="imagen-3.0-fast-generate-001" data-name="Imagen 3 Fast (Vertex)" data-desc="Vertex AI — geração rápida" style="display:none">
-              <div class="vg-opt-info"><span class="vg-opt-name">Imagen 3 Fast (Vertex)</span><span class="vg-opt-desc">⚡ Iteração rápida via Vertex AI</span></div>
             </div>
           </div>
         </div>

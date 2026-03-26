@@ -1379,18 +1379,9 @@ if (lipSubmitBtn) {
     const igDown     = document.getElementById('ig-download-btn');
 
     igSubmit.addEventListener('click', async () => {
-      let apiKey, projectId;
-      if (currentProvider === 'vertex') {
-        apiKey    = document.getElementById('ig-vertex-token')?.value.trim() || '';
-        projectId = document.getElementById('ig-vertex-project')?.value.trim() || '';
-        if (!apiKey || !projectId) { alert('Informe o Project ID e o Access Token do Vertex AI'); return; }
-      } else if (currentProvider === 'google') {
-        apiKey = igApikeyGoogle ? igApikeyGoogle.value.trim() : '';
-        if (!apiKey) { alert('Informe sua API key do Google AI Studio (aistudio.google.com/apikey)'); return; }
-      } else {
-        apiKey = igApikeyOR ? igApikeyOR.value.trim() : '';
-        if (!apiKey) { alert('Informe sua API key da OpenRouter (openrouter.ai/keys)'); return; }
-      }
+      // Só AI Studio
+      const apiKey = igApikeyGoogle ? igApikeyGoogle.value.trim() : '';
+      if (!apiKey) { alert('Informe sua API key do Google AI Studio (aistudio.google.com/apikey)'); return; }
 
       const prompt = currentMode === 'clone'
         ? (document.getElementById('ig-clone-prompt')?.value.trim() || '')
@@ -1415,7 +1406,7 @@ if (lipSubmitBtn) {
         const resp = await fetch(API + '/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, provider: currentProvider, projectId, referenceBase64, productBase64 })
+          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, referenceBase64, productBase64 })
         });
         const json = await resp.json();
         if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);

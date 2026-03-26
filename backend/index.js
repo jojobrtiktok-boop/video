@@ -111,6 +111,8 @@ app.post('/api/process', upload.single('video'), (req, res) => {
 
   return res.status(400).json({ error: 'unknown mode' });
 });
+// Progresso lipsync: { [id]: { status, progress, url, error, expiresAt } }
+const lipsyncProgress = {};
 
 // ── LIPSYNC via Wav2Lip ───────────────────────────────────────────────────────
 app.post('/api/lipsync', uploadFields, (req, res) => {
@@ -122,21 +124,68 @@ app.post('/api/lipsync', uploadFields, (req, res) => {
     return res.status(400).json({ error: 'Envie o video e o audio.' });
   }
 
-  const outputName = 'lipsync-' + Date.now() + '.mp4';
+  const lipsyncId = Date.now().toString() + Math.floor(Math.random()*10000).toString();
+  const outputName = 'lipsync-' + lipsyncId + '.mp4';
   const output     = path.join(UPLOAD_DIR, outputName);
   const python     = process.env.PYTHON_BIN || 'python3';
   const runner     = path.join(__dirname, 'wav2lip_runner.py');
+
+  // Inicializa progresso
+  lipsyncProgress[lipsyncId] = {
+    status: 'processing',
+    progress: 0,
+    url: null,
+    error: null,
+    expiresAt: null
+  };
+
+  // Simula progresso incremental (mock, pois wav2lip_runner.py não reporta progresso real)
+  let fakeProgress = 0;
+  const fakeInterval = setInterval(() => {
+    if (lipsyncProgress[lipsyncId] && lipsyncProgress[lipsyncId].status === 'processing') {
+      fakeProgress = Math.min(95, fakeProgress + Math.floor(Math.random()*7)+2);
+      lipsyncProgress[lipsyncId].progress = fakeProgress;
+    } else {
+      clearInterval(fakeInterval);
+    }
+  }, 1200);
 
   const cmd = `"${python}" "${runner}" "${videoFile.path}" "${audioFile.path}" "${output}"`;
 
   exec(cmd, { timeout: 15 * 60 * 1000 }, (err, stdout, stderr) => {
     fs.unlink(videoFile.path, () => {});
     fs.unlink(audioFile.path, () => {});
-    if (err) return res.status(500).json({ error: 'Wav2Lip falhou: ' + (stderr || err.message) });
-    if (!fs.existsSync(output)) return res.status(500).json({ error: 'Video nao gerado. ' + stderr });
-    scheduleDelete(output, 30 * 60 * 1000);
-    return res.json({ url: `/uploads/${outputName}` });
+    clearInterval(fakeInterval);
+    if (err) {
+      lipsyncProgress[lipsyncId].status = 'error';
+      lipsyncProgress[lipsyncId].error = 'Wav2Lip falhou: ' + (stderr || err.message);
+      return res.status(500).json({ error: lipsyncProgress[lipsyncId].error, id: lipsyncId });
+    }
+    if (!fs.existsSync(output)) {
+      lipsyncProgress[lipsyncId].status = 'error';
+      lipsyncProgress[lipsyncId].error = 'Video nao gerado. ' + stderr;
+      return res.status(500).json({ error: lipsyncProgress[lipsyncId].error, id: lipsyncId });
+    }
+    scheduleDelete(output, 60 * 60 * 1000); // 1 hora
+    lipsyncProgress[lipsyncId].status = 'done';
+    lipsyncProgress[lipsyncId].progress = 100;
+    lipsyncProgress[lipsyncId].url = `/uploads/${outputName}`;
+    lipsyncProgress[lipsyncId].expiresAt = Date.now() + 60*60*1000;
+    return res.json({ url: `/uploads/${outputName}`, id: lipsyncId });
   });
+});
+
+// Endpoint para consultar progresso/status
+app.get('/api/lipsync-status/:id', (req, res) => {
+  const id = req.params.id;
+  const prog = lipsyncProgress[id];
+  if (!prog) return res.status(404).json({ error: 'ID não encontrado' });
+  // Se expirou, remove do objeto
+  if (prog.expiresAt && Date.now() > prog.expiresAt) {
+    delete lipsyncProgress[id];
+    return res.status(404).json({ error: 'Expirado' });
+  }
+  res.json(prog);
 });
 
 // ── SUBTITLE: burns ASS subtitles into video ─────────────────────────────────
@@ -594,290 +643,86 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
 
 // ─── IMAGE GENERATION ────────────────────────────────────────────────────────
 app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res) => {
-  const { prompt, imageModel, apiKey, mode, provider, referenceBase64, productBase64 } = req.body || {};
+  const { prompt, imageModel, apiKey, mode, referenceBase64, productBase64 } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
   if (!apiKey)  return res.status(400).json({ error: 'Informe sua API key.' });
 
   try {
+    // Google AI Studio (generativelanguage.googleapis.com)
     let imageUrl = null;
+    const model    = imageModel || 'gemini-2.0-flash-exp-image-generation';
+    const isImagen = model.startsWith('imagen-');
 
-    if (provider === 'google') {
-      // ── Google AI (generativelanguage.googleapis.com) ──────────────────────
-      const model    = imageModel || 'gemini-2.0-flash-exp-image-generation';
-      const isImagen = model.startsWith('imagen-');
-
-      let apiPath, payload;
-      if (isImagen) {
-        // Imagen 3 — text-to-image only
-        apiPath = `/v1beta/models/${model}:predict?key=${apiKey}`;
-        payload = JSON.stringify({
-          instances:  [{ prompt }],
-          parameters: { sampleCount: 1, aspectRatio: '1:1' }
-        });
-      } else {
-        // Gemini image generation — supports reference images for clone mode
-        const parts = [];
-        if (mode === 'clone' && referenceBase64) {
-          const b64data   = referenceBase64.includes(',') ? referenceBase64.split(',')[1] : referenceBase64;
-          const mimeMatch = referenceBase64.match(/data:([^;]+);/);
-          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
-        }
-        if (mode === 'clone' && productBase64) {
-          const b64data   = productBase64.includes(',') ? productBase64.split(',')[1] : productBase64;
-          const mimeMatch = productBase64.match(/data:([^;]+);/);
-          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
-        }
-        parts.push({ text: prompt });
-        apiPath = `/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        payload = JSON.stringify({
-          contents:         [{ parts }],
-          generationConfig: { responseModalities: ['IMAGE'] }
-        });
-      }
-
-      const gResult = await new Promise((resolve, reject) => {
-        const req2 = https.request({
-          hostname: 'generativelanguage.googleapis.com',
-          path:     apiPath,
-          method:   'POST',
-          headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
-        }, resp => {
-          let raw = '';
-          resp.on('data', c => raw += c);
-          resp.on('end', () => {
-            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-            catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
-          });
-        });
-        req2.on('error', reject);
-        req2.write(payload);
-        req2.end();
+    let apiPath, payload;
+    if (isImagen) {
+      // Imagen 3 — text-to-image only
+      apiPath = `/v1beta/models/${model}:predict?key=${apiKey}`;
+      payload = JSON.stringify({
+        instances:  [{ prompt }],
+        parameters: { sampleCount: 1, aspectRatio: '1:1' }
       });
-
-      if (gResult.status >= 400) {
-        const msg = gResult.body?.error?.message || JSON.stringify(gResult.body).slice(0, 300);
-        return res.status(500).json({ error: 'Erro Google AI: ' + msg });
-      }
-
-      if (isImagen) {
-        const pred = gResult.body?.predictions?.[0];
-        if (pred?.bytesBase64Encoded) {
-          imageUrl = `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
-        }
-      } else {
-        const gParts = gResult.body?.candidates?.[0]?.content?.parts;
-        if (Array.isArray(gParts)) {
-          const imgPart = gParts.find(p => p.inlineData);
-          if (imgPart) imageUrl = `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`;
-        }
-      }
-
-    } else if (provider === 'vertex') {
-      // ── Google Vertex AI (aiplatform.googleapis.com) ──────────────────────
-      const { projectId } = req.body || {};
-      if (!projectId) return res.status(400).json({ error: 'Informe o Project ID do Google Cloud.' });
-
-      const model    = imageModel || 'gemini-2.0-flash-exp-image-generation';
-      const isImagen = model.startsWith('imagen-');
-      const region   = 'us-central1';
-
-      let apiPath, vPayload;
-      if (isImagen) {
-        apiPath  = `/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:predict`;
-        vPayload = JSON.stringify({
-          instances:  [{ prompt }],
-          parameters: { sampleCount: 1, aspectRatio: '1:1' }
-        });
-      } else {
-        const parts = [];
-        if (mode === 'clone' && referenceBase64) {
-          const b64data   = referenceBase64.includes(',') ? referenceBase64.split(',')[1] : referenceBase64;
-          const mimeMatch = referenceBase64.match(/data:([^;]+);/);
-          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
-        }
-        if (mode === 'clone' && productBase64) {
-          const b64data   = productBase64.includes(',') ? productBase64.split(',')[1] : productBase64;
-          const mimeMatch = productBase64.match(/data:([^;]+);/);
-          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
-        }
-        parts.push({ text: prompt });
-        apiPath  = `/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
-        vPayload = JSON.stringify({
-          contents:         [{ parts }],
-          generationConfig: { responseModalities: ['IMAGE'] }
-        });
-      }
-
-      const isApiKey = apiKey.startsWith('AIza');
-      const vAuthHeaders = isApiKey
-        ? { 'x-goog-api-key': apiKey }
-        : { 'Authorization': `Bearer ${apiKey}` };
-
-      const vResult = await new Promise((resolve, reject) => {
-        const req2 = https.request({
-          hostname: `${region}-aiplatform.googleapis.com`,
-          path:     apiPath,
-          method:   'POST',
-          headers:  {
-            ...vAuthHeaders,
-            'Content-Type':   'application/json',
-            'Content-Length': Buffer.byteLength(vPayload)
-          }
-        }, resp => {
-          let raw = '';
-          resp.on('data', c => raw += c);
-          resp.on('end', () => {
-            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-            catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
-          });
-        });
-        req2.on('error', reject);
-        req2.write(vPayload);
-        req2.end();
-      });
-
-      if (vResult.status >= 400) {
-        const msg = vResult.body?.error?.message || JSON.stringify(vResult.body).slice(0, 300);
-        return res.status(500).json({ error: 'Erro Vertex AI: ' + msg });
-      }
-
-      if (isImagen) {
-        const pred = vResult.body?.predictions?.[0];
-        if (pred?.bytesBase64Encoded) {
-          imageUrl = `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
-        }
-      } else {
-        const vParts = vResult.body?.candidates?.[0]?.content?.parts;
-        if (Array.isArray(vParts)) {
-          const imgPart = vParts.find(p => p.inlineData);
-          if (imgPart) imageUrl = `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`;
-        }
-      }
-
     } else {
-      // ── OpenRouter ─────────────────────────────────────────────────────────
-      const model = imageModel || 'google/gemini-3.1-flash-image-preview';
-
-      let messageContent;
-      if (mode === 'clone' && (referenceBase64 || productBase64)) {
-        messageContent = [];
-        if (referenceBase64) messageContent.push({ type: 'image_url', image_url: { url: referenceBase64 } });
-        if (productBase64)   messageContent.push({ type: 'image_url', image_url: { url: productBase64 } });
-        messageContent.push({ type: 'text', text: prompt });
-      } else {
-        messageContent = prompt;
+      // Gemini image generation — supports reference images for clone mode
+      const parts = [];
+      if (mode === 'clone' && referenceBase64) {
+        const b64data   = referenceBase64.includes(',') ? referenceBase64.split(',')[1] : referenceBase64;
+        const mimeMatch = referenceBase64.match(/data:([^;]+);/);
+        parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
       }
-
-      const payload = JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: messageContent }]
+      if (mode === 'clone' && productBase64) {
+        const b64data   = productBase64.includes(',') ? productBase64.split(',')[1] : productBase64;
+        const mimeMatch = productBase64.match(/data:([^;]+);/);
+        parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
+      }
+      parts.push({ text: prompt });
+      apiPath = `/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      payload = JSON.stringify({
+        contents:         [{ parts }],
+        generationConfig: { responseModalities: ['IMAGE'] }
       });
+    }
 
-      const orResult = await new Promise((resolve, reject) => {
-        const req2 = https.request({
-          hostname: 'openrouter.ai',
-          path:     '/api/v1/chat/completions',
-          method:   'POST',
-          headers:  {
-            'Authorization':  `Bearer ${apiKey}`,
-            'Content-Type':   'application/json',
-            'Content-Length': Buffer.byteLength(payload),
-            'HTTP-Referer':   'https://videoforge.app',
-            'X-Title':        'VideoForge'
-          }
-        }, resp => {
-          let raw = '';
-          resp.on('data', c => raw += c);
-          resp.on('end', () => {
-            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-            catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
-          });
+    const gResult = await new Promise((resolve, reject) => {
+      const req2 = https.request({
+        hostname: 'generativelanguage.googleapis.com',
+        path:     apiPath,
+        method:   'POST',
+        headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+      }, resp => {
+        let raw = '';
+        resp.on('data', c => raw += c);
+        resp.on('end', () => {
+          try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+          catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
         });
-        req2.on('error', reject);
-        req2.write(payload);
-        req2.end();
       });
+      req2.on('error', reject);
+      req2.write(payload);
+      req2.end();
+    });
 
-      if (orResult.status >= 400) {
-        const msg = orResult.body?.error?.message || orResult.body?.error || JSON.stringify(orResult.body).slice(0, 300);
-        return res.status(500).json({ error: 'Erro da API: ' + msg });
-      }
-
-      // 1) Some image models return data[0].url (DALL-E / images generations format)
-      if (orResult.body?.data?.[0]?.url) {
-        imageUrl = orResult.body.data[0].url;
-      } else if (orResult.body?.data?.[0]?.b64_json) {
-        imageUrl = `data:image/png;base64,${orResult.body.data[0].b64_json}`;
-      } else {
-        // 2) Chat completions format
-        const content = orResult.body?.choices?.[0]?.message?.content;
-        if (Array.isArray(content)) {
-          const imgPart = content.find(p => p.type === 'image_url');
-          if (imgPart) imageUrl = imgPart.image_url?.url;
-          const inlinePart = content.find(p => p.type === 'image' || p.inline_data);
-          if (!imageUrl && inlinePart) {
-            const b64  = inlinePart.inline_data?.data || inlinePart.image;
-            const mime = inlinePart.inline_data?.mime_type || 'image/png';
-            if (b64) imageUrl = `data:${mime};base64,${b64}`;
-          }
-        } else if (typeof content === 'string') {
-          if (content.startsWith('data:image') || content.startsWith('http')) {
-            imageUrl = content.trim();
-          } else {
-            // markdown image: ![alt](url)
-            const mdMatch = content.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
-            if (mdMatch) imageUrl = mdMatch[1];
-            else {
-              // any https URL — no extension requirement (CDN URLs often have none)
-              const urlMatch = content.match(/https?:\/\/[^\s"'<>)]+/);
-              if (urlMatch) imageUrl = urlMatch[0].replace(/[.,;!?]+$/, '');
-            }
-          }
-        }
-        if (!imageUrl) {
-          const debugInfo = JSON.stringify(orResult.body).slice(0, 400);
-          return res.status(500).json({ error: `Modelo não retornou imagem. Resposta da API: ${debugInfo}` });
-        }
-      }
+    if (gResult.status >= 400) {
+      const msg = gResult.body?.error?.message || JSON.stringify(gResult.body).slice(0, 300);
+      return res.status(500).json({ error: 'Erro Google AI: ' + msg });
     }
 
-    if (!imageUrl) {
-      return res.status(500).json({ error: 'Modelo não retornou imagem. Tente outro modelo.' });
-    }
-
-    // Save to disk and serve
-    const ext   = imageUrl.includes('png') ? 'png' : 'jpg';
-    const fname = `img-${Date.now()}.${ext}`;
-    const fpath = path.join(UPLOAD_DIR, fname);
-
-    if (imageUrl.startsWith('data:image')) {
-      const b64 = imageUrl.split(',')[1];
-      fs.writeFileSync(fpath, Buffer.from(b64, 'base64'));
+    if (isImagen) {
+      const pred = gResult.body?.predictions?.[0];
+      if (pred?.bytesBase64Encoded) {
+        imageUrl = `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
+      }
     } else {
-      // Download from URL — follow redirects, pick http/https per URL
-      const dlBuf = await new Promise((resolve, reject) => {
-        const doReq = (urlStr, hops) => {
-          if (hops > 5) return reject(new Error('Too many redirects'));
-          const pu = new URL(urlStr);
-          const lib = pu.protocol === 'https:' ? https : require('http');
-          lib.get({ hostname: pu.hostname, path: pu.pathname + pu.search }, resp => {
-            if ([301,302,307,308].includes(resp.statusCode) && resp.headers.location) {
-              return doReq(resp.headers.location, hops + 1);
-            }
-            const chunks = [];
-            resp.on('data', c => chunks.push(c));
-            resp.on('end', () => resolve(Buffer.concat(chunks)));
-          }).on('error', reject);
-        };
-        doReq(imageUrl, 0);
-      });
-      fs.writeFileSync(fpath, dlBuf);
+      const gParts = gResult.body?.candidates?.[0]?.content?.parts;
+      if (Array.isArray(gParts)) {
+        const imgPart = gParts.find(p => p.inlineData);
+        if (imgPart) imageUrl = `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`;
+      }
     }
 
-    scheduleDelete(fpath, 3600000);
-    return res.json({ url: `/uploads/${fname}` });
+    if (!imageUrl) return res.status(500).json({ error: 'Não foi possível gerar a imagem.' });
+    return res.json({ url: imageUrl });
   } catch (err) {
-    return res.status(500).json({ error: 'Erro: ' + err.message });
+    return res.status(500).json({ error: 'Erro ao gerar imagem: ' + (err.message || err) });
   }
 });
 
