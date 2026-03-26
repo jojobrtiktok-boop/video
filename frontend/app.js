@@ -1,3 +1,51 @@
+// ════════════════════════════════════════════════════════════════════
+// BIBLIOTECA GERAL DE VÍDEOS
+// ════════════════════════════════════════════════════════════════════
+const videoLibrarySection = document.getElementById('tool-video-library');
+const videoLibraryGrid = document.getElementById('video-library-grid');
+function renderVideoLibrary(items) {
+  if (!videoLibraryGrid) return;
+  if (!items.length) {
+    videoLibraryGrid.innerHTML = '<div class="empty-msg">Nenhum vídeo encontrado ainda.</div>';
+    return;
+  }
+  videoLibraryGrid.innerHTML = items.map(item => `
+    <div class="video-card">
+      <video src="${API + item.url}" controls muted playsinline></video>
+      <div class="video-card-info">
+        <div class="video-card-title">${item.url ? item.url.split('/').pop() : 'Vídeo'}</div>
+        <div class="video-card-meta">${item.status === 'done' ? '✅ Pronto' : (item.status === 'processing' ? '⏳ Processando' : '❌ Erro')}</div>
+        <div class="video-card-meta">${item.createdAt ? (new Date(item.createdAt)).toLocaleString('pt-BR') : ''}</div>
+        <div class="video-card-actions">
+          <a href="${API + item.url}" download class="video-card-dl">⬇ Baixar</a>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function fetchVideoLibrary() {
+  try {
+    const resp = await fetch(API + '/api/video-library');
+    const json = await resp.json();
+    if (json.items) renderVideoLibrary(json.items);
+  } catch (e) {
+    if (videoLibraryGrid) videoLibraryGrid.innerHTML = '<div class="error-msg">Erro ao carregar biblioteca.</div>';
+  }
+}
+
+// Atualiza biblioteca ao abrir a seção
+const navVideoLib = document.querySelector('.nav-item[data-tool="video-library"]');
+if (navVideoLib) {
+  navVideoLib.addEventListener('click', () => {
+    fetchVideoLibrary();
+    // Atualiza a cada 10s enquanto estiver visível
+    let interval = setInterval(() => {
+      if (videoLibrarySection && videoLibrarySection.style.display !== 'none') fetchVideoLibrary();
+      else clearInterval(interval);
+    }, 10000);
+  });
+}
 const API = '';
 
 // ════════════════════════════════════════════════════════════════════
