@@ -38,12 +38,19 @@ def main():
         '--face', video_path,
         '--audio', audio_path,
         '--outfile', output_path,
+        '--resize_factor', '2',
+        '--nosmooth',
     ]
 
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=wav2lip_dir)
 
+    # Sempre imprime stdout + stderr para facilitar debug
+    if result.stdout:
+        print(result.stdout, file=sys.stderr)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
+
     if result.returncode != 0:
-        print(result.stderr or result.stdout, file=sys.stderr)
         sys.exit(result.returncode)
 
     print(f"OK: {output_path}")
