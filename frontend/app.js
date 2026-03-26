@@ -10,12 +10,23 @@ const LIB_GROUPS = [
   { type: 'lipsync',    icon: '💋', title: 'Lipsync' },
 ];
 
+function formatExpiry(expiresAt) {
+  if (!expiresAt) return '';
+  const ms = expiresAt - Date.now();
+  if (ms <= 0) return '⏰ Expirado';
+  const min = Math.floor(ms / 60000);
+  const hr  = Math.floor(min / 60);
+  if (hr > 0) return `⏰ Apaga em ${hr}h ${min % 60}m`;
+  return `⏰ Apaga em ${min}m`;
+}
+
 function renderVideoCard(item) {
-  const filename = item.url ? item.url.split('/').pop() : 'Vídeo';
-  const time     = item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '';
+  const filename = item.url ? item.url.split('/').pop() : 'processando…';
   const isReady  = !item.status || item.status === 'done';
   const isProc   = item.status === 'processing';
+  const isErr    = item.status === 'error';
   const pct      = item.progress != null ? item.progress : (isReady ? 100 : 0);
+  const expiry   = isReady ? formatExpiry(item.expiresAt) : '';
   return `
     <div class="video-card" data-id="${item.id || ''}">
       ${isReady && item.url
@@ -25,8 +36,11 @@ function renderVideoCard(item) {
       <div class="video-card-info">
         <div class="video-card-label">${item.label || ''}</div>
         <div class="video-card-title">${filename}</div>
-        ${isProc ? `<div class="lib-progress-bar"><div class="lib-progress-fill" style="width:${pct}%"></div></div><div class="video-card-meta">⏳ ${pct}%</div>` : ''}
-        ${!isProc ? `<div class="video-card-meta">${isReady ? '✅ Pronto' : '❌ Erro'} · ${time}</div>` : ''}
+        ${isProc ? `
+          <div class="lib-progress-bar"><div class="lib-progress-fill" style="width:${pct}%"></div></div>
+          <div class="video-card-meta">⏳ ${pct}% — processando…</div>` : ''}
+        ${isReady ? `<div class="video-card-meta">${expiry}</div>` : ''}
+        ${isErr   ? `<div class="video-card-meta" style="color:#f87171">❌ Erro no processamento</div>` : ''}
         <div class="video-card-actions">
           ${isReady && item.url ? `<a href="${API + item.url}" download class="video-card-dl">⬇ Baixar</a>` : ''}
         </div>
@@ -61,26 +75,30 @@ function renderVideoLibrary(items) {
   videoLibraryGrid.innerHTML = html;
 }
 
+let _libRefreshTimer = null;
 async function fetchVideoLibrary() {
   try {
     const resp = await fetch(API + '/api/video-library');
     const json = await resp.json();
-    if (json.items) renderVideoLibrary(json.items);
+    if (!json.items) return;
+    renderVideoLibrary(json.items);
+    // Refresh mais rápido se há itens processando
+    const hasProcessing = json.items.some(i => i.status === 'processing');
+    const delay = hasProcessing ? 3000 : 8000;
+    clearTimeout(_libRefreshTimer);
+    if (videoLibrarySection && videoLibrarySection.style.display !== 'none') {
+      _libRefreshTimer = setTimeout(fetchVideoLibrary, delay);
+    }
   } catch (e) {
     if (videoLibraryGrid) videoLibraryGrid.innerHTML = '<div class="error-msg">Erro ao carregar biblioteca.</div>';
   }
 }
 
-// Atualiza biblioteca ao abrir a seção
 const navVideoLib = document.querySelector('.nav-item[data-tool="video-library"]');
 if (navVideoLib) {
   navVideoLib.addEventListener('click', () => {
+    clearTimeout(_libRefreshTimer);
     fetchVideoLibrary();
-    // Atualiza a cada 10s enquanto estiver visível
-    let interval = setInterval(() => {
-      if (videoLibrarySection && videoLibrarySection.style.display !== 'none') fetchVideoLibrary();
-      else clearInterval(interval);
-    }, 10000);
   });
 }
 const API = '';
@@ -410,6 +428,8 @@ function endDragWm() {
   drawFrame();
 }
 
+const ASYNC_MODES = new Set(['delogo', 'sora']);
+
 submitBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
   if (!autoModes.has(selectedMode) && (!selRect || selRect.w < 5 || selRect.h < 5)) {
@@ -423,23 +443,54 @@ submitBtn.addEventListener('click', async () => {
     fd.append('w', Math.round(selRect.w * videoW / previewW));
     fd.append('h', Math.round(selRect.h * videoH / previewH));
   }
-  setLoadingWm(true); clearError(); resultCard.style.display = 'none';
+  setLoadingWm(true, 0); clearError(); resultCard.style.display = 'none';
   try {
     const resp = await fetch(API + '/api/process', { method: 'POST', body: fd });
     const json = await resp.json();
     if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-    resultVideo.src = API + json.url; downloadBtn.href = API + json.url;
-    downloadBtn.download = json.url.split('/').pop();
-    resultCard.style.display = 'block';
-    resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (json.status === 'processing' && json.id) {
+      await pollProcessJob(json.id);
+    } else {
+      showWmResult(json.url);
+    }
   } catch (err) { showError(err.message); }
-  finally { setLoadingWm(false); }
+  finally { setLoadingWm(false, 0); }
 });
-function setLoadingWm(on) {
+
+async function pollProcessJob(jobId) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2500));
+    const resp = await fetch(API + `/api/process-status/${jobId}`);
+    const job  = await resp.json();
+    if (job.status === 'done')  { showWmResult(job.url); return; }
+    if (job.status === 'error') throw new Error(job.error || 'Processamento falhou');
+    setLoadingWm(true, job.progress || 0);
+  }
+}
+
+function showWmResult(url) {
+  resultVideo.src = API + url; downloadBtn.href = API + url;
+  downloadBtn.download = url.split('/').pop();
+  resultCard.style.display = 'block';
+  resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function setLoadingWm(on, pct) {
   submitBtn.disabled = on;
-  submitBtn.textContent = on ? '⏳ Processando...' : '▶ Processar Vídeo';
+  const bar = progressWrap ? progressWrap.querySelector('.progress-bar') : null;
+  if (bar) {
+    if (pct > 0) {
+      bar.style.width = pct + '%'; bar.style.animation = 'none';
+      bar.style.background = 'linear-gradient(90deg,var(--accent),#a78bfa)';
+    } else {
+      bar.style.width = ''; bar.style.animation = ''; bar.style.background = '';
+    }
+  }
+  submitBtn.textContent = on ? (pct > 0 ? `⏳ ${pct}%...` : '⏳ Enviando...') : '▶ Processar Vídeo';
   progressWrap.style.display = on ? 'block' : 'none';
-  statusText.textContent = on ? 'Aguarde — o ffmpeg está processando o vídeo...' : '';
+  statusText.textContent = on
+    ? (pct > 0 ? `Processando… ${pct}% — isso pode levar alguns minutos` : 'Iniciando — aguarde…')
+    : '';
 }
 function showError(msg) { errorMsg.style.display = 'block'; errorMsg.textContent = 'Erro: ' + msg; }
 function clearError() { errorMsg.style.display = 'none'; errorMsg.textContent = ''; }

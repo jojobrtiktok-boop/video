@@ -36,6 +36,8 @@ def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg'):
     my1 = y - ry1
     roi_mask[my1 : my1 + h, mx1 : mx1 + w] = 255
 
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+
     # Write video-only to temp file (OpenCV mp4v, then re-encode with ffmpeg)
     tmp_fd, tmp_path = tempfile.mkstemp(suffix='.avi')
     os.close(tmp_fd)
@@ -52,11 +54,13 @@ def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg'):
         frame[ry1:ry2, rx1:rx2] = inpainted
         out.write(frame)
         frame_count += 1
-        if frame_count % 100 == 0:
-            print(f'  frames processados: {frame_count}', flush=True)
+        if frame_count % 8 == 0 and total_frames > 0:
+            pct = min(90, int(frame_count / total_frames * 90))
+            print(f'PROGRESS:{pct}', flush=True)
 
     cap.release()
     out.release()
+    print(f'PROGRESS:92', flush=True)
     print(f'Total frames: {frame_count}', flush=True)
 
     # Re-encode with ffmpeg to get proper mp4 + copy audio
@@ -79,6 +83,7 @@ def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg'):
         print(result.stderr, file=sys.stderr)
         sys.exit(result.returncode)
 
+    print('PROGRESS:100', flush=True)
     print(f'Saída: {output_path}', flush=True)
 
 if __name__ == '__main__':

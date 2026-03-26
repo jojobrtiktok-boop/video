@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
@@ -28,6 +28,40 @@ const FFMPEG = process.env.FFMPEG_BIN
   || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffmpeg.exe' : 'ffmpeg');
 const FFPROBE = process.env.FFPROBE_BIN
   || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffprobe.exe' : 'ffprobe');
+
+// ── JOBS ASSÍNCRONOS (delogo/sora) ─────────────────────────────────────────
+const processJobs = {};
+
+function spawnJob(jobId, args, input, output, expiry, libEntry) {
+  const [cmd, ...cmdArgs] = args;
+  const proc = spawn(cmd, cmdArgs);
+  let stdoutBuf = '';
+  proc.stdout.on('data', chunk => {
+    stdoutBuf += chunk.toString();
+    const m = stdoutBuf.match(/PROGRESS:(\d+)/g);
+    if (m) {
+      const pct = parseInt(m[m.length - 1].split(':')[1]);
+      processJobs[jobId].progress = pct;
+      const li = videoLibrary.find(i => i.id === jobId);
+      if (li) li.progress = pct;
+    }
+  });
+  proc.on('close', code => {
+    fs.unlink(input, () => {});
+    const li = videoLibrary.find(i => i.id === jobId);
+    if (code !== 0) {
+      processJobs[jobId].status = 'error';
+      processJobs[jobId].error  = 'Processamento falhou (código ' + code + ')';
+      if (li) { li.status = 'error'; li.progress = 0; }
+    } else {
+      scheduleDelete(output, expiry - Date.now());
+      processJobs[jobId].status   = 'done';
+      processJobs[jobId].progress = 100;
+      processJobs[jobId].url      = `/uploads/${path.basename(output)}`;
+      if (li) { li.status = 'done'; li.progress = 100; li.url = processJobs[jobId].url; }
+    }
+  });
+}
 
 // ── BIBLIOTECA GERAL DE VÍDEOS ─────────────────────────────────────────────
 const videoLibrary = [];
@@ -66,23 +100,14 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   const output = path.join(UPLOAD_DIR, outputName);
 
   if (mode === 'sora') {
-    // Detecção automática por diferença temporal + inpainting por frame
+    const jobId  = Date.now().toString() + Math.random().toString(36).slice(2);
+    const expiry = Date.now() + 60 * 60 * 1000;
+    processJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry };
+    const libEntry = { id: jobId, type: 'watermark', label: '🎵 Sora', url: null, status: 'processing', progress: 0, createdAt: Date.now(), expiresAt: expiry };
+    addToLibrary(libEntry);
+    res.json({ id: jobId, status: 'processing' });
     const soraScript = path.join(__dirname, 'remove_sora_watermark.py');
-    const cmd = `python3 "${soraScript}" "${input}" "${output}" "${FFMPEG}"`;
-    exec(cmd, { timeout: 15 * 60 * 1000 }, (err, stdout, stderr) => {
-      fs.unlink(input, () => {});
-      if (err) return res.status(500).json({ error: String(err), stderr: stderr || stdout });
-      const expiry = Date.now() + 60 * 60 * 1000;
-      scheduleDelete(output, expiry - Date.now());
-      const libEntry = {
-        id: Date.now().toString() + Math.random().toString(36).slice(2),
-        type: 'watermark', label: '🎵 Sora',
-        url: `/uploads/${path.basename(output)}`,
-        createdAt: Date.now(), expiresAt: expiry
-      };
-      addToLibrary(libEntry);
-      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
-    });
+    spawnJob(jobId, ['python3', soraScript, input, output, FFMPEG], input, output, expiry, libEntry);
     return;
   }
 
@@ -188,16 +213,14 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     const y = parseInt(req.body.y) || 0;
     const w = parseInt(req.body.w) || 100;
     const h = parseInt(req.body.h) || 60;
+    const jobId  = Date.now().toString() + Math.random().toString(36).slice(2);
+    const expiry = Date.now() + 30 * 60 * 1000;
+    processJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry };
+    const libEntry = { id: jobId, type: 'watermark', label: '✨ Remoção Limpa', url: null, status: 'processing', progress: 0, createdAt: Date.now(), expiresAt: expiry };
+    addToLibrary(libEntry);
+    res.json({ id: jobId, status: 'processing' });
     const scriptPath = path.join(__dirname, 'inpaint_video.py');
-    const cmd = `python3 "${scriptPath}" "${input}" "${output}" ${x} ${y} ${w} ${h} "${FFMPEG}"`;
-    exec(cmd, { timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
-      fs.unlink(input, () => {});
-      if (err) return res.status(500).json({ error: String(err), stderr: stderr || stdout });
-      scheduleDelete(output, 30 * 60 * 1000);
-      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '✨ Remoção Limpa', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
-      addToLibrary(libEntry);
-      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
-    });
+    spawnJob(jobId, ['python3', scriptPath, input, output, String(x), String(y), String(w), String(h), FFMPEG], input, output, expiry, libEntry);
     return;
   }
 
@@ -296,6 +319,12 @@ app.get('/api/lipsync-status/:id', (req, res) => {
 });
 
 // Endpoint para listar TODOS os vídeos gerados (biblioteca geral)
+app.get('/api/process-status/:id', (req, res) => {
+  const job = processJobs[req.params.id];
+  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+  res.json({ id: req.params.id, ...job });
+});
+
 app.get('/api/video-library', (req, res) => {
   const now = Date.now();
   const items = videoLibrary

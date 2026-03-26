@@ -114,11 +114,13 @@ def remove_sora(input_path, output_path, ffmpeg='ffmpeg'):
 
         writer.write(result)
         frame_idx += 1
-        if frame_idx % 60 == 0:
-            print(f'  frame {frame_idx}/{total}  inpainted={inpaint_cnt}', flush=True)
+        if frame_idx % 8 == 0 and total > 0:
+            pct = min(88, int((frame_idx / total) * 88) + 5)  # fase1=5%, frames=5-88%
+            print(f'PROGRESS:{pct}', flush=True)
 
     cap.release()
     writer.release()
+    print('PROGRESS:90', flush=True)
     print(f'  total frames: {frame_idx}  frames com inpainting: {inpaint_cnt}', flush=True)
 
     # ── FASE 3: re-encode + copiar áudio ──────────────────────────────────────
@@ -142,6 +144,7 @@ def remove_sora(input_path, output_path, ffmpeg='ffmpeg'):
         print(r.stderr, file=sys.stderr)
         sys.exit(r.returncode)
 
+    print('PROGRESS:100', flush=True)
     print(f'Concluído: {output_path}', flush=True)
 
 if __name__ == '__main__':
