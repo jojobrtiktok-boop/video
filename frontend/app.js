@@ -1405,7 +1405,14 @@ if (lipSubmitBtn) {
           igResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
       } catch (err) {
-        igError.style.display = 'block'; igError.textContent = 'Erro: ' + err.message;
+        igError.style.display = 'block';
+        let errMsg = err.message;
+        if (errMsg.includes('has not been used') || errMsg.includes('is disabled') || errMsg.includes('Enable it by visiting')) {
+          errMsg = '❌ Chave do Google Cloud detectada! Você deve usar uma chave do AI Studio, não do Google Cloud Console.\n\nAcesse: aistudio.google.com/apikey \u2192 “Create API Key” \u2192 copie a chave (começa com AIzaSy...)';
+        }
+        igError.style.display = 'block';
+        igError.style.whiteSpace = 'pre-line';
+        igError.textContent = errMsg;
       } finally {
         igSubmit.disabled = false; igSubmit.textContent = '🖼️ Gerar Imagem';
         igProgress.style.display = 'none'; igStatus.textContent = '';
