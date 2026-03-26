@@ -964,18 +964,34 @@ app.post('/api/resize', upload.single('video'), async (req, res) => {
   const w = parseInt(req.body.w) || 1080;
   const h = parseInt(req.body.h) || 1920;
   const pad = req.body.pad || 'black';
+  const mode = req.body.mode || 'fit';
+  const cropXn = Math.max(0, Math.min(1, parseFloat(req.body.cropX) || 0));
+  const cropYn = Math.max(0, Math.min(1, parseFloat(req.body.cropY) || 0));
   const output = path.join(UPLOAD_DIR, `resize_${Date.now()}.mp4`);
   const EXPIRY = 3600000;
+
   let vf;
-  if (pad === 'blur') {
-    vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,boxblur=20:20,scale=${w}:${h},` +
-         `[1:v]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];[0:v][fg]overlay=(W-w)/2:(H-h)/2`;
-    vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`;
+  if (mode === 'crop') {
+    // Scale to fill target (both dims >= target), then crop at normalized offset
+    vf = `scale=${w}:${h}:force_original_aspect_ratio=increase,` +
+         `crop=${w}:${h}:(in_w-out_w)*${cropXn.toFixed(4)}:(in_h-out_h)*${cropYn.toFixed(4)}`;
+  } else if (pad === 'blur') {
+    // Blurred background (fill+crop) with sharp letterboxed foreground centered on top
+    vf = `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,` +
+         `crop=${w}:${h},boxblur=luma_radius=40:luma_power=3[bg];` +
+         `[0:v]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];` +
+         `[bg][fg]overlay=(W-overlay_w)/2:(H-overlay_h)/2[out]`;
   } else {
     const color = pad === 'white' ? 'white' : 'black';
-    vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${color}`;
+    vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,` +
+         `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${color}`;
   }
-  const cmd = `"${FFMPEG}" -y -i "${input}" -vf "${vf}" -c:v libx264 -preset fast -crf 18 -c:a copy "${output}"`;
+
+  // blur uses filtergraph (needs -filter_complex), others use -vf
+  const useComplex = pad === 'blur' && mode !== 'crop';
+  const filterFlag = useComplex ? `-filter_complex "${vf}" -map "[out]" -map 0:a?` : `-vf "${vf}"`;
+  const cmd = `"${FFMPEG}" -y -i "${input}" ${filterFlag} -c:v libx264 -preset fast -crf 18 -c:a copy "${output}"`;
+
   exec(cmd, (err, _so, se) => {
     fs.unlink(input, () => {});
     if (err) return res.status(500).json({ error: se || err.message });

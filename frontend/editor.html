@@ -679,6 +679,16 @@
   .resize-preset .ratio-name { font-size: 0.85rem; font-weight: 700; color: var(--text); }
   .resize-preset .ratio-plat { font-size: 0.65rem; color: var(--text-muted); }
 
+  /* ── CROP PREVIEW ── */
+  .crop-preview-outer { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 12px 0 4px; }
+  #resize-crop-canvas {
+    border-radius: 10px; display: block; cursor: grab; touch-action: none;
+    border: 2px solid var(--accent); box-shadow: 0 0 18px var(--accent-glow);
+    max-width: 100%;
+  }
+  #resize-crop-canvas:active { cursor: grabbing; }
+  .crop-hint { font-size: 0.72rem; color: var(--text-muted); text-align: center; }
+
   /* ── COMPRESS ── */
   .quality-row { display: flex; align-items: center; gap: 14px; padding: 8px 0; }
   .quality-row label { font-size: 0.81rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
@@ -1467,6 +1477,7 @@
           <div id="resize-file-name" class="dz-filename"></div>
         </label>
         <input type="file" id="resize-file-input" accept="video/*" class="hidden-input">
+
         <div class="section-label" style="margin-top:20px">Formato de saída</div>
         <div class="resize-presets">
           <button class="resize-preset rp-active" data-ratio="9:16" data-w="1080" data-h="1920">
@@ -1490,13 +1501,33 @@
             <span class="ratio-plat">Instagram</span>
           </button>
         </div>
-        <div class="section-label">Fundo nas bordas</div>
-        <div class="mode-toggle" id="resize-pad-toggle">
-          <button class="mode-btn active" data-pad="black">Preto</button>
-          <button class="mode-btn" data-pad="blur">Blur</button>
-          <button class="mode-btn" data-pad="white">Branco</button>
+
+        <div class="section-label">Modo</div>
+        <div class="mode-toggle" id="resize-mode-toggle">
+          <button class="mode-btn active" data-mode="fit">Encaixar</button>
+          <button class="mode-btn" data-mode="crop">Recortar</button>
+        </div>
+
+        <!-- opções de fundo (só no modo Encaixar) -->
+        <div id="resize-pad-section">
+          <div class="section-label" style="margin-top:14px">Fundo nas bordas</div>
+          <div class="mode-toggle" id="resize-pad-toggle">
+            <button class="mode-btn active" data-pad="black">Preto</button>
+            <button class="mode-btn" data-pad="blur">Blur</button>
+            <button class="mode-btn" data-pad="white">Branco</button>
+          </div>
+        </div>
+
+        <!-- preview de crop (só no modo Recortar, após subir arquivo) -->
+        <div id="resize-crop-section" style="display:none">
+          <div class="section-label" style="margin-top:14px">Posicionar área de corte</div>
+          <div class="crop-preview-outer">
+            <canvas id="resize-crop-canvas"></canvas>
+            <div class="crop-hint">Arraste o vídeo para escolher qual parte manter</div>
+          </div>
         </div>
       </div>
+
       <button id="resize-submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
       <div id="resize-progress" class="progress-wrap"><div class="progress-bar"></div></div>
       <div id="resize-status" class="status-text"></div>
