@@ -78,23 +78,33 @@ app.post('/api/process', upload.single('video'), (req, res) => {
       }
 
       let cmd;
+      // delogo precisa de pelo menos 2px de margem de todas as bordas
+      function clampDelogo(x, y, w, h, vw, vh) {
+        const M = 3;
+        x = Math.max(M, x);
+        y = Math.max(M, y);
+        if (x + w >= vw - M) w = vw - M - x;
+        if (y + h >= vh - M) h = vh - M - y;
+        w = Math.max(1, w);
+        h = Math.max(1, h);
+        return { x, y, w, h };
+      }
+
+      function runDelogo(x, y, w, h, label, cb) {
+        ({ x, y, w, h } = clampDelogo(x, y, w, h, vw, vh));
+        const c = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
+        exec(c, cb);
+      }
+
       if (mode === 'sora') {
-        // Sora/TikTok: watermark MÓVEL — usa blur em faixa inferior (30% inferior do vídeo)
-        // Cobre toda a área onde a marca pode aparecer durante o vídeo
-        const bh = Math.round(vh * 0.30);
-        const by = vh - bh;
-        // filter_complex: crop a faixa inferior, blur forte, overlay de volta
-        const filterScript = [
-          `[0:v]split[bg][tmp];`,
-          `[tmp]crop=${vw}:${bh}:0:${by},gblur=sigma=30[blurred];`,
-          `[bg][blurred]overlay=0:${by}`
-        ].join('');
-        const filterFile = input + '.filter';
-        fs.writeFileSync(filterFile, filterScript, 'utf8');
-        cmd = `"${FFMPEG}" -y -i "${input}" -filter_complex_script "${filterFile}" -c:a copy "${output}"`;
-        exec(cmd, (err, stdout, stderr) => {
+        // Sora/TikTok: watermark MÓVEL — delogo na faixa inferior (25% altura, largura quase total)
+        // A marca fica sempre nessa faixa, reconstrução de pixels cobre todas as posições
+        const h0 = Math.round(vh * 0.25);
+        const w0 = Math.round(vw * 0.90);
+        const x0 = Math.round((vw - w0) / 2);
+        const y0 = vh - h0;
+        runDelogo(x0, y0, w0, h0, '🎵 Sora', (err, stdout, stderr) => {
           fs.unlink(input, () => {});
-          fs.unlink(filterFile, () => {});
           if (err) return res.status(500).json({ error: String(err), stderr });
           const expiry = Date.now() + 60 * 60 * 1000;
           scheduleDelete(output, expiry - Date.now());
@@ -109,17 +119,11 @@ app.post('/api/process', upload.single('video'), (req, res) => {
         });
       } else {
         // HeyGen: watermark ESTÁTICA — delogo no canto inferior direito
-        let h = Math.round(vh * 0.13);
-        let w = Math.round(vw * 0.38);
-        let x = vw - w;
-        let y = vh - h;
-        // garantir que region fica dentro do frame (delogo falha se tocar a borda)
-        if (x < 0) x = 0;
-        if (y < 0) y = 0;
-        if (x + w > vw) w = vw - x - 1;
-        if (y + h >= vh) { h = vh - y - 2; y = Math.max(0, y); }
-        cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
-        exec(cmd, (err, stdout, stderr) => {
+        const h0 = Math.round(vh * 0.13);
+        const w0 = Math.round(vw * 0.38);
+        const x0 = vw - w0;
+        const y0 = vh - h0;
+        runDelogo(x0, y0, w0, h0, '🤖 HeyGen', (err, stdout, stderr) => {
           fs.unlink(input, () => {});
           if (err) return res.status(500).json({ error: String(err), stderr });
           const expiry = Date.now() + 60 * 60 * 1000;
