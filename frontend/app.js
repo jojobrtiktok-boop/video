@@ -1057,6 +1057,7 @@ const extrTransText   = document.getElementById('extr-transcript-text');
 const extrCopyBtn     = document.getElementById('extr-copy-btn');
 
 let extrMode = 'video', extrVideoFile = null, extrAudioFile = null;
+const extrResultAudio = document.getElementById('extr-result-audio');
 
 document.querySelectorAll('.extr-mode-card').forEach(card => {
   card.addEventListener('click', () => {
@@ -1106,7 +1107,7 @@ function updateExtrSubmit() {
   if (!extrVideoFile) { extrSubmitBtn.disabled = true; extrSubmitBtn.textContent = 'Selecione um vídeo'; return; }
   if (extrMode === 'merge' && !extrAudioFile) { extrSubmitBtn.disabled = true; extrSubmitBtn.textContent = 'Selecione o áudio também'; return; }
   extrSubmitBtn.disabled = false;
-  const labels = { video: '🎬 Extrair Vídeo Sem Áudio', transcribe: '📝 Transcrever Vídeo', merge: '🔗 Juntar Vídeo + Áudio' };
+  const labels = { video: '🎬 Extrair Vídeo Sem Áudio', audio: '🎵 Extrair Áudio MP3', transcribe: '📝 Transcrever Vídeo', merge: '🔗 Juntar Vídeo + Áudio' };
   extrSubmitBtn.textContent = labels[extrMode] || 'Processar';
 }
 
@@ -1120,9 +1121,10 @@ if (extrSubmitBtn) {
     extrResultCard.style.display = 'none';
     extrTransWrap.style.display = 'none';
     const statusMap = {
-      video: 'Removendo áudio do vídeo...',
+      video:      'Removendo áudio do vídeo...',
+      audio:      'Extraindo trilha de áudio como MP3...',
       transcribe: 'Transcrevendo com faster-whisper — pode levar alguns instantes...',
-      merge: 'Juntando vídeo com o novo áudio...'
+      merge:      'Juntando vídeo com o novo áudio...'
     };
     extrStatusEl.textContent = statusMap[extrMode] || 'Processando...';
     const fd = new FormData();
@@ -1132,7 +1134,7 @@ if (extrSubmitBtn) {
       fd.append('lang', document.getElementById('extr-lang').value);
       fd.append('model', document.getElementById('extr-model').value);
     }
-    const endpointMap = { video: '/api/extract/video', transcribe: '/api/extract/transcribe', merge: '/api/extract/merge' };
+    const endpointMap = { video: '/api/extract/video', audio: '/api/extract/audio', transcribe: '/api/extract/transcribe', merge: '/api/extract/merge' };
     try {
       const resp = await fetch(API + endpointMap[extrMode], { method: 'POST', body: fd });
       const json = await resp.json();
@@ -1141,10 +1143,20 @@ if (extrSubmitBtn) {
         extrTransText.textContent = json.text || '(sem resultado)';
         extrTransWrap.style.display = 'block';
         extrTransWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else if (extrMode === 'audio') {
+        const url = API + json.url;
+        if (extrResultAudio) { extrResultAudio.src = url; extrResultAudio.style.display = 'block'; }
+        extrResultVideo.style.display = 'none';
+        extrDownloadBtn.href = url; extrDownloadBtn.download = json.url.split('/').pop();
+        extrDownloadBtn.textContent = '⬇ Baixar MP3';
+        extrResultCard.style.display = 'block';
+        extrResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } else {
         const url = API + json.url;
-        extrResultVideo.src = url; extrDownloadBtn.href = url;
-        extrDownloadBtn.download = json.url.split('/').pop();
+        if (extrResultAudio) { extrResultAudio.style.display = 'none'; extrResultAudio.src = ''; }
+        extrResultVideo.style.display = ''; extrResultVideo.src = url;
+        extrDownloadBtn.href = url; extrDownloadBtn.download = json.url.split('/').pop();
+        extrDownloadBtn.textContent = '⬇ Baixar Vídeo';
         extrResultCard.style.display = 'block';
         extrResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
@@ -1440,6 +1452,64 @@ if (lipSubmitBtn) {
         const panel = document.getElementById('ig-panel-' + currentMode);
         if (panel) panel.classList.add('active');
       });
+    });
+
+    // Esconde seletor de modelo e botão de gerar quando na aba de tradução
+    const igModelCard = document.getElementById('ig-model-card');
+    document.querySelectorAll('.ig-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const isTranslate = tab.dataset.mode === 'translate';
+        if (igModelCard) igModelCard.style.display = isTranslate ? 'none' : '';
+        if (igSubmit)    igSubmit.style.display    = isTranslate ? 'none' : '';
+      });
+    });
+
+    // Traduzir Imagem
+    setupUpload('ig-tr-input', 'ig-tr-preview', 'ig-tr-box');
+    const igTrLang   = document.getElementById('ig-tr-lang');
+    const igTrResult = document.getElementById('ig-tr-result');
+    const igTrText   = document.getElementById('ig-tr-text');
+    const igTrCopy   = document.getElementById('ig-tr-copy');
+
+    // Botão de traduzir (criado dinamicamente dentro do painel)
+    const igTrBtn = document.createElement('button');
+    igTrBtn.className = 'submit-btn';
+    igTrBtn.textContent = '🌐 Traduzir Imagem';
+    igTrBtn.style.marginTop = '16px';
+    const igTrPanel = document.getElementById('ig-panel-translate');
+    if (igTrPanel) igTrPanel.appendChild(igTrBtn);
+
+    const igTrError = document.createElement('div');
+    igTrError.className = 'error-msg'; igTrError.style.display = 'none';
+    if (igTrPanel) igTrPanel.appendChild(igTrError);
+
+    if (igTrBtn) igTrBtn.addEventListener('click', async () => {
+      const apiKey = igApikeyGoogle?.value.trim() || localStorage.getItem('google_api_key') || '';
+      if (!apiKey) { alert('Informe sua API Key do Google AI Studio'); return; }
+      const trInput = document.getElementById('ig-tr-input');
+      if (!trInput?.files?.[0]) { alert('Selecione uma imagem primeiro'); return; }
+      igTrBtn.disabled = true; igTrBtn.textContent = '⏳ Traduzindo...';
+      igTrError.style.display = 'none'; if (igTrResult) igTrResult.style.display = 'none';
+      const fd = new FormData();
+      fd.append('image', trInput.files[0]);
+      fd.append('targetLang', igTrLang?.value || 'pt');
+      fd.append('apiKey', apiKey);
+      try {
+        const resp = await fetch(API + '/api/translate-image', { method: 'POST', body: fd });
+        const json = await resp.json();
+        if (!resp.ok || json.error) throw new Error(json.error);
+        if (igTrText)   igTrText.textContent = json.translation || '(sem resultado)';
+        if (igTrResult) { igTrResult.style.display = 'block'; igTrResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+      } catch (err) {
+        igTrError.style.display = 'block'; igTrError.textContent = 'Erro: ' + err.message;
+      } finally {
+        igTrBtn.disabled = false; igTrBtn.textContent = '🌐 Traduzir Imagem';
+      }
+    });
+    if (igTrCopy) igTrCopy.addEventListener('click', () => {
+      navigator.clipboard.writeText(igTrText?.textContent || '');
+      igTrCopy.textContent = '✓ Copiado!';
+      setTimeout(() => { igTrCopy.textContent = '📋 Copiar tradução'; }, 2000);
     });
 
     // Upload previews

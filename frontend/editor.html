@@ -951,6 +951,11 @@
           <div class="em-title">Extrair Vídeo</div>
           <div class="em-desc">Remove o áudio — vídeo puro</div>
         </div>
+        <div class="extr-mode-card" data-mode="audio">
+          <span class="em-icon">🎵</span>
+          <div class="em-title">Extrair Áudio</div>
+          <div class="em-desc">Salva a trilha como MP3</div>
+        </div>
         <div class="extr-mode-card" data-mode="transcribe">
           <span class="em-icon">📝</span>
           <div class="em-title">Transcrever</div>
@@ -1011,7 +1016,8 @@
 
       <div id="extr-result-card" class="card result-card" style="display:none">
         <video id="extr-result-video" controls playsinline style="width:100%;border-radius:8px;background:#000"></video>
-        <a id="extr-download-btn" class="download-btn" download>⬇ Baixar Vídeo</a>
+        <audio id="extr-result-audio" controls style="width:100%;margin-top:8px;display:none"></audio>
+        <a id="extr-download-btn" class="download-btn" download>⬇ Baixar</a>
       </div>
 
       <div id="extr-transcript-wrap" style="display:none">
@@ -1170,6 +1176,7 @@
       <div class="ig-tabs">
         <button class="ig-tab active" data-mode="clone">🖼️ Clonar Foto</button>
         <button class="ig-tab" data-mode="create">✨ Criar do Zero</button>
+        <button class="ig-tab" data-mode="translate">🌐 Traduzir Imagem</button>
       </div>
 
       <!-- CLONE MODE -->
@@ -1209,8 +1216,38 @@
         </div>
       </div>
 
+      <!-- TRANSLATE MODE -->
+      <div class="ig-mode-panel" id="ig-panel-translate">
+        <div class="card">
+          <div class="section-label">Imagem para traduzir</div>
+          <div class="ig-upload-box" id="ig-tr-box" style="max-width:100%">
+            <input type="file" id="ig-tr-input" accept="image/*">
+            <span class="ig-upload-icon">🌐</span>
+            <span class="ig-upload-hint">Clique ou arraste a imagem com texto</span>
+            <img class="ig-preview-img" id="ig-tr-preview" alt="">
+          </div>
+          <div class="section-label" style="margin-top:16px">Traduzir para</div>
+          <select id="ig-tr-lang" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:0.95rem;margin-top:4px">
+            <option value="pt">🇧🇷 Português</option>
+            <option value="en">🇺🇸 Inglês</option>
+            <option value="es">🇪🇸 Espanhol</option>
+            <option value="fr">🇫🇷 Francês</option>
+            <option value="de">🇩🇪 Alemão</option>
+            <option value="it">🇮🇹 Italiano</option>
+            <option value="ja">🇯🇵 Japonês</option>
+            <option value="ko">🇰🇷 Coreano</option>
+            <option value="zh">🇨🇳 Chinês</option>
+          </select>
+        </div>
+        <div id="ig-tr-result" class="card" style="display:none">
+          <div class="section-label">📄 Tradução</div>
+          <div id="ig-tr-text" style="white-space:pre-wrap;font-size:0.94rem;color:var(--text);line-height:1.7;padding:4px 0"></div>
+          <button id="ig-tr-copy" class="copy-btn" style="margin-top:12px">📋 Copiar tradução</button>
+        </div>
+      </div>
+
       <!-- MODEL SELECTOR -->
-      <div class="card">
+      <div class="card" id="ig-model-card">
         <div class="section-label">Modelo de IA</div>
         <div class="vg-model-select" id="ig-model-select">
           <div class="vg-select-trigger" id="ig-select-trigger">

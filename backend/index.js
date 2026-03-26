@@ -696,6 +696,87 @@ app.post('/api/extract/transcribe', upload.single('video'), (req, res) => {
   });
 });
 
+// ── EXTRAIR ÁUDIO ─────────────────────────────────────────────────────────────
+app.post('/api/extract/audio', upload.single('video'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });
+  const input      = req.file.path;
+  const outputName = 'audio-' + Date.now() + '.mp3';
+  const output     = path.join(UPLOAD_DIR, outputName);
+  const cmd = `"${FFMPEG}" -y -i "${input}" -vn -acodec libmp3lame -q:a 2 "${output}"`;
+  exec(cmd, (err, _out, stderr) => {
+    fs.unlink(input, () => {});
+    if (err) return res.status(500).json({ error: String(err), stderr });
+    scheduleDelete(output, 30 * 60 * 1000);
+    return res.json({ url: `/uploads/${outputName}`, type: 'audio' });
+  });
+});
+
+// ── TRADUZIR IMAGEM via Gemini Vision ─────────────────────────────────────────
+const imgUpload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+app.post('/api/translate-image', imgUpload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
+  const { targetLang, apiKey } = req.body || {};
+  if (!apiKey) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ error: 'Informe a API Key do Google AI Studio.' }); }
+
+  const langNames = { pt: 'Português', en: 'Inglês', es: 'Espanhol', fr: 'Francês', de: 'Alemão', it: 'Italiano', ja: 'Japonês', ko: 'Coreano', zh: 'Chinês' };
+  const lang = langNames[targetLang] || targetLang || 'Português';
+
+  let imageBase64, mimeType;
+  try {
+    imageBase64 = fs.readFileSync(req.file.path).toString('base64');
+    mimeType    = req.file.mimetype || 'image/jpeg';
+  } catch (e) {
+    return res.status(500).json({ error: 'Erro ao ler imagem.' });
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
+
+  const prompt = `Analise esta imagem e encontre TODO o texto visível nela.
+Traduza cada trecho de texto para ${lang}.
+Responda em formato organizado:
+
+**Texto encontrado e traduzido para ${lang}:**
+[liste cada texto original → tradução, um por linha]
+
+Se houver vários blocos de texto separados, numere-os.
+Se não houver texto legível, escreva: "Nenhum texto encontrado na imagem."`;
+
+  const body = JSON.stringify({
+    contents: [{ parts: [
+      { inlineData: { mimeType, data: imageBase64 } },
+      { text: prompt }
+    ]}]
+  });
+
+  const model  = 'gemini-2.0-flash';
+  const apiUrl = `/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  const options = {
+    hostname: 'generativelanguage.googleapis.com',
+    path: apiUrl,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  };
+
+  const apiReq = https.request(options, apiRes => {
+    let raw = '';
+    apiRes.on('data', c => raw += c);
+    apiRes.on('end', () => {
+      try {
+        const json = JSON.parse(raw);
+        if (json.error) return res.status(400).json({ error: json.error.message });
+        const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        return res.json({ translation: text });
+      } catch (e) {
+        return res.status(500).json({ error: 'Resposta inválida do Gemini.' });
+      }
+    });
+  });
+  apiReq.on('error', e => res.status(500).json({ error: e.message }));
+  apiReq.write(body);
+  apiReq.end();
+});
+
 // ── GENERATE VIDEO via OpenRouter Alpha ───────────────────────────────────────
 app.post('/api/generate-video', express.json(), async (req, res) => {
   const { prompt, videoModel, duration, apiKey } = req.body || {};
