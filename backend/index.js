@@ -178,6 +178,21 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     return;
   }
 
+  if (mode === 'simple') {
+    const x = parseInt(req.body.x) || 0;
+    const y = parseInt(req.body.y) || 0;
+    const w = parseInt(req.body.w) || 100;
+    const h = parseInt(req.body.h) || 60;
+    const cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
+    exec(cmd, (err, stdout, stderr) => {
+      fs.unlink(input, () => {});
+      if (err) return res.status(500).json({ error: String(err), stderr });
+      scheduleDelete(output, 30 * 60 * 1000);
+      return res.json({ url: `/uploads/${path.basename(output)}` });
+    });
+    return;
+  }
+
   if (mode === 'delogo') {
     const x = parseInt(req.body.x) || 0;
     const y = parseInt(req.body.y) || 0;

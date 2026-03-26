@@ -113,7 +113,8 @@ let isPaused = false, isSeeking = false;
 
 const modeDesc = {
   blur:   'Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.',
-  delogo: 'Reconstrói pixels da região usando arredores — ótimo para fundos uniformes.',
+  simple: '⚡ Remoção rápida via FFmpeg — ideal para testes. Pode deixar leve artefato na borda.',
+  delogo: '✨ Reconstrução avançada de pixels com OpenCV — mais lento, resultado muito mais realista.',
   sora:   '🎵 Remove automaticamente a marca d\'água do Sora (faixa inferior central, estilo TikTok). Sem precisar selecionar região.',
   heygen: '🤖 Remove automaticamente a marca d\'água do HeyGen (canto inferior direito). Sem precisar selecionar região.',
   ai:     'Inpainting com IA — em breve neste servidor.'
