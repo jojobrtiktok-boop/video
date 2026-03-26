@@ -1,19 +1,3 @@
-// Endpoint para listar todos os vídeos lipsync gerados (para biblioteca)
-app.get('/api/lipsync-library', (req, res) => {
-  // Retorna todos os jobs que ainda não expiraram
-  const now = Date.now();
-  const list = Object.entries(lipsyncProgress)
-    .filter(([id, job]) => !job.expiresAt || job.expiresAt > now)
-    .map(([id, job]) => ({
-      id,
-      status: job.status,
-      progress: job.progress,
-      url: job.url,
-      error: job.error,
-      expiresAt: job.expiresAt
-    }));
-  res.json({ items: list });
-});
 const express = require('express');
 const multer = require('multer');
 const { exec } = require('child_process');
@@ -202,6 +186,22 @@ app.get('/api/lipsync-status/:id', (req, res) => {
     return res.status(404).json({ error: 'Expirado' });
   }
   res.json(prog);
+});
+
+// Endpoint para listar todos os vídeos lipsync gerados (para biblioteca)
+app.get('/api/lipsync-library', (req, res) => {
+  const now = Date.now();
+  const list = Object.entries(lipsyncProgress)
+    .filter(([id, job]) => !job.expiresAt || job.expiresAt > now)
+    .map(([id, job]) => ({
+      id,
+      status: job.status,
+      progress: job.progress,
+      url: job.url,
+      error: job.error,
+      expiresAt: job.expiresAt
+    }));
+  res.json({ items: list });
 });
 
 // ── SUBTITLE: burns ASS subtitles into video ─────────────────────────────────
