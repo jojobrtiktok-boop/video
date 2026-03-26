@@ -708,13 +708,18 @@ app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res
         });
       }
 
+      const isApiKey = apiKey.startsWith('AIza');
+      const vAuthHeaders = isApiKey
+        ? { 'x-goog-api-key': apiKey }
+        : { 'Authorization': `Bearer ${apiKey}` };
+
       const vResult = await new Promise((resolve, reject) => {
         const req2 = https.request({
           hostname: `${region}-aiplatform.googleapis.com`,
           path:     apiPath,
           method:   'POST',
           headers:  {
-            'Authorization':  `Bearer ${apiKey}`,
+            ...vAuthHeaders,
             'Content-Type':   'application/json',
             'Content-Length': Buffer.byteLength(vPayload)
           }

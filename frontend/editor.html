@@ -1149,12 +1149,12 @@
             </div>
           </div>
           <div>
-            <label style="font-size:0.72rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:5px">Access Token</label>
-            <input type="password" id="ig-vertex-token" placeholder="ya29...." autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-size:0.87rem;font-family:inherit">
+            <label style="font-size:0.72rem;color:var(--text-muted);font-weight:600;display:block;margin-bottom:5px">API Key ou Access Token</label>
+            <input type="password" id="ig-vertex-token" placeholder="AIzaSy... ou ya29...." autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--surface3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-size:0.87rem;font-family:inherit">
           </div>
           <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px;line-height:1.5">
-            Token: rode <code style="background:var(--surface3);padding:1px 5px;border-radius:4px;font-size:0.7rem">gcloud auth print-access-token</code> no terminal ou Cloud Shell — válido por 1h.<br>
-            Project ID: id do projeto no <a href="https://console.cloud.google.com" target="_blank" style="color:var(--accent)">Google Cloud Console</a>
+            <b>API Key</b> (começa com <code style="background:var(--surface3);padding:1px 5px;border-radius:4px;font-size:0.7rem">AIza</code>): crie em <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent)">Cloud Console &rarr; Credenciais</a> — ative a API do Vertex AI no projeto.<br>
+            <b>Access Token</b>: rode <code style="background:var(--surface3);padding:1px 5px;border-radius:4px;font-size:0.7rem">gcloud auth print-access-token</code> no Cloud Shell — válido por 1h.
           </p>
         </div>
       </div>
