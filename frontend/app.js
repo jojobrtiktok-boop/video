@@ -1132,16 +1132,41 @@ if (lipSubmitBtn) {
   let selectedVideoModel = 'google/veo-3.1';
   let selectedModelCost  = 0.40;
 
-  // Model selection
-  document.querySelectorAll('.vg-model-card').forEach(card => {
-    card.addEventListener('click', () => {
-      document.querySelectorAll('.vg-model-card').forEach(c => c.classList.remove('vm-active'));
-      card.classList.add('vm-active');
-      selectedVideoModel = card.dataset.model;
-      selectedModelCost  = parseFloat(card.dataset.cost) || 0.10;
-      updateCostEst();
+  // Model dropdown
+  const vgSelectTrigger  = document.getElementById('vg-select-trigger');
+  const vgSelectDropdown = document.getElementById('vg-select-dropdown');
+  const vgSelectName     = document.getElementById('vg-select-name');
+  const vgSelectDesc     = document.getElementById('vg-select-desc');
+  const vgSelectPrice    = document.getElementById('vg-select-price');
+
+  if (vgSelectTrigger && vgSelectDropdown) {
+    vgSelectTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = vgSelectDropdown.classList.contains('open');
+      vgSelectDropdown.classList.toggle('open', !isOpen);
+      vgSelectTrigger.classList.toggle('open', !isOpen);
     });
-  });
+
+    vgSelectDropdown.querySelectorAll('.vg-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        vgSelectDropdown.querySelectorAll('.vg-option').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        selectedVideoModel = opt.dataset.model;
+        selectedModelCost  = parseFloat(opt.dataset.cost) || 0.10;
+        if (vgSelectName)  vgSelectName.textContent  = opt.dataset.name;
+        if (vgSelectDesc)  vgSelectDesc.textContent  = opt.dataset.desc;
+        if (vgSelectPrice) vgSelectPrice.textContent = '$' + opt.dataset.cost + '/s';
+        vgSelectDropdown.classList.remove('open');
+        vgSelectTrigger.classList.remove('open');
+        updateCostEst();
+      });
+    });
+
+    document.addEventListener('click', () => {
+      vgSelectDropdown.classList.remove('open');
+      vgSelectTrigger.classList.remove('open');
+    });
+  }
 
   function updateCostEst() {
     if (!vgDuration || !vgCostEst) return;

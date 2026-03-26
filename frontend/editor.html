@@ -485,19 +485,43 @@
     }
     .vg-prompt-area:focus { outline: none; border-color: var(--accent); }
     .vg-prompt-area::placeholder { color: var(--text-muted); }
-    .vg-models { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
-    .vg-model-card {
-      display: flex; align-items: center; gap: 12px;
+    .vg-model-select { position: relative; margin-bottom: 16px; }
+    .vg-select-trigger {
+      display: flex; align-items: center; justify-content: space-between;
       padding: 12px 16px;
       background: var(--surface2); border: 1.5px solid var(--border);
       border-radius: var(--radius-sm); cursor: pointer;
-      transition: all .15s; user-select: none;
+      transition: border-color .15s; user-select: none;
     }
-    .vg-model-card:hover { border-color: var(--border-strong); }
-    .vg-model-card.vm-active { border-color: rgba(124,113,255,0.45); background: var(--accent-dim); box-shadow: 0 0 12px var(--accent-glow); }
-    .vg-model-name { font-weight: 600; font-size: 0.87rem; flex: 1; }
-    .vg-model-desc { font-size: 0.71rem; color: var(--text-muted); }
-    .vg-model-cost { font-size: 0.77rem; color: var(--accent); font-weight: 700; white-space: nowrap; }
+    .vg-select-trigger:hover { border-color: var(--border-strong); }
+    .vg-select-trigger.open { border-color: rgba(124,113,255,0.6); box-shadow: 0 0 10px var(--accent-glow); }
+    .vg-select-left { display: flex; flex-direction: column; gap: 2px; }
+    .vg-select-name { font-weight: 600; font-size: 0.87rem; color: var(--text); }
+    .vg-select-subdesc { font-size: 0.71rem; color: var(--text-muted); }
+    .vg-select-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .vg-select-price { font-size: 0.77rem; color: var(--accent); font-weight: 700; }
+    .vg-select-arrow { transition: transform .2s; color: var(--text-muted); display: block; }
+    .vg-select-trigger.open .vg-select-arrow { transform: rotate(180deg); }
+    .vg-select-dropdown {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+      background: var(--surface2); border: 1.5px solid rgba(124,113,255,0.4);
+      border-radius: var(--radius-sm);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    .vg-select-dropdown.open { display: block; }
+    .vg-option {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 11px 16px; cursor: pointer;
+      transition: background .12s; border-bottom: 1px solid var(--border);
+    }
+    .vg-option:last-child { border-bottom: none; }
+    .vg-option:hover { background: var(--surface3); }
+    .vg-option.active { background: var(--accent-dim); }
+    .vg-opt-info { display: flex; flex-direction: column; gap: 1px; }
+    .vg-opt-name { font-weight: 600; font-size: 0.87rem; color: var(--text); }
+    .vg-opt-desc { font-size: 0.70rem; color: var(--text-muted); }
+    .vg-opt-price { font-size: 0.77rem; color: var(--accent); font-weight: 700; white-space: nowrap; }
     .vg-duration-row { display: flex; align-items: center; gap: 14px; padding: 14px 0 4px; }
     .vg-duration-row label { font-size: 0.81rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
     .vg-duration-row input[type=range] { flex: 1; accent-color: var(--accent); }
@@ -980,42 +1004,40 @@
 
       <div class="card">
         <div class="section-label">Modelo de Geração de Vídeo</div>
-        <div class="vg-models" id="vg-models">
-          <div class="vg-model-card vm-active" data-model="google/veo-3.1" data-cost="0.40">
-          <div class="vg-model-card vm-active" data-model="google/veo-3.1" data-cost="0.40">
-            <div>
-              <div class="vg-model-name">Veo 3.1</div>
-              <div class="vg-model-desc">Google — melhor qualidade disponível</div>
+        <div class="vg-model-select" id="vg-model-select">
+          <div class="vg-select-trigger" id="vg-select-trigger">
+            <div class="vg-select-left">
+              <span class="vg-select-name" id="vg-select-name">Veo 3.1</span>
+              <span class="vg-select-subdesc" id="vg-select-desc">Google — melhor qualidade disponível</span>
             </div>
-            <div class="vg-model-cost">$0.40/s</div>
+            <div class="vg-select-right">
+              <span class="vg-select-price" id="vg-select-price">$0.40/s</span>
+              <svg class="vg-select-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M2.5 4.5L7 9.5L11.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
           </div>
-          <div class="vg-model-card" data-model="bytedance/seedance-1-5-pro" data-cost="0.15">
-            <div>
-              <div class="vg-model-name">Seedance 1.5 Pro</div>
-              <div class="vg-model-desc">ByteDance — rápido e econômico</div>
+          <div class="vg-select-dropdown" id="vg-select-dropdown">
+            <div class="vg-option active" data-model="google/veo-3.1" data-cost="0.40" data-name="Veo 3.1" data-desc="Google — melhor qualidade disponível">
+              <div class="vg-opt-info"><span class="vg-opt-name">Veo 3.1</span><span class="vg-opt-desc">Google — melhor qualidade disponível</span></div>
+              <span class="vg-opt-price">$0.40/s</span>
             </div>
-            <div class="vg-model-cost">$0.15/s</div>
-          </div>
-          <div class="vg-model-card" data-model="minimax/minimax-m1" data-cost="0.12">
-            <div>
-              <div class="vg-model-name">Minimax M1</div>
-              <div class="vg-model-desc">Minimax — vídeos rápidos, boa qualidade</div>
+            <div class="vg-option" data-model="bytedance/seedance-1-5-pro" data-cost="0.15" data-name="Seedance 1.5 Pro" data-desc="ByteDance — rápido e econômico">
+              <div class="vg-opt-info"><span class="vg-opt-name">Seedance 1.5 Pro</span><span class="vg-opt-desc">ByteDance — rápido e econômico</span></div>
+              <span class="vg-opt-price">$0.15/s</span>
             </div>
-            <div class="vg-model-cost">$0.12/s</div>
-          </div>
-          <div class="vg-model-card" data-model="pika-labs/pika-1-3" data-cost="0.13">
-            <div>
-              <div class="vg-model-name">Pika 1.3</div>
-              <div class="vg-model-desc">Pika Labs — vídeos criativos, estilos variados</div>
+            <div class="vg-option" data-model="minimax/minimax-m1" data-cost="0.12" data-name="Minimax M1" data-desc="Minimax — vídeos rápidos, boa qualidade">
+              <div class="vg-opt-info"><span class="vg-opt-name">Minimax M1</span><span class="vg-opt-desc">Minimax — vídeos rápidos, boa qualidade</span></div>
+              <span class="vg-opt-price">$0.12/s</span>
             </div>
-            <div class="vg-model-cost">$0.13/s</div>
-          </div>
-          <div class="vg-model-card" data-model="moonvalley/moondream-2" data-cost="0.10">
-            <div>
-              <div class="vg-model-name">Moondream 2</div>
-              <div class="vg-model-desc">Moonvalley — rápido, ideal para testes</div>
+            <div class="vg-option" data-model="pika-labs/pika-1-3" data-cost="0.13" data-name="Pika 1.3" data-desc="Pika Labs — vídeos criativos, estilos variados">
+              <div class="vg-opt-info"><span class="vg-opt-name">Pika 1.3</span><span class="vg-opt-desc">Pika Labs — vídeos criativos, estilos variados</span></div>
+              <span class="vg-opt-price">$0.13/s</span>
             </div>
-            <div class="vg-model-cost">$0.10/s</div>
+            <div class="vg-option" data-model="moonvalley/moondream-2" data-cost="0.10" data-name="Moondream 2" data-desc="Moonvalley — rápido, ideal para testes">
+              <div class="vg-opt-info"><span class="vg-opt-name">Moondream 2</span><span class="vg-opt-desc">Moonvalley — rápido, ideal para testes</span></div>
+              <span class="vg-opt-price">$0.10/s</span>
+            </div>
           </div>
         </div>
 
