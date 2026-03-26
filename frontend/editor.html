@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VideoForge — Editor</title>
+  <title>QuickEdit — Editor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -60,13 +60,10 @@
       padding: 22px 20px 6px;
       display: flex; align-items: center; gap: 10px;
     }
-    .sidebar-logo-icon {
-      width: 28px; height: 28px; border-radius: 8px;
-      background: linear-gradient(135deg, var(--accent), #5e55f0);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; box-shadow: 0 0 12px var(--accent-glow);
+    .sidebar-logo-img {
+      width: 32px; height: 32px; object-fit: contain; flex-shrink: 0;
+      filter: drop-shadow(0 0 8px var(--accent-glow));
     }
-    .sidebar-logo-icon svg { width: 14px; height: 14px; color: #fff; }
     .sidebar-logo-text {
       font-size: 1.1rem; font-weight: 900; letter-spacing: -0.5px;
       background: linear-gradient(135deg, #fff 20%, var(--accent) 100%);
@@ -736,10 +733,8 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="sidebar-logo-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
-      </div>
-      <span class="sidebar-logo-text">VideoForge</span>
+      <img src="https://i.postimg.cc/G34drN65/Chat-GPT-Image-26-de-mar-de-2026-12-07-24-removebg-preview.png" alt="QuickEdit" class="sidebar-logo-img" />
+      <span class="sidebar-logo-text">QuickEdit</span>
     </div>
     <div class="sidebar-tagline">Editor de Vídeo Online</div>
 
