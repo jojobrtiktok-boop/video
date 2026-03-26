@@ -94,26 +94,52 @@ async function fetchVideoLibrary() {
   }
 }
 
-const navVideoLib = document.querySelector('.nav-item[data-tool="video-library"]');
-if (navVideoLib) {
-  navVideoLib.addEventListener('click', () => {
-    clearTimeout(_libRefreshTimer);
-    fetchVideoLibrary();
-  });
-}
 const API = '';
 
 // ── TOOL NAVIGATION ────────────────────────────────────────────────────────
+const CAT_MAP = {
+  watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
+  compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
+  imagegen: 'imagem', rembg: 'imagem',
+  videogen: 'ia',
+  'video-library': null
+};
+
 function showTool(name) {
   document.querySelectorAll('.tool-panel').forEach(p => {
     p.style.display = p.id === 'tool-' + name ? 'block' : 'none';
   });
-  document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
+  // nav item active state
+  document.querySelectorAll('.cat-dd-item[data-tool], .nav-lib-btn[data-tool]').forEach(item => {
     item.classList.toggle('active', item.dataset.tool === name);
   });
+  // category button active state
+  document.querySelectorAll('.nav-cat-btn').forEach(b => b.classList.remove('has-active'));
+  const cat = CAT_MAP[name];
+  if (cat) {
+    const catBtn = document.getElementById('cat-btn-' + cat);
+    if (catBtn) catBtn.classList.add('has-active');
+  }
+  // topbar label
+  const lbl = document.getElementById('topbar-tool-label');
+  const activeItem = document.querySelector('.cat-dd-item[data-tool="' + name + '"]') ||
+                     document.querySelector('.nav-lib-btn[data-tool="' + name + '"]');
+  if (lbl && activeItem) {
+    const icon = activeItem.querySelector('.cat-dd-icon');
+    lbl.textContent = (icon ? icon.textContent + ' ' : '') + activeItem.textContent.replace(icon ? icon.textContent : '', '').trim();
+  }
 }
-document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
+
+document.querySelectorAll('.cat-dd-item[data-tool]').forEach(item => {
   item.addEventListener('click', () => showTool(item.dataset.tool));
+});
+document.querySelectorAll('.nav-lib-btn[data-tool]').forEach(item => {
+  item.addEventListener('click', () => {
+    showTool(item.dataset.tool);
+    if (item.dataset.tool === 'video-library') {
+      clearTimeout(_libRefreshTimer); fetchVideoLibrary();
+    }
+  });
 });
 
 function formatTime(s) {
@@ -1621,4 +1647,218 @@ if (lipSubmitBtn) {
       });
     }
   })();
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// NOVAS FERRAMENTAS — helpers genéricos
+// ════════════════════════════════════════════════════════════════════
+function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
+    progressId, statusId, errorId, resultCardId, resultVideoId, downloadBtnId,
+    endpoint, buildFormData }) {
+  const fi   = document.getElementById(fileInputId);
+  const dz   = document.getElementById(dropZoneId);
+  const fn   = document.getElementById(fileNameId);
+  const sub  = document.getElementById(submitBtnId);
+  const prog = document.getElementById(progressId);
+  const stat = document.getElementById(statusId);
+  const err  = document.getElementById(errorId);
+  const rc   = document.getElementById(resultCardId);
+  const rv   = document.getElementById(resultVideoId);
+  const dl   = document.getElementById(downloadBtnId);
+  if (!fi || !sub) return;
+  let file = null;
+
+  function setFile(f) {
+    if (!f) return;
+    file = f;
+    if (fn) fn.textContent = '✓ ' + f.name + ' (' + (f.size/1024/1024).toFixed(1) + ' MB)';
+    if (dz) dz.classList.add('has-file');
+    sub.disabled = false;
+    sub.textContent = '▶ Processar';
+    if (err) err.style.display = 'none';
+  }
+  fi.addEventListener('change', () => { if (fi.files[0]) setFile(fi.files[0]); });
+  if (dz) {
+    let cnt = 0;
+    dz.addEventListener('dragenter', e => { e.preventDefault(); cnt++; dz.classList.add('drag-over'); });
+    dz.addEventListener('dragleave', () => { cnt--; if (cnt <= 0) { cnt = 0; dz.classList.remove('drag-over'); } });
+    dz.addEventListener('dragover', e => e.preventDefault());
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); cnt = 0; dz.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0]; if (f) setFile(f);
+    });
+    dz.addEventListener('click', () => fi.click());
+    dz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fi.click(); });
+  }
+
+  sub.addEventListener('click', async () => {
+    if (!file) return;
+    sub.disabled = true; sub.textContent = '⏳ Enviando…';
+    if (prog) prog.style.display = 'block';
+    if (stat) stat.textContent = 'Processando…';
+    if (err) err.style.display = 'none';
+    if (rc) rc.style.display = 'none';
+    try {
+      const fd = buildFormData(file);
+      const resp = await fetch(API + endpoint, { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ' + resp.status);
+      if (rv) { rv.src = API + json.url; }
+      if (dl) { dl.href = API + json.url; dl.download = json.url.split('/').pop(); }
+      if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    } catch (e) {
+      if (err) { err.style.display = 'block'; err.textContent = 'Erro: ' + e.message; }
+    } finally {
+      sub.disabled = false; sub.textContent = '▶ Processar';
+      if (prog) prog.style.display = 'none';
+      if (stat) stat.textContent = '';
+    }
+  });
+}
+
+// ── CORTAR VÍDEO ──
+makeSimpleTool({
+  fileInputId: 'trim-file-input', dropZoneId: 'trim-dz', fileNameId: 'trim-file-name',
+  submitBtnId: 'trim-submit-btn', progressId: 'trim-progress', statusId: 'trim-status',
+  errorId: 'trim-error', resultCardId: 'trim-result-card', resultVideoId: 'trim-result-video',
+  downloadBtnId: 'trim-download-btn', endpoint: '/api/trim',
+  buildFormData: (file) => {
+    const fd = new FormData();
+    fd.append('video', file);
+    fd.append('start', document.getElementById('trim-start').value || '0:00:00');
+    fd.append('end', document.getElementById('trim-end').value || '0:00:10');
+    return fd;
+  }
+});
+
+// ── REDIMENSIONAR ──
+let resizeRatioW = 1080, resizeRatioH = 1920, resizePad = 'black';
+document.querySelectorAll('.resize-preset').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.resize-preset').forEach(b => b.classList.remove('rp-active'));
+    btn.classList.add('rp-active');
+    resizeRatioW = parseInt(btn.dataset.w); resizeRatioH = parseInt(btn.dataset.h);
+  });
+});
+document.querySelectorAll('#resize-pad-toggle .mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#resize-pad-toggle .mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active'); resizePad = btn.dataset.pad;
+  });
+});
+makeSimpleTool({
+  fileInputId: 'resize-file-input', dropZoneId: 'resize-dz', fileNameId: 'resize-file-name',
+  submitBtnId: 'resize-submit-btn', progressId: 'resize-progress', statusId: 'resize-status',
+  errorId: 'resize-error', resultCardId: 'resize-result-card', resultVideoId: 'resize-result-video',
+  downloadBtnId: 'resize-download-btn', endpoint: '/api/resize',
+  buildFormData: (file) => {
+    const fd = new FormData();
+    fd.append('video', file);
+    fd.append('w', resizeRatioW); fd.append('h', resizeRatioH); fd.append('pad', resizePad);
+    return fd;
+  }
+});
+
+// ── COMPRIMIR ──
+const crfInput = document.getElementById('compress-crf');
+const crfVal   = document.getElementById('compress-crf-val');
+if (crfInput && crfVal) crfInput.addEventListener('input', () => { crfVal.textContent = 'CRF ' + crfInput.value; });
+makeSimpleTool({
+  fileInputId: 'compress-file-input', dropZoneId: 'compress-dz', fileNameId: 'compress-file-name',
+  submitBtnId: 'compress-submit-btn', progressId: 'compress-progress', statusId: 'compress-status',
+  errorId: 'compress-error', resultCardId: 'compress-result-card', resultVideoId: 'compress-result-video',
+  downloadBtnId: 'compress-download-btn', endpoint: '/api/compress',
+  buildFormData: (file) => {
+    const fd = new FormData();
+    fd.append('video', file);
+    fd.append('crf', crfInput ? crfInput.value : '26');
+    return fd;
+  }
+});
+
+// ── AUMENTAR QUALIDADE ──
+let upscaleW = 1280, upscaleH = 720;
+document.querySelectorAll('.res-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.res-btn').forEach(b => b.classList.remove('rb-active'));
+    btn.classList.add('rb-active');
+    upscaleW = parseInt(btn.dataset.w); upscaleH = parseInt(btn.dataset.h);
+  });
+});
+makeSimpleTool({
+  fileInputId: 'upscale-file-input', dropZoneId: 'upscale-dz', fileNameId: 'upscale-file-name',
+  submitBtnId: 'upscale-submit-btn', progressId: 'upscale-progress', statusId: 'upscale-status',
+  errorId: 'upscale-error', resultCardId: 'upscale-result-card', resultVideoId: 'upscale-result-video',
+  downloadBtnId: 'upscale-download-btn', endpoint: '/api/upscale',
+  buildFormData: (file) => {
+    const fd = new FormData();
+    fd.append('video', file); fd.append('w', upscaleW); fd.append('h', upscaleH);
+    return fd;
+  }
+});
+
+// ── ESPELHAR ──
+let mirrorFlip = 'hflip';
+document.querySelectorAll('.mirror-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mirror-opt').forEach(b => b.classList.remove('mo-active'));
+    btn.classList.add('mo-active'); mirrorFlip = btn.dataset.flip;
+  });
+});
+makeSimpleTool({
+  fileInputId: 'mirror-file-input', dropZoneId: 'mirror-dz', fileNameId: 'mirror-file-name',
+  submitBtnId: 'mirror-submit-btn', progressId: 'mirror-progress', statusId: 'mirror-status',
+  errorId: 'mirror-error', resultCardId: 'mirror-result-card', resultVideoId: 'mirror-result-video',
+  downloadBtnId: 'mirror-download-btn', endpoint: '/api/mirror',
+  buildFormData: (file) => {
+    const fd = new FormData(); fd.append('video', file); fd.append('flip', mirrorFlip); return fd;
+  }
+});
+
+// ── REMOVER FUNDO ──
+(function() {
+  const fi  = document.getElementById('rembg-file-input');
+  const dz  = document.getElementById('rembg-dz');
+  const fn  = document.getElementById('rembg-file-name');
+  const sub = document.getElementById('rembg-submit-btn');
+  const prog = document.getElementById('rembg-progress');
+  const err = document.getElementById('rembg-error');
+  const rc  = document.getElementById('rembg-result-card');
+  const ri  = document.getElementById('rembg-result-img');
+  const dl  = document.getElementById('rembg-download-btn');
+  if (!fi || !sub) return;
+  let file = null;
+  function setFile(f) {
+    file = f;
+    if (fn) fn.textContent = '✓ ' + f.name;
+    if (dz) dz.classList.add('has-file');
+    sub.disabled = false; sub.textContent = '▶ Remover Fundo';
+  }
+  fi.addEventListener('change', () => { if (fi.files[0]) setFile(fi.files[0]); });
+  if (dz) {
+    dz.addEventListener('click', () => fi.click());
+    dz.addEventListener('dragover', e => e.preventDefault());
+    dz.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+  }
+  sub.addEventListener('click', async () => {
+    if (!file) return;
+    sub.disabled = true; sub.textContent = '⏳ Processando…';
+    if (prog) prog.style.display = 'block';
+    if (err) err.style.display = 'none';
+    if (rc) rc.style.display = 'none';
+    try {
+      const fd = new FormData(); fd.append('image', file);
+      const resp = await fetch(API + '/api/rembg', { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ' + resp.status);
+      if (ri) ri.src = API + json.url;
+      if (dl) { dl.href = API + json.url; dl.download = 'sem-fundo.png'; }
+      if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    } catch (e) {
+      if (err) { err.style.display = 'block'; err.textContent = 'Erro: ' + e.message; }
+    } finally {
+      sub.disabled = false; sub.textContent = '▶ Remover Fundo';
+      if (prog) prog.style.display = 'none';
+    }
+  });
 })();

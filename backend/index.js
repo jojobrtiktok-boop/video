@@ -940,5 +940,125 @@ app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res
   }
 });
 
+// ── CORTAR VÍDEO ───────────────────────────────────────────────────────────
+app.post('/api/trim', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const input  = req.file.path;
+  const start  = req.body.start || '0:00:00';
+  const end    = req.body.end   || '0:00:10';
+  const output = path.join(UPLOAD_DIR, `trim_${Date.now()}.mp4`);
+  const EXPIRY = 3600000;
+  const cmd = `"${FFMPEG}" -y -i "${input}" -ss ${start} -to ${end} -c copy "${output}"`;
+  exec(cmd, (err, _so, se) => {
+    fs.unlink(input, () => {});
+    if (err) return res.status(500).json({ error: se || err.message });
+    scheduleDelete(output, EXPIRY);
+    res.json({ url: '/uploads/' + path.basename(output) });
+  });
+});
+
+// ── REDIMENSIONAR ──────────────────────────────────────────────────────────
+app.post('/api/resize', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const input = req.file.path;
+  const w = parseInt(req.body.w) || 1080;
+  const h = parseInt(req.body.h) || 1920;
+  const pad = req.body.pad || 'black';
+  const output = path.join(UPLOAD_DIR, `resize_${Date.now()}.mp4`);
+  const EXPIRY = 3600000;
+  let vf;
+  if (pad === 'blur') {
+    vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,boxblur=20:20,scale=${w}:${h},` +
+         `[1:v]scale=${w}:${h}:force_original_aspect_ratio=decrease[fg];[0:v][fg]overlay=(W-w)/2:(H-h)/2`;
+    vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`;
+  } else {
+    const color = pad === 'white' ? 'white' : 'black';
+    vf = `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${color}`;
+  }
+  const cmd = `"${FFMPEG}" -y -i "${input}" -vf "${vf}" -c:v libx264 -preset fast -crf 18 -c:a copy "${output}"`;
+  exec(cmd, (err, _so, se) => {
+    fs.unlink(input, () => {});
+    if (err) return res.status(500).json({ error: se || err.message });
+    scheduleDelete(output, EXPIRY);
+    res.json({ url: '/uploads/' + path.basename(output) });
+  });
+});
+
+// ── COMPRIMIR ──────────────────────────────────────────────────────────────
+app.post('/api/compress', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const input = req.file.path;
+  const crf = Math.min(51, Math.max(18, parseInt(req.body.crf) || 26));
+  const output = path.join(UPLOAD_DIR, `compress_${Date.now()}.mp4`);
+  const EXPIRY = 3600000;
+  const cmd = `"${FFMPEG}" -y -i "${input}" -c:v libx264 -preset fast -crf ${crf} -c:a copy "${output}"`;
+  exec(cmd, (err, _so, se) => {
+    fs.unlink(input, () => {});
+    if (err) return res.status(500).json({ error: se || err.message });
+    scheduleDelete(output, EXPIRY);
+    res.json({ url: '/uploads/' + path.basename(output) });
+  });
+});
+
+// ── AUMENTAR QUALIDADE ─────────────────────────────────────────────────────
+app.post('/api/upscale', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const input = req.file.path;
+  const w = parseInt(req.body.w) || 1920;
+  const h = parseInt(req.body.h) || 1080;
+  const output = path.join(UPLOAD_DIR, `upscale_${Date.now()}.mp4`);
+  const EXPIRY = 3600000;
+  const cmd = `"${FFMPEG}" -y -i "${input}" -vf "scale=${w}:${h}:flags=lanczos" -c:v libx264 -preset fast -crf 18 -c:a copy "${output}"`;
+  exec(cmd, (err, _so, se) => {
+    fs.unlink(input, () => {});
+    if (err) return res.status(500).json({ error: se || err.message });
+    scheduleDelete(output, EXPIRY);
+    res.json({ url: '/uploads/' + path.basename(output) });
+  });
+});
+
+// ── ESPELHAR ───────────────────────────────────────────────────────────────
+app.post('/api/mirror', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const input = req.file.path;
+  const flip = (req.body.flip || 'hflip').replace(/[^a-z,]/g, '');
+  const vf = flip.split(',').join(',');
+  const output = path.join(UPLOAD_DIR, `mirror_${Date.now()}.mp4`);
+  const EXPIRY = 3600000;
+  const cmd = `"${FFMPEG}" -y -i "${input}" -vf "${vf}" -c:v libx264 -preset fast -crf 18 -c:a copy "${output}"`;
+  exec(cmd, (err, _so, se) => {
+    fs.unlink(input, () => {});
+    if (err) return res.status(500).json({ error: se || err.message });
+    scheduleDelete(output, EXPIRY);
+    res.json({ url: '/uploads/' + path.basename(output) });
+  });
+});
+
+// ── REMOVER FUNDO DE IMAGEM ────────────────────────────────────────────────
+const uploadImg = multer({ dest: UPLOAD_DIR, limits: { fileSize: 20 * 1024 * 1024 } });
+app.post('/api/rembg', uploadImg.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada' });
+  const input  = req.file.path;
+  const output = path.join(UPLOAD_DIR, `rembg_${Date.now()}.png`);
+  const EXPIRY = 3600000;
+  const script = `
+import sys
+from rembg import remove
+from PIL import Image
+img = Image.open(sys.argv[1])
+result = remove(img)
+result.save(sys.argv[2])
+print('done')
+`.trim();
+  const tmpScript = path.join(UPLOAD_DIR, `rembg_${Date.now()}.py`);
+  fs.writeFileSync(tmpScript, script);
+  exec(`"${PYTHON.replace(/"/g,'')}" "${tmpScript}" "${input}" "${output}"`, (err, _so, se) => {
+    fs.unlink(input, () => {}); fs.unlink(tmpScript, () => {});
+    if (err) return res.status(500).json({ error: (se || err.message) + '\n(pip install rembg pillow)' });
+    scheduleDelete(output, EXPIRY);
+    res.json({ url: '/uploads/' + path.basename(output) });
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend listening on ${PORT}`));
