@@ -24,8 +24,18 @@ def main():
         print(f"Modelo nao encontrado: {checkpoint}", file=sys.stderr)
         sys.exit(1)
 
+    # Usa python do venv do Wav2Lip se disponivel (tem torch instalado)
+    # Prioridade: WAV2LIP_PYTHON env > venv dentro do dir > sys.executable
+    wav2lip_venv_python = os.path.join(wav2lip_dir, 'venv', 'bin', 'python3')
+    if os.environ.get('WAV2LIP_PYTHON') and os.path.exists(os.environ['WAV2LIP_PYTHON']):
+        python_bin = os.environ['WAV2LIP_PYTHON']
+    elif os.path.exists(wav2lip_venv_python):
+        python_bin = wav2lip_venv_python
+    else:
+        python_bin = sys.executable
+
     cmd = [
-        sys.executable, inference,
+        python_bin, inference,
         '--checkpoint_path', checkpoint,
         '--face', video_path,
         '--audio', audio_path,
