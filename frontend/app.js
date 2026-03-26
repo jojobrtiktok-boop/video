@@ -100,8 +100,8 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
-  imagegen: 'imagem', rembg: 'imagem',
-  videogen: 'ia',
+  rembg: 'imagem',
+  imagegen: 'ia', videogen: 'ia',
   'video-library': null
 };
 
@@ -130,8 +130,28 @@ function showTool(name) {
   }
 }
 
+// ── dropdown click-to-open (fecha ao clicar fora) ──
+document.querySelectorAll('.nav-cat-btn').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const wrap = btn.closest('.nav-cat-wrap');
+    const isOpen = wrap.classList.contains('open');
+    document.querySelectorAll('.nav-cat-wrap').forEach(w => w.classList.remove('open'));
+    if (!isOpen) wrap.classList.add('open');
+  });
+});
+document.addEventListener('click', () => {
+  document.querySelectorAll('.nav-cat-wrap').forEach(w => w.classList.remove('open'));
+});
+document.querySelectorAll('.cat-dropdown').forEach(dd => {
+  dd.addEventListener('click', e => e.stopPropagation());
+});
+
 document.querySelectorAll('.cat-dd-item[data-tool]').forEach(item => {
-  item.addEventListener('click', () => showTool(item.dataset.tool));
+  item.addEventListener('click', () => {
+    showTool(item.dataset.tool);
+    document.querySelectorAll('.nav-cat-wrap').forEach(w => w.classList.remove('open'));
+  });
 });
 document.querySelectorAll('.nav-lib-btn[data-tool]').forEach(item => {
   item.addEventListener('click', () => {

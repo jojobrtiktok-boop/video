@@ -85,8 +85,7 @@
     .nav-cat-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); }
     .nav-cat-btn.has-active { color: var(--accent); }
     .nav-cat-arrow { font-size: 0.52rem; opacity: 0.5; transition: transform .2s; display: inline-block; }
-    .nav-cat-wrap:hover .nav-cat-arrow { transform: rotate(180deg); }
-    /* keep dropdown open while hovering either button or dropdown */
+    .nav-cat-wrap.open .nav-cat-arrow { transform: rotate(180deg); }
     .cat-dropdown {
       display: none; position: absolute; top: calc(100% + 4px); left: 0;
       min-width: 215px; z-index: 300;
@@ -95,7 +94,7 @@
       border-radius: 12px; padding: 5px;
       box-shadow: 0 20px 60px rgba(0,0,0,0.75), 0 0 0 1px rgba(124,113,255,0.09);
     }
-    .nav-cat-wrap:hover .cat-dropdown { display: block; }
+    .nav-cat-wrap.open .cat-dropdown { display: block; }
     .cat-dd-item {
       display: flex; align-items: center; gap: 10px;
       width: 100%; padding: 9px 12px; border-radius: 8px;
@@ -762,6 +761,7 @@
           IA <span class="nav-cat-arrow">▼</span>
         </button>
         <div class="cat-dropdown">
+          <button class="cat-dd-item" data-tool="imagegen"><span class="cat-dd-icon">🖼️</span>Gerar Imagem</button>
           <button class="cat-dd-item" data-tool="videogen"><span class="cat-dd-icon">🎬</span>Gerar Vídeo</button>
         </div>
       </div>
