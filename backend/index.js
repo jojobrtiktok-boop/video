@@ -672,6 +672,83 @@ app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res
         }
       }
 
+    } else if (provider === 'vertex') {
+      // ── Google Vertex AI (aiplatform.googleapis.com) ──────────────────────
+      const { projectId } = req.body || {};
+      if (!projectId) return res.status(400).json({ error: 'Informe o Project ID do Google Cloud.' });
+
+      const model    = imageModel || 'gemini-2.0-flash-exp-image-generation';
+      const isImagen = model.startsWith('imagen-');
+      const region   = 'us-central1';
+
+      let apiPath, vPayload;
+      if (isImagen) {
+        apiPath  = `/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:predict`;
+        vPayload = JSON.stringify({
+          instances:  [{ prompt }],
+          parameters: { sampleCount: 1, aspectRatio: '1:1' }
+        });
+      } else {
+        const parts = [];
+        if (mode === 'clone' && referenceBase64) {
+          const b64data   = referenceBase64.includes(',') ? referenceBase64.split(',')[1] : referenceBase64;
+          const mimeMatch = referenceBase64.match(/data:([^;]+);/);
+          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
+        }
+        if (mode === 'clone' && productBase64) {
+          const b64data   = productBase64.includes(',') ? productBase64.split(',')[1] : productBase64;
+          const mimeMatch = productBase64.match(/data:([^;]+);/);
+          parts.push({ inlineData: { mimeType: mimeMatch ? mimeMatch[1] : 'image/jpeg', data: b64data } });
+        }
+        parts.push({ text: prompt });
+        apiPath  = `/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
+        vPayload = JSON.stringify({
+          contents:         [{ parts }],
+          generationConfig: { responseModalities: ['IMAGE'] }
+        });
+      }
+
+      const vResult = await new Promise((resolve, reject) => {
+        const req2 = https.request({
+          hostname: `${region}-aiplatform.googleapis.com`,
+          path:     apiPath,
+          method:   'POST',
+          headers:  {
+            'Authorization':  `Bearer ${apiKey}`,
+            'Content-Type':   'application/json',
+            'Content-Length': Buffer.byteLength(vPayload)
+          }
+        }, resp => {
+          let raw = '';
+          resp.on('data', c => raw += c);
+          resp.on('end', () => {
+            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+            catch(_) { resolve({ status: resp.statusCode, body: { raw } }); }
+          });
+        });
+        req2.on('error', reject);
+        req2.write(vPayload);
+        req2.end();
+      });
+
+      if (vResult.status >= 400) {
+        const msg = vResult.body?.error?.message || JSON.stringify(vResult.body).slice(0, 300);
+        return res.status(500).json({ error: 'Erro Vertex AI: ' + msg });
+      }
+
+      if (isImagen) {
+        const pred = vResult.body?.predictions?.[0];
+        if (pred?.bytesBase64Encoded) {
+          imageUrl = `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
+        }
+      } else {
+        const vParts = vResult.body?.candidates?.[0]?.content?.parts;
+        if (Array.isArray(vParts)) {
+          const imgPart = vParts.find(p => p.inlineData);
+          if (imgPart) imageUrl = `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`;
+        }
+      }
+
     } else {
       // ── OpenRouter ─────────────────────────────────────────────────────────
       const model = imageModel || 'google/gemini-3.1-flash-image-preview';
