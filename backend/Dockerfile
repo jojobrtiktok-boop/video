@@ -3,6 +3,7 @@ FROM node:18-bullseye
 # Install ffmpeg + Python + faster-whisper
 RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip && rm -rf /var/lib/apt/lists/*
 RUN pip3 install --no-cache-dir faster-whisper
+RUN pip3 install --no-cache-dir opencv-python-headless librosa numpy audioread scipy numba
 
 WORKDIR /usr/src/app
 

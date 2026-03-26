@@ -1099,6 +1099,16 @@ if (lipSubmitBtn) {
 (function () {
   const vgApiKey    = document.getElementById('vg-apikey');
   const vgPrompt    = document.getElementById('vg-prompt');
+
+  // Restore saved key
+  const savedKey = localStorage.getItem('or_api_key');
+  if (savedKey && vgApiKey) vgApiKey.value = savedKey;
+
+  // Save key on input
+  if (vgApiKey) vgApiKey.addEventListener('input', () => {
+    if (vgApiKey.value.trim()) localStorage.setItem('or_api_key', vgApiKey.value.trim());
+    else localStorage.removeItem('or_api_key');
+  });
   const vgHookAi    = document.getElementById('vg-hook-ai');
   const vgDuration  = document.getElementById('vg-duration');
   const vgDurVal    = document.getElementById('vg-duration-val');

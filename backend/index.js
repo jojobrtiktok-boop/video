@@ -112,13 +112,31 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   return res.status(400).json({ error: 'unknown mode' });
 });
 
-// ── LIPSYNC (placeholder) ─────────────────────────────────────────────────────
+// ── LIPSYNC via Wav2Lip ───────────────────────────────────────────────────────
 app.post('/api/lipsync', uploadFields, (req, res) => {
   const videoFile = req.files && req.files.video && req.files.video[0];
   const audioFile = req.files && req.files.audio && req.files.audio[0];
-  if (videoFile) fs.unlink(videoFile.path, () => {});
-  if (audioFile) fs.unlink(audioFile.path, () => {});
-  return res.status(501).json({ error: 'Lipsync (Wav2Lip) ainda nao instalado neste servidor.' });
+  if (!videoFile || !audioFile) {
+    if (videoFile) fs.unlink(videoFile.path, () => {});
+    if (audioFile) fs.unlink(audioFile.path, () => {});
+    return res.status(400).json({ error: 'Envie o video e o audio.' });
+  }
+
+  const outputName = 'lipsync-' + Date.now() + '.mp4';
+  const output     = path.join(UPLOAD_DIR, outputName);
+  const python     = process.env.PYTHON_BIN || 'python3';
+  const runner     = path.join(__dirname, 'wav2lip_runner.py');
+
+  const cmd = `"${python}" "${runner}" "${videoFile.path}" "${audioFile.path}" "${output}"`;
+
+  exec(cmd, { timeout: 15 * 60 * 1000 }, (err, stdout, stderr) => {
+    fs.unlink(videoFile.path, () => {});
+    fs.unlink(audioFile.path, () => {});
+    if (err) return res.status(500).json({ error: 'Wav2Lip falhou: ' + (stderr || err.message) });
+    if (!fs.existsSync(output)) return res.status(500).json({ error: 'Video nao gerado. ' + stderr });
+    scheduleDelete(output, 30 * 60 * 1000);
+    return res.json({ url: `/uploads/${outputName}` });
+  });
 });
 
 // ── SUBTITLE: burns ASS subtitles into video ─────────────────────────────────

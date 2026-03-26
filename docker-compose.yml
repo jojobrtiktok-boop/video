@@ -8,6 +8,7 @@ services:
       - "3000:3000"
     volumes:
       - uploads_data:/usr/src/app/backend/uploads
+      - /root/app/Wav2Lip:/wav2lip
     env_file:
       - .env
     restart: unless-stopped
