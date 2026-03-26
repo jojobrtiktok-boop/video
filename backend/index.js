@@ -663,8 +663,9 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
 
 // ─── IMAGE GENERATION ────────────────────────────────────────────────────────
 app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res) => {
-  const { prompt, imageModel, apiKey, mode, referenceBase64, productBase64 } = req.body || {};
+  const { prompt, imageModel, apiKey, mode, referenceBase64, productBase64, projectId } = req.body || {};
   if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
+  if (!projectId) return res.status(400).json({ error: 'Informe o Project ID do Google Cloud.' });
   const authHeader = req.headers['authorization'] || '';
   const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!accessToken) return res.status(400).json({ error: 'Informe seu Access Token OAuth2 do Vertex AI no header Authorization.' });
@@ -672,8 +673,9 @@ app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res
   try {
     // Vertex AI (vertex.googleapis.com)
     let imageUrl = null;
-    const model = imageModel || 'imagen-3';
-    const endpoint = `/v1/projects/YOUR_PROJECT_ID/locations/us-central1/publishers/google/models/${model}:predict`;
+    const model = imageModel || 'imagen-3.0-generate-001';
+    const isImagen = model.startsWith('imagen');
+    const endpoint = `/v1/projects/${projectId}/locations/us-central1/publishers/google/models/${model}:predict`;
     const payload = JSON.stringify({
       instances: [{ prompt }],
       parameters: { sampleCount: 1, aspectRatio: '1:1' }

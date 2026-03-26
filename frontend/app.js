@@ -1308,9 +1308,9 @@ if (lipSubmitBtn) {
     const igSubmit = document.getElementById('ig-submit-btn');
     if (!igSubmit) return;
 
-    let currentProvider = localStorage.getItem('ig_provider') || 'openrouter';
-    let selectedModel = 'google/gemini-3.1-flash-image-preview';
-    let selectedModelName = 'Nano Banana 2.5';
+    let currentProvider = localStorage.getItem('ig_provider') || 'vertex';
+    let selectedModel = 'imagen-3.0-generate-001';
+    let selectedModelName = 'Imagen 3';
 
     // Restore saved keys
     const igApikeyOR     = document.getElementById('ig-apikey');
@@ -1384,7 +1384,7 @@ if (lipSubmitBtn) {
         setTimeout(() => { igGoogleSaveKey.textContent = '💾 Salvar'; }, 1500);
       }
     });
-    const igVertexSaveKey = document.getElementById('ig-vertex-save-key');
+    const igVertexSaveKey = document.getElementById('ig-vertex-save-token');
     if (igVertexSaveKey) igVertexSaveKey.addEventListener('click', () => {
       const proj  = document.getElementById('ig-vertex-project')?.value.trim();
       const token = document.getElementById('ig-vertex-token')?.value.trim();
@@ -1462,8 +1462,10 @@ if (lipSubmitBtn) {
 
     igSubmit.addEventListener('click', async () => {
       // Só AI Studio
-      const accessToken = igVertexToken ? igVertexToken.value.trim() : '';
+      const accessToken = elVToken ? elVToken.value.trim() : '';
+      const projectId  = elVProj  ? elVProj.value.trim()  : '';
       if (!accessToken) { alert('Informe seu Access Token OAuth2 do Vertex AI'); return; }
+      if (!projectId)   { alert('Informe o Project ID do Google Cloud'); return; }
 
       const prompt = currentMode === 'clone'
         ? (document.getElementById('ig-clone-prompt')?.value.trim() || '')
@@ -1488,7 +1490,7 @@ if (lipSubmitBtn) {
         const resp = await fetch(API + '/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
-          body: JSON.stringify({ prompt, imageModel: selectedModel, mode: currentMode, referenceBase64, productBase64 })
+          body: JSON.stringify({ prompt, imageModel: selectedModel, projectId, mode: currentMode, referenceBase64, productBase64 })
         });
         const json = await resp.json();
         if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
