@@ -114,8 +114,12 @@ let isPaused = false, isSeeking = false;
 const modeDesc = {
   blur:   'Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.',
   delogo: 'Reconstrói pixels da região usando arredores — ótimo para fundos uniformes.',
+  sora:   '🎵 Remove automaticamente a marca d\'água do Sora (faixa inferior central, estilo TikTok). Sem precisar selecionar região.',
+  heygen: '🤖 Remove automaticamente a marca d\'água do HeyGen (canto inferior direito). Sem precisar selecionar região.',
   ai:     'Inpainting com IA — em breve neste servidor.'
 };
+
+const autoModes = new Set(['sora', 'heygen']);
 
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -124,6 +128,8 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.classList.add('active');
     selectedMode = btn.dataset.mode;
     if (modeDescEl) modeDescEl.textContent = modeDesc[selectedMode] || '';
+    // Modos automáticos não precisam de seleção de região
+    if (previewSect) previewSect.style.display = autoModes.has(selectedMode) ? 'none' : (selectedFile ? '' : 'none');
   });
 });
 
@@ -368,9 +374,12 @@ function endDragWm() {
 
 submitBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
+  if (!autoModes.has(selectedMode) && (!selRect || selRect.w < 5 || selRect.h < 5)) {
+    showError('Selecione a região da marca d\'água no vídeo antes de processar.'); return;
+  }
   const fd = new FormData();
   fd.append('video', selectedFile); fd.append('mode', selectedMode);
-  if (selRect && selRect.w >= 5 && selRect.h >= 5) {
+  if (!autoModes.has(selectedMode) && selRect && selRect.w >= 5 && selRect.h >= 5) {
     fd.append('x', Math.round(selRect.x * videoW / previewW));
     fd.append('y', Math.round(selRect.y * videoH / previewH));
     fd.append('w', Math.round(selRect.w * videoW / previewW));
