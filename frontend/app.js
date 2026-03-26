@@ -1,3 +1,5 @@
+const API = '';
+
 // ════════════════════════════════════════════════════════════════════
 // BIBLIOTECA LIPSYNC
 // ════════════════════════════════════════════════════════════════════
@@ -47,8 +49,6 @@ if (navLipsyncLib) {
     }, 10000);
   });
 }
-const API = '';
-
 // ── TOOL NAVIGATION ────────────────────────────────────────────────────────
 function showTool(name) {
   document.querySelectorAll('.tool-panel').forEach(p => {
