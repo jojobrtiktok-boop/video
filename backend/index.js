@@ -66,7 +66,6 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   const output = path.join(UPLOAD_DIR, outputName);
 
   if (mode === 'sora' || mode === 'heygen') {
-    // Probe video dimensions
     const probeCmd = `"${FFPROBE}" -v quiet -print_format json -show_streams "${input}"`;
     exec(probeCmd, (probeErr, probeOut) => {
       let vw = 1080, vh = 1920;
@@ -77,37 +76,64 @@ app.post('/api/process', upload.single('video'), (req, res) => {
           if (vs) { vw = vs.width; vh = vs.height; }
         } catch (_) {}
       }
-      let x, y, w, h;
+
+      let cmd;
       if (mode === 'sora') {
-        // Sora: faixa inferior central (TikTok-style)
-        h = Math.round(vh * 0.09);
-        w = Math.round(vw * 0.55);
-        x = Math.round((vw - w) / 2);
-        y = vh - h;
+        // Sora/TikTok: watermark MÓVEL — usa blur em faixa inferior (30% inferior do vídeo)
+        // Cobre toda a área onde a marca pode aparecer durante o vídeo
+        const bh = Math.round(vh * 0.30);
+        const by = vh - bh;
+        // filter_complex: crop a faixa inferior, blur forte, overlay de volta
+        const filterScript = [
+          `[0:v]split[bg][tmp];`,
+          `[tmp]crop=${vw}:${bh}:0:${by},gblur=sigma=30[blurred];`,
+          `[bg][blurred]overlay=0:${by}`
+        ].join('');
+        const filterFile = input + '.filter';
+        fs.writeFileSync(filterFile, filterScript, 'utf8');
+        cmd = `"${FFMPEG}" -y -i "${input}" -filter_complex_script "${filterFile}" -c:a copy "${output}"`;
+        exec(cmd, (err, stdout, stderr) => {
+          fs.unlink(input, () => {});
+          fs.unlink(filterFile, () => {});
+          if (err) return res.status(500).json({ error: String(err), stderr });
+          const expiry = Date.now() + 60 * 60 * 1000;
+          scheduleDelete(output, expiry - Date.now());
+          const libEntry = {
+            id: Date.now().toString() + Math.random().toString(36).slice(2),
+            type: 'watermark', label: '🎵 Sora',
+            url: `/uploads/${path.basename(output)}`,
+            createdAt: Date.now(), expiresAt: expiry
+          };
+          addToLibrary(libEntry);
+          return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+        });
       } else {
-        // HeyGen: canto inferior direito
-        h = Math.round(vh * 0.13);
-        w = Math.round(vw * 0.38);
-        x = vw - w;
-        y = vh - h;
+        // HeyGen: watermark ESTÁTICA — delogo no canto inferior direito
+        let h = Math.round(vh * 0.13);
+        let w = Math.round(vw * 0.38);
+        let x = vw - w;
+        let y = vh - h;
+        // garantir que region fica dentro do frame (delogo falha se tocar a borda)
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x + w > vw) w = vw - x - 1;
+        if (y + h >= vh) { h = vh - y - 2; y = Math.max(0, y); }
+        cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
+        exec(cmd, (err, stdout, stderr) => {
+          fs.unlink(input, () => {});
+          if (err) return res.status(500).json({ error: String(err), stderr });
+          const expiry = Date.now() + 60 * 60 * 1000;
+          scheduleDelete(output, expiry - Date.now());
+          const libEntry = {
+            id: Date.now().toString() + Math.random().toString(36).slice(2),
+            type: 'watermark', label: '🤖 HeyGen',
+            url: `/uploads/${path.basename(output)}`,
+            createdAt: Date.now(), expiresAt: expiry
+          };
+          addToLibrary(libEntry);
+          return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+        });
       }
-      const cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
-      exec(cmd, (err, stdout, stderr) => {
-        fs.unlink(input, () => {});
-        if (err) return res.status(500).json({ error: String(err), stderr });
-        const expiry = Date.now() + 60 * 60 * 1000;
-        scheduleDelete(output, 60 * 60 * 1000);
-        const libEntry = {
-          id: Date.now().toString() + Math.random().toString(36).slice(2),
-          type: 'watermark',
-          label: mode === 'sora' ? '🎵 Sora' : '🤖 HeyGen',
-          url: `/uploads/${path.basename(output)}`,
-          createdAt: Date.now(),
-          expiresAt: expiry
-        };
-        addToLibrary(libEntry);
-        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
-      });
     });
     return;
   }
