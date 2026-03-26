@@ -737,34 +737,24 @@ app.post('/api/generate-video', express.json(), async (req, res) => {
 
 // ─── IMAGE GENERATION ────────────────────────────────────────────────────────
 app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res) => {
-  const { prompt, imageModel, apiKey, mode, referenceBase64, productBase64, projectId } = req.body || {};
-  if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
-  if (!projectId) return res.status(400).json({ error: 'Informe o Project ID do Google Cloud.' });
-  const authHeader = req.headers['authorization'] || '';
-  const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  if (!accessToken) return res.status(400).json({ error: 'Informe seu Access Token OAuth2 do Vertex AI no header Authorization.' });
+  const { prompt, imageModel, apiKey } = req.body || {};
+  if (!prompt)  return res.status(400).json({ error: 'Prompt obrigatório.' });
+  if (!apiKey)  return res.status(400).json({ error: 'Informe sua API Key do Google AI Studio.' });
 
   try {
-    // Vertex AI (vertex.googleapis.com)
-    let imageUrl = null;
     const model = imageModel || 'imagen-3.0-generate-001';
-    const isImagen = model.startsWith('imagen');
-    const endpoint = `/v1/projects/${projectId}/locations/us-central1/publishers/google/models/${model}:predict`;
+    const path  = `/v1beta/models/${model}:predict?key=${encodeURIComponent(apiKey)}`;
     const payload = JSON.stringify({
-      instances: [{ prompt }],
+      instances:  [{ prompt }],
       parameters: { sampleCount: 1, aspectRatio: '1:1' }
     });
 
     const gResult = await new Promise((resolve, reject) => {
       const req2 = https.request({
-        hostname: 'us-central1-aiplatform.googleapis.com',
-        path: endpoint,
+        hostname: 'generativelanguage.googleapis.com',
+        path,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload),
-          'Authorization': 'Bearer ' + accessToken
-        }
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
       }, resp => {
         let raw = '';
         resp.on('data', c => raw += c);
@@ -783,20 +773,9 @@ app.post('/api/generate-image', express.json({ limit: '25mb' }), async (req, res
       return res.status(500).json({ error: 'Erro Google AI: ' + msg });
     }
 
-    if (isImagen) {
-      const pred = gResult.body?.predictions?.[0];
-      if (pred?.bytesBase64Encoded) {
-        imageUrl = `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
-      }
-    } else {
-      const gParts = gResult.body?.candidates?.[0]?.content?.parts;
-      if (Array.isArray(gParts)) {
-        const imgPart = gParts.find(p => p.inlineData);
-        if (imgPart) imageUrl = `data:${imgPart.inlineData.mimeType || 'image/png'};base64,${imgPart.inlineData.data}`;
-      }
-    }
-
-    if (!imageUrl) return res.status(500).json({ error: 'Não foi possível gerar a imagem.' });
+    const pred = gResult.body?.predictions?.[0];
+    if (!pred?.bytesBase64Encoded) return res.status(500).json({ error: 'Não foi possível gerar a imagem.', raw: gResult.body });
+    const imageUrl = `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
     return res.json({ url: imageUrl });
   } catch (err) {
     return res.status(500).json({ error: 'Erro ao gerar imagem: ' + (err.message || err) });

@@ -676,13 +676,6 @@
         <div class="nav-desc">Todos os vídeos</div>
       </div>
     </button>
-    <button class="nav-item" data-tool="lipsync">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg></span>
-      <div class="nav-text">
-        <div class="nav-title">Lipsync</div>
-        <div class="nav-desc">Sincronizar lábios</div>
-      </div>
-    </button>
 
     <button class="nav-item" data-tool="videogen">
       <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span>
@@ -1158,25 +1151,14 @@
       </div>
 
       <div class="card">
-        <div class="section-label">Provedor de IA</div>
-        <div class="ig-provider-row">
-          <button class="ig-provider-btn active" data-provider="vertex">🟢 Vertex AI</button>
+        <div class="section-label">API Key — Google AI Studio</div>
+        <div class="vg-api-row">
+          <input type="password" id="ig-google-apikey" placeholder="AIza..." autocomplete="off">
+          <button id="ig-google-save-key" class="btn-secondary">💾 Salvar</button>
         </div>
-        <div id="ig-vertex-key-wrap" style="margin-top:14px">
-          <div class="section-label">Project ID (Google Cloud)</div>
-          <div class="vg-api-row">
-            <input type="text" id="ig-vertex-project" placeholder="meu-projeto-123" autocomplete="off" style="margin-bottom:8px">
-          </div>
-          <div class="section-label">Access Token (OAuth2 Vertex AI)</div>
-          <div class="vg-api-row">
-            <input type="password" id="ig-vertex-token" placeholder="ya29..." autocomplete="off">
-            <button id="ig-vertex-save-token" class="btn-secondary">💾 Salvar</button>
-          </div>
-          <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">
-            Gere um Access Token OAuth2 do Google Cloud com permissão Vertex AI.<br>
-            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">Saiba como gerar</a>
-          </p>
-        </div>
+        <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">
+          Obtenha sua API Key gratuita em <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">aistudio.google.com</a> — não expira.
+        </p>
       </div>
 
       <!-- TABS -->

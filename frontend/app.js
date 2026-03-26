@@ -1311,86 +1311,18 @@ if (lipSubmitBtn) {
     let selectedModel = 'imagen-3.0-generate-001';
     let selectedModelName = 'Imagen 3';
 
-    // Restore saved keys
-    const igApikeyOR     = document.getElementById('ig-apikey');
+    // Restore saved key
     const igApikeyGoogle = document.getElementById('ig-google-apikey');
-    const savedOR     = localStorage.getItem('or_api_key');
     const savedGoogle = localStorage.getItem('google_api_key');
-    if (igApikeyOR && savedOR)         igApikeyOR.value = savedOR;
     if (igApikeyGoogle && savedGoogle) igApikeyGoogle.value = savedGoogle;
-    const savedVertexProject = localStorage.getItem('vertex_project_id');
-    const savedVertexToken   = localStorage.getItem('vertex_access_token');
-    const elVProj  = document.getElementById('ig-vertex-project');
-    const elVToken = document.getElementById('ig-vertex-token');
-    if (elVProj  && savedVertexProject) elVProj.value  = savedVertexProject;
-    if (elVToken && savedVertexToken)   elVToken.value = savedVertexToken;
 
-    // Provider toggle
-    const igTrigger  = document.getElementById('ig-select-trigger');
-    const igDropdown = document.getElementById('ig-select-dropdown');
-    const igSelName  = document.getElementById('ig-select-name');
-    const igSelDesc  = document.getElementById('ig-select-desc');
-
-    function setProvider(p) {
-      currentProvider = p;
-      localStorage.setItem('ig_provider', p);
-      document.querySelectorAll('.ig-provider-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.provider === p);
-      });
-      const orWrap     = document.getElementById('ig-or-key-wrap');
-      const googleWrap = document.getElementById('ig-google-key-wrap');
-      const vertexWrap = document.getElementById('ig-vertex-key-wrap');
-      if (orWrap)     orWrap.style.display     = p === 'openrouter' ? '' : 'none';
-      if (googleWrap) googleWrap.style.display = p === 'google'     ? '' : 'none';
-      if (vertexWrap) vertexWrap.style.display = p === 'vertex'     ? '' : 'none';
-      // Show/hide model options by provider
-      if (igDropdown) {
-        igDropdown.querySelectorAll('.vg-option').forEach(opt => {
-          opt.style.display = opt.dataset.provider === p ? '' : 'none';
-        });
-        // Auto-select first visible option for the new provider
-        const first = igDropdown.querySelector(`.vg-option[data-provider="${p}"]`);
-        if (first) {
-          igDropdown.querySelectorAll('.vg-option').forEach(o => o.classList.remove('active'));
-          first.classList.add('active');
-          selectedModel     = first.dataset.model;
-          selectedModelName = first.dataset.name;
-          if (igSelName) igSelName.textContent = first.dataset.name;
-          if (igSelDesc) igSelDesc.textContent = first.dataset.desc;
-        }
-      }
-    }
-
-    document.querySelectorAll('.ig-provider-btn').forEach(btn => {
-      btn.addEventListener('click', () => setProvider(btn.dataset.provider));
-    });
-    setProvider(currentProvider);
-
-    // Save keys
-    const igSaveKey = document.getElementById('ig-save-key');
-    if (igSaveKey) igSaveKey.addEventListener('click', () => {
-      if (igApikeyOR && igApikeyOR.value.trim()) {
-        localStorage.setItem('or_api_key', igApikeyOR.value.trim());
-        igSaveKey.textContent = '✅ Salvo!';
-        setTimeout(() => { igSaveKey.textContent = '💾 Salvar'; }, 1500);
-      }
-    });
+    // Save key
     const igGoogleSaveKey = document.getElementById('ig-google-save-key');
     if (igGoogleSaveKey) igGoogleSaveKey.addEventListener('click', () => {
-      if (igApikeyGoogle && igApikeyGoogle.value.trim()) {
-        localStorage.setItem('google_api_key', igApikeyGoogle.value.trim());
-        igGoogleSaveKey.textContent = '✅ Salvo!';
-        setTimeout(() => { igGoogleSaveKey.textContent = '💾 Salvar'; }, 1500);
-      }
-    });
-    const igVertexSaveKey = document.getElementById('ig-vertex-save-token');
-    if (igVertexSaveKey) igVertexSaveKey.addEventListener('click', () => {
-      const proj  = document.getElementById('ig-vertex-project')?.value.trim();
-      const token = document.getElementById('ig-vertex-token')?.value.trim();
-      if (proj)  localStorage.setItem('vertex_project_id', proj);
-      if (token) localStorage.setItem('vertex_access_token', token);
-      igVertexSaveKey.textContent = '✅ Salvo!';
-      setTimeout(() => { igVertexSaveKey.textContent = '💾 Salvar'; }, 1500);
+      const val = igApikeyGoogle?.value.trim();
+      if (val) { localStorage.setItem('google_api_key', val); }
+      igGoogleSaveKey.textContent = '✅ Salvo!';
+      setTimeout(() => { igGoogleSaveKey.textContent = '💾 Salvar'; }, 1500);
     });
 
     // Tabs
@@ -1460,11 +1392,8 @@ if (lipSubmitBtn) {
     const igDown     = document.getElementById('ig-download-btn');
 
     igSubmit.addEventListener('click', async () => {
-      // Só AI Studio
-      const accessToken = elVToken ? elVToken.value.trim() : '';
-      const projectId  = elVProj  ? elVProj.value.trim()  : '';
-      if (!accessToken) { alert('Informe seu Access Token OAuth2 do Vertex AI'); return; }
-      if (!projectId)   { alert('Informe o Project ID do Google Cloud'); return; }
+      const apiKey = igApikeyGoogle?.value.trim() || localStorage.getItem('google_api_key') || '';
+      if (!apiKey) { alert('Informe sua API Key do Google AI Studio'); return; }
 
       const prompt = currentMode === 'clone'
         ? (document.getElementById('ig-clone-prompt')?.value.trim() || '')
@@ -1488,8 +1417,8 @@ if (lipSubmitBtn) {
       try {
         const resp = await fetch(API + '/api/generate-image', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
-          body: JSON.stringify({ prompt, imageModel: selectedModel, projectId, mode: currentMode, referenceBase64, productBase64 })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, referenceBase64, productBase64 })
         });
         const json = await resp.json();
         if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
