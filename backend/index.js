@@ -1219,7 +1219,7 @@ app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
 
       // Passo 2: Info do vídeo via ffprobe
       const videoInfo = await new Promise((resolve) => {
-        exec(`"${FFPROBE}" -v quiet -print_format json -show_streams -select_streams v:0 -show_entries format=duration "${input}"`,
+        exec(`"${FFPROBE}" -v quiet -print_format json -show_streams -select_streams v:0 -show_entries stream=width,height,r_frame_rate -show_entries format=duration "${input}"`,
           (err, stdout) => {
             try {
               const data = JSON.parse(stdout);
@@ -1228,9 +1228,11 @@ app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
               const [num, den] = fpsStr.split('/').map(Number);
               resolve({
                 fps: Math.round(num / (den || 1)) || 30,
-                duration: parseFloat(data.format?.duration || transcription.duration || 0)
+                duration: parseFloat(data.format?.duration || transcription.duration || 0),
+                videoWidth: stream.width || 1080,
+                videoHeight: stream.height || 1920
               });
-            } catch { resolve({ fps: 30, duration: transcription.duration || 0 }); }
+            } catch { resolve({ fps: 30, duration: transcription.duration || 0, videoWidth: 1080, videoHeight: 1920 }); }
           }
         );
       });
@@ -1242,23 +1244,49 @@ app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
         .map(s => `[${s.start.toFixed(1)}s - ${s.end.toFixed(1)}s]: ${s.text}`)
         .join('\n');
 
-      const prompt = `Você é um editor de vídeo profissional. Analise a transcrição abaixo e divida em cenas/momentos lógicos para edição de vídeo.
+      const isPortrait = videoInfo.videoHeight > videoInfo.videoWidth;
+      const platform = isPortrait ? 'TikTok/Reels/Shorts (9:16 vertical)' : 'YouTube/Cinema (16:9 horizontal)';
 
-Transcrição (timestamps em segundos):
+      const prompt = `Você é um editor de vídeo sênior especializado em conteúdo viral para redes sociais. Analise a transcrição e crie um roteiro de edição profissional e impactante.
+
+DADOS DO VÍDEO:
+- Duração total: ${videoInfo.duration.toFixed(1)}s
+- Formato: ${platform}
+- Dimensões: ${videoInfo.videoWidth}x${videoInfo.videoHeight}px
+- Idioma: ${transcription.language || 'pt'}
+
+TRANSCRIÇÃO COM TIMESTAMPS:
 ${segmentsText}
 
-Duração total do vídeo: ${videoInfo.duration.toFixed(1)}s
+TAREFA:
+Crie cenas que cubram 100% do vídeo do início ao fim. Cada cena deve ter um texto de tela CURTO e IMPACTANTE — não copie a fala, crie um texto que COMPLEMENTE ou PRENDA a atenção.
 
-Crie um JSON array de cenas cobrindo todo o vídeo. Cada cena deve ter:
-- "id": string único ("scene_1", "scene_2", etc)
-- "start": início em segundos (número)
-- "end": fim em segundos (número)
-- "title": título curto da cena (máximo 50 caracteres)
-- "description": descrição breve do que acontece (máximo 150 caracteres)
-- "text_overlay": texto para exibir na tela durante esta cena (máximo 60 caracteres, pode ser string vazia "")
-- "style": escolha um: "title_card", "subtitle", "lower_third", "caption", "none"
+GUIA DE ESTILOS:
+- "title_card": Momentos de destaque, hooks, revelações importantes — texto GRANDE e central
+- "subtitle": Narração contínua — texto pequeno na parte inferior
+- "lower_third": Apresentações, fatos, estatísticas — banner inferior esquerdo
+- "caption": Comentários, contexto extra — texto discreto no canto
+- "none": Pausas visuais, transições — sem texto
 
-Retorne APENAS o JSON array válido, sem markdown, sem texto antes ou depois.`;
+${isPortrait ? `DICAS PARA TIKTOK/REELS:
+- Use emojis estrategicamente (não exagere, 1-2 por cena)
+- Primeira cena = HOOK forte que prenda nos primeiros 3 segundos
+- Linguagem direta, jovem e energética
+- Frases curtas tipo "POV:", "Isso vai mudar tudo", "Ninguém fala isso"` : `DICAS PARA YOUTUBE:
+- Textos mais informativos e profissionais
+- Lower thirds para apresentar tópicos
+- Title cards para transições de assunto`}
+
+Retorne um JSON array onde cada objeto tem EXATAMENTE estes campos:
+- "id": "scene_1", "scene_2", etc (sequencial)
+- "start": número em segundos (início da cena)
+- "end": número em segundos (fim da cena)
+- "title": nome interno da cena, até 50 chars
+- "description": o que acontece, até 150 chars
+- "text_overlay": texto para tela, MÁXIMO 55 chars, pode ter 1-2 emojis, pode ser "" para sem texto
+- "style": exatamente um de: "title_card", "subtitle", "lower_third", "caption", "none"
+
+RETORNE APENAS O JSON ARRAY VÁLIDO. Sem markdown, sem explicação, sem bloco de código.`;
 
       const claudeResponse = await callClaude(prompt);
       autoEditJobs[jobId].progress = 85;
@@ -1281,6 +1309,8 @@ Retorne APENAS o JSON array válido, sem markdown, sem texto antes ou depois.`;
         videoUrl,
         duration: videoInfo.duration,
         fps: videoInfo.fps,
+        videoWidth: videoInfo.videoWidth,
+        videoHeight: videoInfo.videoHeight,
         scenes,
         segments: transcription.segments,
         language: transcription.language

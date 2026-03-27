@@ -21,6 +21,8 @@ export interface AutoEditResult {
   videoUrl: string;
   duration: number;
   fps: number;
+  videoWidth: number;
+  videoHeight: number;
   scenes: Scene[];
   segments: TranscriptSegment[];
   language: string;

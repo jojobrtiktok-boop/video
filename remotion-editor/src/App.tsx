@@ -42,6 +42,17 @@ export default function App() {
   const duration = result?.duration || 0;
   const currentTime = currentFrame / fps;
 
+  // Dimensões reais do vídeo (ex: TikTok = 1080x1920)
+  const videoW = result?.videoWidth  || 1080;
+  const videoH = result?.videoHeight || 1920;
+  const isPortrait = videoH > videoW;
+
+  // Tamanho de exibição do Player: portrait fica alto e estreito, landscape fica largo
+  const PLAYER_MAX_H = 460;
+  const PLAYER_MAX_W = 700;
+  const playerH = isPortrait ? PLAYER_MAX_H : Math.round(PLAYER_MAX_W * videoH / videoW);
+  const playerW = isPortrait ? Math.round(PLAYER_MAX_H * videoW / videoH) : PLAYER_MAX_W;
+
   const startPoll = useCallback((jobId: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
@@ -208,7 +219,25 @@ export default function App() {
           </div>
         ) : (
           <div style={s.editorLayout}>
+            {/* ── Coluna central: player + timeline ── */}
             <div style={s.centerCol}>
+              {/* Info do vídeo acima do player */}
+              <div style={s.videoInfo}>
+                <span style={s.videoInfoBadge}>
+                  {videoW}×{videoH}
+                </span>
+                <span style={s.videoInfoBadge}>
+                  {fps}fps
+                </span>
+                <span style={s.videoInfoBadge}>
+                  {isPortrait ? '📱 Vertical' : '🖥 Horizontal'}
+                </span>
+                <span style={s.videoInfoBadge}>
+                  {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2,'0')}
+                </span>
+              </div>
+
+              {/* Player com aspect ratio correto */}
               <div style={s.playerWrap}>
                 <Player
                   ref={playerRef}
@@ -216,14 +245,16 @@ export default function App() {
                   inputProps={{ videoSrc, scenes }}
                   durationInFrames={durationInFrames}
                   fps={fps}
-                  compositionWidth={1920}
-                  compositionHeight={1080}
-                  style={{ width: '100%', borderRadius: 10 }}
+                  compositionWidth={videoW}
+                  compositionHeight={videoH}
+                  style={{ width: playerW, height: playerH, borderRadius: 10 }}
                   controls
                   loop={false}
                   onFrameUpdate={(f) => setCurrentFrame(f)}
                 />
               </div>
+
+              {/* Timeline full-width abaixo */}
               <Timeline
                 scenes={scenes}
                 duration={duration}
@@ -233,6 +264,8 @@ export default function App() {
                 onSeek={handleSeek}
               />
             </div>
+
+            {/* ── Painel de cenas (direita) ── */}
             <ScenePanel
               scenes={scenes}
               selectedId={selectedId}
@@ -366,9 +399,20 @@ const s: Record<string, React.CSSProperties> = {
   arrow: { color: BORDER, fontSize: 16 },
   editorLayout: { flex: 1, display: 'flex', overflow: 'hidden' },
   centerCol: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  videoInfo: {
+    display: 'flex', gap: 6, padding: '6px 16px',
+    background: '#050709', borderBottom: `1px solid ${BORDER}`,
+    flexShrink: 0,
+  },
+  videoInfoBadge: {
+    fontSize: 11, color: MUTED,
+    background: SURFACE2, border: `1px solid ${BORDER}`,
+    padding: '2px 8px', borderRadius: 99,
+  },
   playerWrap: {
-    flex: 1, padding: '12px 16px 8px',
+    flex: 1, padding: '10px 16px',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     minHeight: 0, background: '#050709',
+    overflow: 'hidden',
   },
 };

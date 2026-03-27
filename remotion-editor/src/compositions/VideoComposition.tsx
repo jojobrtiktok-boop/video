@@ -71,7 +71,7 @@ export const VideoComposition: React.FC<Props> = ({ videoSrc, scenes }) => {
 
   return (
     <AbsoluteFill style={{ background: '#000' }}>
-      {videoSrc && <OffthreadVideo src={videoSrc} />}
+      {videoSrc && <OffthreadVideo src={videoSrc} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />}
       {scenes.map((scene) => {
         if (scene.style === 'none' || !scene.text_overlay.trim()) return null;
         const fromFrame = Math.round(scene.start * fps);
