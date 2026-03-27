@@ -1245,48 +1245,71 @@ app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
         .join('\n');
 
       const isPortrait = videoInfo.videoHeight > videoInfo.videoWidth;
-      const platform = isPortrait ? 'TikTok/Reels/Shorts (9:16 vertical)' : 'YouTube/Cinema (16:9 horizontal)';
 
-      const prompt = `Você é um editor de vídeo sênior especializado em conteúdo viral para redes sociais. Analise a transcrição e crie um roteiro de edição profissional e impactante.
+      const userStyle = (req.body.style || '').trim().slice(0, 500);
+      const styleGuide = userStyle
+        ? `ESTILO SOLICITADO PELO USUÁRIO:\n"${userStyle}"\nSiga rigorosamente este estilo.`
+        : `ESTILO PADRÃO: VSL (Video Sales Letter) — Marketing digital de alta conversão.
+Estrutura recomendada:
+1. HOOK: Texto de abertura que prende atenção nos primeiros 3 segundos
+2. PROBLEMA: Dor/frustração que o público sente (accent_color: "#ef4444")
+3. AGITAÇÃO: Amplificar o problema
+4. SOLUÇÃO: Apresentar a saída (accent_color: "#22c55e")
+5. PROVA: Resultado, número, depoimento (accent_color: "#f59e0b")
+6. CTA: Call to action claro e urgente (accent_color: "#7c71ff")`;
+
+      const prompt = `Você é um editor de vídeo sênior e copywriter especializado em ${userStyle || 'VSL de marketing digital de alta conversão'}.
 
 DADOS DO VÍDEO:
-- Duração total: ${videoInfo.duration.toFixed(1)}s
-- Formato: ${platform}
-- Dimensões: ${videoInfo.videoWidth}x${videoInfo.videoHeight}px
-- Idioma: ${transcription.language || 'pt'}
+- Duração: ${videoInfo.duration.toFixed(1)}s
+- Formato: ${isPortrait ? 'Vertical TikTok/Reels/Shorts (9:16)' : 'Horizontal YouTube (16:9)'}
+- Idioma: ${transcription.language || language}
+
+${styleGuide}
 
 TRANSCRIÇÃO COM TIMESTAMPS:
 ${segmentsText}
 
-TAREFA:
-Crie cenas que cubram 100% do vídeo do início ao fim. Cada cena deve ter um texto de tela CURTO e IMPACTANTE — não copie a fala, crie um texto que COMPLEMENTE ou PRENDA a atenção.
+REGRAS DE TEXTO (CRÍTICAS):
+- text_overlay: MÁXIMO 45 caracteres — seja EXTREMAMENTE conciso e impactante
+- NÃO copie a transcrição — crie textos que COMPLEMENTEM a fala
+- Use linguagem de copywriting: urgência, benefício, curiosidade
+- Emojis: máximo 1 por cena, somente quando realmente agrega valor
 
-GUIA DE ESTILOS:
-- "title_card": Momentos de destaque, hooks, revelações importantes — texto GRANDE e central
-- "subtitle": Narração contínua — texto pequeno na parte inferior
-- "lower_third": Apresentações, fatos, estatísticas — banner inferior esquerdo
-- "caption": Comentários, contexto extra — texto discreto no canto
-- "none": Pausas visuais, transições — sem texto
+ANIMAÇÕES DISPONÍVEIS (use estrategicamente):
+- "zoom": Para hooks e momentos de destaque (impacto visual)
+- "slide_up": Para problemas e soluções (energia ascendente)
+- "slide_left": Para lower thirds e informações laterais
+- "fade": Para legendas e captions sutis
+- "none": Para transições discretas
 
-${isPortrait ? `DICAS PARA TIKTOK/REELS:
-- Use emojis estrategicamente (não exagere, 1-2 por cena)
-- Primeira cena = HOOK forte que prenda nos primeiros 3 segundos
-- Linguagem direta, jovem e energética
-- Frases curtas tipo "POV:", "Isso vai mudar tudo", "Ninguém fala isso"` : `DICAS PARA YOUTUBE:
-- Textos mais informativos e profissionais
-- Lower thirds para apresentar tópicos
-- Title cards para transições de assunto`}
+ESTILOS DISPONÍVEIS:
+- "hook": Texto grande centralizado — para abertura e momentos-chave
+- "problem": Com barra colorida lateral — para dores e desafios
+- "solution": Com barra de cor acima — para soluções e respostas
+- "proof": Caixa com badge no topo — para dados e provas sociais
+- "cta": Botão com brilho pulsante — APENAS para call to actions
+- "subtitle": Pill no rodapé — para narração contínua
+- "lower_third": Strip lateral esquerdo — para apresentações e fatos
+- "caption": Texto flutuante sutil — para comentários extras
+- "none": Sem sobreposição — para pausas visuais
 
-Retorne um JSON array onde cada objeto tem EXATAMENTE estes campos:
-- "id": "scene_1", "scene_2", etc (sequencial)
-- "start": número em segundos (início da cena)
-- "end": número em segundos (fim da cena)
-- "title": nome interno da cena, até 50 chars
-- "description": o que acontece, até 150 chars
-- "text_overlay": texto para tela, MÁXIMO 55 chars, pode ter 1-2 emojis, pode ser "" para sem texto
-- "style": exatamente um de: "title_card", "subtitle", "lower_third", "caption", "none"
+Retorne um JSON array. Cada objeto deve ter EXATAMENTE estes campos:
+{
+  "id": "scene_1",
+  "start": 0.0,
+  "end": 5.2,
+  "title": "Nome interno da cena (até 50 chars)",
+  "description": "O que acontece nesta cena (até 150 chars)",
+  "text_overlay": "TEXTO CURTO E IMPACTANTE (máx 45 chars)",
+  "style": "hook",
+  "animation": "zoom",
+  "position": "bottom_center",
+  "accent_color": "#7c71ff",
+  "emoji": "🔥"
+}
 
-RETORNE APENAS O JSON ARRAY VÁLIDO. Sem markdown, sem explicação, sem bloco de código.`;
+RETORNE APENAS O JSON ARRAY VÁLIDO. Nenhum markdown, nenhuma explicação.`;
 
       const claudeResponse = await callClaude(prompt);
       autoEditJobs[jobId].progress = 85;
@@ -1329,6 +1352,47 @@ app.get('/api/auto-edit/:id', (req, res) => {
   const job = autoEditJobs[req.params.id];
   if (!job) return res.status(404).json({ error: 'Job não encontrado' });
   res.json(job);
+});
+
+// ── REFINAR CENAS VIA CLAUDE ────────────────────────────────────────────────
+app.post('/api/refine-scenes', async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(400).json({ error: 'ANTHROPIC_API_KEY não configurada' });
+  const { scenes, request: userRequest, videoInfo } = req.body;
+  if (!scenes || !userRequest) return res.status(400).json({ error: 'scenes e request são obrigatórios' });
+
+  try {
+    const prompt = `Você é um editor de vídeo profissional e copywriter de marketing digital.
+
+O usuário tem as seguintes cenas de edição de vídeo e quer fazer alterações:
+
+CENAS ATUAIS:
+${JSON.stringify(scenes, null, 2)}
+
+INFORMAÇÕES DO VÍDEO:
+- Duração: ${videoInfo?.duration || 0}s
+- Dimensões: ${videoInfo?.videoWidth || 1080}x${videoInfo?.videoHeight || 1920}
+- Idioma: ${videoInfo?.language || 'pt'}
+
+PEDIDO DO USUÁRIO:
+"${userRequest}"
+
+INSTRUÇÕES:
+1. Faça EXATAMENTE o que o usuário pediu
+2. Mantenha todas as cenas que não precisam ser alteradas
+3. Respeite os limites: text_overlay máximo 45 chars
+4. Campos válidos para style: hook, problem, solution, proof, cta, subtitle, lower_third, caption, none
+5. Campos válidos para animation: fade, slide_up, slide_left, zoom, none
+
+RETORNE APENAS O JSON ARRAY COMPLETO DAS CENAS ATUALIZADAS. Sem markdown.`;
+
+    const response = await callClaude(prompt);
+    const jsonStr = response.match(/\[[\s\S]*\]/)?.[0] || response;
+    const updatedScenes = JSON.parse(jsonStr);
+    res.json({ scenes: updatedScenes });
+  } catch (err) {
+    console.error('[refine-scenes] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Serve o Remotion Editor (build de produção)

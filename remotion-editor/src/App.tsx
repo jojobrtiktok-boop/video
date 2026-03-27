@@ -3,15 +3,17 @@ import { Player, PlayerRef } from '@remotion/player';
 import { VideoComposition } from './compositions/VideoComposition';
 import { Timeline } from './components/Timeline';
 import { ScenePanel } from './components/ScenePanel';
+import { ClaudePanel } from './components/ClaudePanel';
 import type { AutoEditJob, AutoEditResult, Scene } from './types';
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || '';
 
-async function startAutoEdit(file: File, model: string, language: string): Promise<string> {
+async function startAutoEdit(file: File, model: string, language: string, style: string): Promise<string> {
   const fd = new FormData();
   fd.append('video', file);
   fd.append('model', model);
   fd.append('language', language);
+  fd.append('style', style);
   const r = await fetch(`${BACKEND}/api/auto-edit`, { method: 'POST', body: fd });
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || 'Erro ao iniciar');
@@ -34,6 +36,8 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [model, setModel]           = useState('small');
   const [language, setLanguage]     = useState('pt');
+  const [editStyle, setEditStyle]   = useState('');
+  const [claudeOpen, setClaudeOpen] = useState(false);
 
   const playerRef = useRef<PlayerRef>(null);
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -87,7 +91,7 @@ export default function App() {
     setErrorMsg(null); setResult(null); setScenes([]);
     setSelectedId(null); setProgress(0); setJobStatus('uploading');
     try {
-      const jobId = await startAutoEdit(file, model, language);
+      const jobId = await startAutoEdit(file, model, language, editStyle);
       setJobStatus('Transcrevendo com Whisper…');
       startPoll(jobId);
     } catch (e: unknown) {
@@ -163,6 +167,20 @@ export default function App() {
               </>
             )}
             {result && (
+              <button
+                style={{
+                  background: claudeOpen ? `rgba(124,113,255,0.2)` : `linear-gradient(135deg, ${ACCENT}, #b89bff)`,
+                  border: `1px solid ${claudeOpen ? ACCENT : 'transparent'}`,
+                  borderRadius: 8, color: '#fff', padding: '7px 16px',
+                  fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                  boxShadow: claudeOpen ? 'none' : `0 0 16px ${ACCENT}50`,
+                }}
+                onClick={() => setClaudeOpen(!claudeOpen)}
+              >
+                ✨ Pedir ao Claude
+              </button>
+            )}
+            {result && (
               <button style={s.btnSecondary} onClick={() => {
                 setResult(null); setScenes([]); setJobStatus('idle');
                 setProgress(0); setErrorMsg(null);
@@ -199,6 +217,23 @@ export default function App() {
                     Selecionar vídeo
                     <input type="file" accept="video/*" style={{ display: 'none' }} onChange={handleFileInput} />
                   </label>
+                  <div style={{ width: '100%', maxWidth: 400, marginTop: 20, textAlign: 'left' }}>
+                    <label style={{ fontSize: 12, color: MUTED, display: 'block', marginBottom: 6, fontWeight: 600 }}>
+                      Estilo de edição <span style={{ color: '#555', fontWeight: 400 }}>(opcional — padrão: VSL Marketing)</span>
+                    </label>
+                    <textarea
+                      value={editStyle}
+                      onChange={(e) => setEditStyle(e.target.value)}
+                      placeholder="Ex: TikTok agressivo com emojis, hooks provocativos, linguagem jovem e dinâmica..."
+                      rows={3}
+                      style={{
+                        width: '100%', background: SURFACE2, border: `1px solid ${BORDER}`,
+                        borderRadius: 10, padding: '10px 12px', color: TEXT,
+                        fontSize: 13, fontFamily: 'Inter, system-ui, sans-serif',
+                        resize: 'none', outline: 'none',
+                      }}
+                    />
+                  </div>
                   {errorMsg && <div style={s.error}>{errorMsg}</div>}
                 </>
               )}
@@ -275,6 +310,15 @@ export default function App() {
           </div>
         )}
       </div>
+      {result && (
+        <ClaudePanel
+          isOpen={claudeOpen}
+          onClose={() => setClaudeOpen(false)}
+          scenes={scenes}
+          result={result}
+          onScenesUpdated={(updated) => { setScenes(updated); setClaudeOpen(false); }}
+        />
+      )}
     </>
   );
 }

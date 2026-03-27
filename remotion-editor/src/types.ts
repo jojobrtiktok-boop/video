@@ -1,13 +1,19 @@
-export type OverlayStyle = 'title_card' | 'subtitle' | 'lower_third' | 'caption' | 'none';
+export type AnimationType = 'fade' | 'slide_up' | 'slide_left' | 'zoom' | 'none';
+export type PositionType = 'top_center' | 'center' | 'bottom_center' | 'bottom_left' | 'bottom_right';
+export type StyleVariant = 'hook' | 'problem' | 'solution' | 'proof' | 'cta' | 'subtitle' | 'lower_third' | 'caption' | 'none';
 
 export interface Scene {
   id: string;
-  start: number;   // segundos
-  end: number;     // segundos
+  start: number;
+  end: number;
   title: string;
   description: string;
   text_overlay: string;
-  style: OverlayStyle;
+  style: StyleVariant;
+  animation?: AnimationType;
+  position?: PositionType;
+  accent_color?: string | null;
+  emoji?: string;
 }
 
 export interface TranscriptSegment {

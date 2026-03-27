@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Scene, OverlayStyle } from '../types';
+import type { Scene, StyleVariant } from '../types';
 
 interface Props {
   scenes: Scene[];
@@ -8,7 +8,7 @@ interface Props {
   onChange: (updated: Scene) => void;
 }
 
-const STYLE_OPTIONS: OverlayStyle[] = ['subtitle', 'title_card', 'lower_third', 'caption', 'none'];
+const STYLE_OPTIONS: StyleVariant[] = ['hook', 'problem', 'solution', 'proof', 'cta', 'subtitle', 'lower_third', 'caption', 'none'];
 
 function formatTime(s: number) {
   const m = Math.floor(s / 60);
@@ -56,7 +56,7 @@ export const ScenePanel: React.FC<Props> = ({ scenes, selectedId, onSelect, onCh
                   <select
                     style={styles.select}
                     value={sc.style}
-                    onChange={(e) => onChange({ ...sc, style: e.target.value as OverlayStyle })}
+                    onChange={(e) => onChange({ ...sc, style: e.target.value as StyleVariant })}
                   >
                     {STYLE_OPTIONS.map((s) => (
                       <option key={s} value={s}>{s}</option>
