@@ -1149,5 +1149,164 @@ print('done')
   });
 });
 
+// ── AUTO EDITOR (Whisper + Claude + Remotion) ──────────────────────────────
+const autoEditJobs = {};
+
+function callClaude(prompt) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) return reject(new Error(parsed.error.message));
+          resolve(parsed.content[0].text);
+        } catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(400).json({ error: 'ANTHROPIC_API_KEY não configurada no .env' });
+
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const input = req.file.path;
+  const model = (req.body.model || 'small').replace(/[^a-z0-9_-]/g, '');
+  const language = (req.body.language || 'pt').replace(/[^a-z]/g, '');
+
+  autoEditJobs[jobId] = { status: 'transcribing', progress: 5, result: null, error: null };
+  res.json({ id: jobId });
+
+  (async () => {
+    try {
+      // Passo 1: Transcrição com Whisper
+      autoEditJobs[jobId].progress = 10;
+      const transcription = await new Promise((resolve, reject) => {
+        const scriptPath = path.join(__dirname, 'transcribe_json.py');
+        exec(`"${PYTHON}" "${scriptPath}" "${input}" "${model}" "${language}"`,
+          { maxBuffer: 20 * 1024 * 1024 },
+          (err, stdout, stderr) => {
+            if (err) return reject(new Error(stderr || err.message));
+            try { resolve(JSON.parse(stdout)); }
+            catch { reject(new Error('Transcrição inválida: ' + stdout.slice(0, 300))); }
+          }
+        );
+      });
+
+      autoEditJobs[jobId].progress = 40;
+      autoEditJobs[jobId].status = 'analyzing';
+
+      // Passo 2: Info do vídeo via ffprobe
+      const videoInfo = await new Promise((resolve) => {
+        exec(`"${FFPROBE}" -v quiet -print_format json -show_streams -select_streams v:0 -show_entries format=duration "${input}"`,
+          (err, stdout) => {
+            try {
+              const data = JSON.parse(stdout);
+              const stream = data.streams?.[0] || {};
+              const fpsStr = stream.r_frame_rate || '30/1';
+              const [num, den] = fpsStr.split('/').map(Number);
+              resolve({
+                fps: Math.round(num / (den || 1)) || 30,
+                duration: parseFloat(data.format?.duration || transcription.duration || 0)
+              });
+            } catch { resolve({ fps: 30, duration: transcription.duration || 0 }); }
+          }
+        );
+      });
+
+      autoEditJobs[jobId].progress = 50;
+
+      // Passo 3: Claude analisa e gera cenas
+      const segmentsText = transcription.segments
+        .map(s => `[${s.start.toFixed(1)}s - ${s.end.toFixed(1)}s]: ${s.text}`)
+        .join('\n');
+
+      const prompt = `Você é um editor de vídeo profissional. Analise a transcrição abaixo e divida em cenas/momentos lógicos para edição de vídeo.
+
+Transcrição (timestamps em segundos):
+${segmentsText}
+
+Duração total do vídeo: ${videoInfo.duration.toFixed(1)}s
+
+Crie um JSON array de cenas cobrindo todo o vídeo. Cada cena deve ter:
+- "id": string único ("scene_1", "scene_2", etc)
+- "start": início em segundos (número)
+- "end": fim em segundos (número)
+- "title": título curto da cena (máximo 50 caracteres)
+- "description": descrição breve do que acontece (máximo 150 caracteres)
+- "text_overlay": texto para exibir na tela durante esta cena (máximo 60 caracteres, pode ser string vazia "")
+- "style": escolha um: "title_card", "subtitle", "lower_third", "caption", "none"
+
+Retorne APENAS o JSON array válido, sem markdown, sem texto antes ou depois.`;
+
+      const claudeResponse = await callClaude(prompt);
+      autoEditJobs[jobId].progress = 85;
+
+      // Parse da resposta do Claude
+      let scenes;
+      try {
+        const jsonStr = claudeResponse.match(/\[[\s\S]*\]/)?.[0] || claudeResponse;
+        scenes = JSON.parse(jsonStr);
+      } catch {
+        throw new Error('Claude retornou JSON inválido: ' + claudeResponse.slice(0, 300));
+      }
+
+      const videoUrl = '/uploads/' + path.basename(input);
+      scheduleDelete(input, 7200000); // 2h
+
+      autoEditJobs[jobId].status = 'done';
+      autoEditJobs[jobId].progress = 100;
+      autoEditJobs[jobId].result = {
+        videoUrl,
+        duration: videoInfo.duration,
+        fps: videoInfo.fps,
+        scenes,
+        segments: transcription.segments,
+        language: transcription.language
+      };
+
+    } catch (err) {
+      fs.unlink(input, () => {});
+      autoEditJobs[jobId].status = 'error';
+      autoEditJobs[jobId].error = err.message;
+      console.error('[auto-edit] Erro:', err.message);
+    }
+  })();
+});
+
+app.get('/api/auto-edit/:id', (req, res) => {
+  const job = autoEditJobs[req.params.id];
+  if (!job) return res.status(404).json({ error: 'Job não encontrado' });
+  res.json(job);
+});
+
+// Serve o Remotion Editor (build de produção)
+const editorDist = path.join(__dirname, '..', 'remotion-editor', 'dist');
+if (fs.existsSync(editorDist)) {
+  app.use('/editor', express.static(editorDist));
+  app.get('/editor/*', (_req, res) => res.sendFile(path.join(editorDist, 'index.html')));
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Backend listening on ${PORT}`));

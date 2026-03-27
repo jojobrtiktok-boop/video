@@ -11,11 +11,18 @@ RUN pip3 install --no-cache-dir face_alignment
 
 WORKDIR /usr/src/app
 
-# Install Node deps first (better layer caching)
+# ── Backend ──────────────────────────────────────────────────────────────────
 COPY backend/package.json ./backend/
 RUN cd backend && npm install --production
 
-# Copy source files
+# ── Remotion Editor (build de produção) ──────────────────────────────────────
+COPY remotion-editor/package.json ./remotion-editor/
+RUN cd remotion-editor && npm install
+
+COPY remotion-editor/ ./remotion-editor/
+RUN cd remotion-editor && npm run build
+
+# ── Arquivos finais ───────────────────────────────────────────────────────────
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 
