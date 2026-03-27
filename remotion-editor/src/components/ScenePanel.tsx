@@ -1,5 +1,6 @@
 import React from 'react';
-import type { Scene, StyleVariant } from '../types';
+import type { Scene, StyleVariant, AnimationType } from '../types';
+import { STYLE_COLORS, STYLE_LABELS } from '../types';
 
 interface Props {
   scenes: Scene[];
@@ -8,7 +9,14 @@ interface Props {
   onChange: (updated: Scene) => void;
 }
 
-const STYLE_OPTIONS: StyleVariant[] = ['hook', 'problem', 'solution', 'proof', 'cta', 'subtitle', 'lower_third', 'caption', 'none'];
+const STYLE_OPTIONS: StyleVariant[] = [
+  'hook', 'bold_claim', 'question',
+  'problem', 'agitation', 'story',
+  'solution', 'proof', 'urgency', 'cta',
+  'subtitle', 'lower_third', 'caption', 'none',
+];
+
+const ANIM_OPTIONS: AnimationType[] = ['zoom', 'slide_up', 'slide_left', 'slide_right', 'shake', 'typewriter', 'fade', 'none'];
 
 function formatTime(s: number) {
   const m = Math.floor(s / 60);
@@ -29,39 +37,95 @@ export const ScenePanel: React.FC<Props> = ({ scenes, selectedId, onSelect, onCh
               onClick={() => onSelect(sc.id)}
               style={{ ...styles.card, ...(isSelected ? styles.cardSelected : {}) }}
             >
+              {/* Card header com color dot do estilo */}
               <div style={styles.cardTop}>
-                <span style={styles.cardTitle}>{sc.title}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                    background: STYLE_COLORS[sc.style] || '#444',
+                  }} />
+                  <span style={styles.cardTitle}>{sc.title}</span>
+                </div>
                 <span style={styles.cardTime}>{formatTime(sc.start)} → {formatTime(sc.end)}</span>
+              </div>
+              {/* Badge do estilo */}
+              <div style={{ paddingLeft: 14, paddingBottom: isSelected ? 0 : 4 }}>
+                <span style={{
+                  fontSize: 10, color: STYLE_COLORS[sc.style] || '#666',
+                  fontWeight: 700, letterSpacing: 0.5,
+                }}>
+                  {sc.style.toUpperCase()}
+                </span>
               </div>
 
               {isSelected && (
                 <div style={styles.editor} onClick={(e) => e.stopPropagation()}>
-                  <label style={styles.label}>Título da cena</label>
-                  <input
-                    style={styles.input}
-                    value={sc.title}
-                    onChange={(e) => onChange({ ...sc, title: e.target.value })}
-                    placeholder="Título da cena"
-                  />
-
-                  <label style={styles.label}>Texto exibido na tela</label>
+                  <label style={styles.label}>Texto na tela <span style={{ color: '#555', fontWeight: 400 }}>(máx 45 chars)</span></label>
                   <input
                     style={styles.input}
                     value={sc.text_overlay}
                     onChange={(e) => onChange({ ...sc, text_overlay: e.target.value })}
-                    placeholder="Deixe vazio para sem texto"
+                    placeholder="Texto impactante ou vazio"
+                    maxLength={55}
+                  />
+                  <div style={{ fontSize: 10, color: sc.text_overlay.length > 45 ? '#f87171' : '#555', textAlign: 'right', marginTop: -4 }}>
+                    {sc.text_overlay.length}/45
+                  </div>
+
+                  <label style={styles.label}>Emoji <span style={{ color: '#555', fontWeight: 400 }}>(1 emoji, opcional)</span></label>
+                  <input
+                    style={{ ...styles.input, width: 60 }}
+                    value={sc.emoji || ''}
+                    onChange={(e) => onChange({ ...sc, emoji: e.target.value })}
+                    placeholder="🔥"
+                    maxLength={4}
                   />
 
-                  <label style={styles.label}>Estilo do texto</label>
+                  <label style={styles.label}>Estilo VSL</label>
                   <select
                     style={styles.select}
                     value={sc.style}
                     onChange={(e) => onChange({ ...sc, style: e.target.value as StyleVariant })}
                   >
                     {STYLE_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s} value={s}>{STYLE_LABELS[s as StyleVariant] || s}</option>
                     ))}
                   </select>
+
+                  <label style={styles.label}>Animação de entrada</label>
+                  <select
+                    style={styles.select}
+                    value={sc.animation || 'fade'}
+                    onChange={(e) => onChange({ ...sc, animation: e.target.value as AnimationType })}
+                  >
+                    {ANIM_OPTIONS.map((a) => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+
+                  <label style={styles.label}>Cor de destaque</label>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      value={sc.accent_color || STYLE_COLORS[sc.style] || '#7c71ff'}
+                      onChange={(e) => onChange({ ...sc, accent_color: e.target.value })}
+                      style={{ width: 36, height: 28, borderRadius: 4, border: 'none', cursor: 'pointer', background: 'none' }}
+                    />
+                    <input
+                      style={{ ...styles.input, flex: 1 }}
+                      value={sc.accent_color || ''}
+                      onChange={(e) => onChange({ ...sc, accent_color: e.target.value })}
+                      placeholder={STYLE_COLORS[sc.style] || '#7c71ff'}
+                    />
+                  </div>
+
+                  <label style={styles.label}>Título interno da cena</label>
+                  <input
+                    style={styles.input}
+                    value={sc.title}
+                    onChange={(e) => onChange({ ...sc, title: e.target.value })}
+                    placeholder="Nome interno da cena"
+                  />
 
                   <label style={styles.label}>Descrição</label>
                   <textarea

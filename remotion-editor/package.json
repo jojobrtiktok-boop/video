@@ -9,6 +9,8 @@
     "preview": "vite preview --port 4173"
   },
   "dependencies": {
+    "@remotion/animation-utils": "^4.0.290",
+    "@remotion/noise": "^4.0.290",
     "@remotion/player": "^4.0.290",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

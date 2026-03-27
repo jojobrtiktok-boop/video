@@ -1246,62 +1246,120 @@ app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
 
       const isPortrait = videoInfo.videoHeight > videoInfo.videoWidth;
 
-      const userStyle = (req.body.style || '').trim().slice(0, 500);
+      const userStyle = (req.body.style || '').trim().slice(0, 600);
+
+      // ── Sistema de cores emocionais VSL ───────────────────────────────────
+      const VSL_COLORS = {
+        hook:        '#7c71ff',
+        bold_claim:  '#ffffff',
+        question:    '#60a5fa',
+        problem:     '#ef4444',
+        agitation:   '#dc2626',
+        story:       '#a78bfa',
+        solution:    '#22c55e',
+        proof:       '#f59e0b',
+        urgency:     '#f97316',
+        cta:         '#7c71ff',
+        subtitle:    '#94a3b8',
+        lower_third: '#7c71ff',
+        caption:     '#6b7280',
+      };
+
+      const defaultVSLGuide = isPortrait
+        ? `FORMATO: TikTok/Reels/Shorts VERTICAL (9:16) — Conteúdo nativo de redes sociais
+ESTRATÉGIA DE HOOK TIKTOK (primeiros 3 segundos = decisivo):
+  - Fórmula 1 BOLD CLAIM: Declaração que desafia o senso comum
+  - Fórmula 2 QUESTION: Pergunta com curiosity gap que exige resposta
+  - Fórmula 3 PROOF-FIRST: Resultado/número imediato que cria autoridade
+  - Fórmula 4 PATTERN INTERRUPT: Algo inesperado que quebra o scroll
+PACING: Cena a cada 2-4 segundos. Dinamismo alto. Linguagem jovem e direta.
+ESTRUTURA SUGERIDA: hook → problem → agitation → solution → proof → cta`
+        : `FORMATO: YouTube/Cinema HORIZONTAL (16:9) — VSL estruturado
+ESTRUTURA VSL DE 7 ESTÁGIOS (com timing proporcional à duração):
+  1. HOOK/ATENÇÃO (0-15%): Pattern interrupt ou bold claim — prende nos primeiros 3s
+  2. PROBLEMA (15-30%): Dor real do público, específica e relatable
+  3. AGITAÇÃO (30-40%): Amplifica a dor — o que acontece se não resolver?
+  4. STORY (40-50%): Conexão emocional, narrativa de transformação
+  5. SOLUÇÃO (50-65%): Apresentação da solução, subtle, não agressiva
+  6. PROVA (65-80%): Números, resultados, depoimentos reais
+  7. URGÊNCIA + CTA (80-100%): Escassez + ação clara e única`;
+
       const styleGuide = userStyle
-        ? `ESTILO SOLICITADO PELO USUÁRIO:\n"${userStyle}"\nSiga rigorosamente este estilo.`
-        : `ESTILO PADRÃO: VSL (Video Sales Letter) — Marketing digital de alta conversão.
-Estrutura recomendada:
-1. HOOK: Texto de abertura que prende atenção nos primeiros 3 segundos
-2. PROBLEMA: Dor/frustração que o público sente (accent_color: "#ef4444")
-3. AGITAÇÃO: Amplificar o problema
-4. SOLUÇÃO: Apresentar a saída (accent_color: "#22c55e")
-5. PROVA: Resultado, número, depoimento (accent_color: "#f59e0b")
-6. CTA: Call to action claro e urgente (accent_color: "#7c71ff")`;
+        ? `ESTILO PERSONALIZADO DO USUÁRIO:\n"${userStyle}"\n\nSiga rigorosamente este estilo, adaptando os tipos de overlay e animações para expressar essa identidade visual.`
+        : `ESTILO PADRÃO: VSL Marketing Digital de Alta Conversão\n\n${defaultVSLGuide}`;
 
-      const prompt = `Você é um editor de vídeo sênior e copywriter especializado em ${userStyle || 'VSL de marketing digital de alta conversão'}.
+      const prompt = `Você é um editor de vídeo sênior, copywriter de direct response e especialista em marketing digital. Sua função é analisar a transcrição e criar um roteiro de edição profissional que maximize engajamento e conversão.
 
-DADOS DO VÍDEO:
-- Duração: ${videoInfo.duration.toFixed(1)}s
-- Formato: ${isPortrait ? 'Vertical TikTok/Reels/Shorts (9:16)' : 'Horizontal YouTube (16:9)'}
-- Idioma: ${transcription.language || language}
+━━━ DADOS DO VÍDEO ━━━
+Duração: ${videoInfo.duration.toFixed(1)}s
+Formato: ${isPortrait ? '📱 Vertical TikTok/Reels/Shorts (9:16)' : '🖥 Horizontal YouTube/VSL (16:9)'}
+Dimensões: ${videoInfo.videoWidth}×${videoInfo.videoHeight}
+Idioma: ${transcription.language || language}
 
+━━━ ESTILO DE EDIÇÃO ━━━
 ${styleGuide}
 
-TRANSCRIÇÃO COM TIMESTAMPS:
+━━━ TRANSCRIÇÃO COM TIMESTAMPS ━━━
 ${segmentsText}
 
-REGRAS DE TEXTO (CRÍTICAS):
-- text_overlay: MÁXIMO 45 caracteres — seja EXTREMAMENTE conciso e impactante
-- NÃO copie a transcrição — crie textos que COMPLEMENTEM a fala
-- Use linguagem de copywriting: urgência, benefício, curiosidade
-- Emojis: máximo 1 por cena, somente quando realmente agrega valor
+━━━ ESTILOS DISPONÍVEIS (escolha com intenção) ━━━
+hook        → Abertura impactante, texto 72px centralizado, acima do gradiente
+             Cor: ${VSL_COLORS.hook} | Animação ideal: zoom
+bold_claim  → Declaração audaciosa enorme no centro da tela
+             Cor: ${VSL_COLORS.bold_claim} | Animação ideal: zoom
+question    → Pergunta com efeito typewriter + cursor piscando no topo
+             Cor: ${VSL_COLORS.question} | Animação ideal: fade
+problem     → Barra lateral vermelha, slide bottom — dor do público
+             Cor: ${VSL_COLORS.problem} | Animação ideal: slide_up
+agitation   → Shake orgânico + vermelho intenso — amplifica a dor
+             Cor: ${VSL_COLORS.agitation} | Animação ideal: shake
+story       → Texto itálico suave no rodapé — conexão emocional
+             Cor: ${VSL_COLORS.story} | Animação ideal: fade
+solution    → Barra verde topo animada, slide esquerda — apresenta a saída
+             Cor: ${VSL_COLORS.solution} | Animação ideal: slide_left
+proof       → Caixa âmbar "RESULTADO REAL", números contam do zero até o valor
+             Cor: ${VSL_COLORS.proof} | Animação ideal: zoom
+urgency     → Laranja pulsante, badge "ATENÇÃO — AGORA" — escassez/oferta
+             Cor: ${VSL_COLORS.urgency} | Animação ideal: slide_up
+cta         → Botão roxo com glow pulsante — SOMENTE para call to action final
+             Cor: ${VSL_COLORS.cta} | Animação ideal: slide_up
+subtitle    → Pill escuro transparente no rodapé — narração contínua discreta
+             Cor: ${VSL_COLORS.subtitle} | Animação ideal: fade
+lower_third → Strip lateral esquerdo com barra — info/apresentação/fatos
+             Cor: ${VSL_COLORS.lower_third} | Animação ideal: slide_left
+caption     → Texto flutuante sutil — comentário ou contexto extra
+             Cor: ${VSL_COLORS.caption} | Animação ideal: fade
+none        → Sem overlay — pausa visual intencional
 
-ANIMAÇÕES DISPONÍVEIS (use estrategicamente):
-- "zoom": Para hooks e momentos de destaque (impacto visual)
-- "slide_up": Para problemas e soluções (energia ascendente)
-- "slide_left": Para lower thirds e informações laterais
-- "fade": Para legendas e captions sutis
-- "none": Para transições discretas
+━━━ ANIMAÇÕES DISPONÍVEIS ━━━
+zoom       → Escala 0.78→1 com spring — impacto, destaque
+slide_up   → Desliza de baixo com spring — energia ascendente
+slide_left → Desliza da esquerda com spring — entrada lateral
+slide_right→ Desliza da direita com spring
+shake      → Tremor orgânico via noise2D — instabilidade, urgência
+typewriter → Efeito máquina de escrever — suspense, revelação (use com question)
+fade       → Fade in suave — narração, capção
+none       → Sem animação
 
-ESTILOS DISPONÍVEIS:
-- "hook": Texto grande centralizado — para abertura e momentos-chave
-- "problem": Com barra colorida lateral — para dores e desafios
-- "solution": Com barra de cor acima — para soluções e respostas
-- "proof": Caixa com badge no topo — para dados e provas sociais
-- "cta": Botão com brilho pulsante — APENAS para call to actions
-- "subtitle": Pill no rodapé — para narração contínua
-- "lower_third": Strip lateral esquerdo — para apresentações e fatos
-- "caption": Texto flutuante sutil — para comentários extras
-- "none": Sem sobreposição — para pausas visuais
+━━━ REGRAS CRÍTICAS DE COPYWRITING ━━━
+1. text_overlay: MÁXIMO 45 caracteres — cada palavra conta
+2. NÃO copie a transcrição — crie texto que AMPLIFIQUE ou CONTRASTE
+3. Use verbos de ação: "Descubra", "Pare de", "Imagine", "Você sabia"
+4. Para proof: inclua NÚMEROS — o contador animado impressiona
+5. Emojis: máximo 1, somente se potencializar a mensagem
+6. CTA deve ter verbo imperativo claro: "Acesse agora", "Clique aqui"
+7. Cubra 100% da duração do vídeo sem lacunas
+8. Não use o mesmo estilo mais de 3× seguidos
 
-Retorne um JSON array. Cada objeto deve ter EXATAMENTE estes campos:
+━━━ FORMATO JSON EXIGIDO ━━━
+Retorne um JSON array onde cada objeto tem EXATAMENTE:
 {
   "id": "scene_1",
   "start": 0.0,
-  "end": 5.2,
-  "title": "Nome interno da cena (até 50 chars)",
+  "end": 4.5,
+  "title": "Nome interno (até 50 chars)",
   "description": "O que acontece nesta cena (até 150 chars)",
-  "text_overlay": "TEXTO CURTO E IMPACTANTE (máx 45 chars)",
+  "text_overlay": "TEXTO IMPACTANTE (máx 45 chars)",
   "style": "hook",
   "animation": "zoom",
   "position": "bottom_center",
@@ -1309,7 +1367,7 @@ Retorne um JSON array. Cada objeto deve ter EXATAMENTE estes campos:
   "emoji": "🔥"
 }
 
-RETORNE APENAS O JSON ARRAY VÁLIDO. Nenhum markdown, nenhuma explicação.`;
+RETORNE APENAS O JSON ARRAY. Zero markdown. Zero explicação. Zero texto fora do array.`;
 
       const claudeResponse = await callClaude(prompt);
       autoEditJobs[jobId].progress = 85;
@@ -1361,29 +1419,31 @@ app.post('/api/refine-scenes', async (req, res) => {
   if (!scenes || !userRequest) return res.status(400).json({ error: 'scenes e request são obrigatórios' });
 
   try {
-    const prompt = `Você é um editor de vídeo profissional e copywriter de marketing digital.
+    const prompt = `Você é um editor de vídeo sênior e copywriter de direct response marketing. O usuário quer refinar as cenas de edição de um vídeo.
 
-O usuário tem as seguintes cenas de edição de vídeo e quer fazer alterações:
+━━━ VÍDEO ━━━
+Duração: ${videoInfo?.duration || 0}s | ${videoInfo?.videoWidth || 1080}×${videoInfo?.videoHeight || 1920} | Idioma: ${videoInfo?.language || 'pt'}
 
-CENAS ATUAIS:
+━━━ CENAS ATUAIS ━━━
 ${JSON.stringify(scenes, null, 2)}
 
-INFORMAÇÕES DO VÍDEO:
-- Duração: ${videoInfo?.duration || 0}s
-- Dimensões: ${videoInfo?.videoWidth || 1080}x${videoInfo?.videoHeight || 1920}
-- Idioma: ${videoInfo?.language || 'pt'}
-
-PEDIDO DO USUÁRIO:
+━━━ PEDIDO DO USUÁRIO ━━━
 "${userRequest}"
 
-INSTRUÇÕES:
-1. Faça EXATAMENTE o que o usuário pediu
-2. Mantenha todas as cenas que não precisam ser alteradas
-3. Respeite os limites: text_overlay máximo 45 chars
-4. Campos válidos para style: hook, problem, solution, proof, cta, subtitle, lower_third, caption, none
-5. Campos válidos para animation: fade, slide_up, slide_left, zoom, none
+━━━ ESTILOS VÁLIDOS ━━━
+hook, bold_claim, question, problem, agitation, story, solution, proof, urgency, cta, subtitle, lower_third, caption, none
 
-RETORNE APENAS O JSON ARRAY COMPLETO DAS CENAS ATUALIZADAS. Sem markdown.`;
+━━━ ANIMAÇÕES VÁLIDAS ━━━
+zoom, slide_up, slide_left, slide_right, shake, typewriter, fade, none
+
+━━━ REGRAS ━━━
+1. Execute EXATAMENTE o que foi pedido — nem mais, nem menos
+2. Mantenha inalteradas todas as cenas não solicitadas
+3. text_overlay: máximo 45 chars, impactante, copywriting de direct response
+4. Para proof: inclua números, eles animam de 0 até o valor
+5. Accent_color deve ser hex válido (#rrggbb)
+
+RETORNE APENAS O JSON ARRAY COMPLETO. Zero markdown. Zero explicação.`;
 
     const response = await callClaude(prompt);
     const jsonStr = response.match(/\[[\s\S]*\]/)?.[0] || response;
