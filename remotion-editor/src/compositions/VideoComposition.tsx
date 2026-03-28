@@ -132,11 +132,6 @@ function HookOverlay({ scene, dur }: { scene: Scene; dur: number }) {
         }}>
           {text}
         </div>
-        {scene.emoji && (
-          <div style={{ marginTop: Math.round(10 * s), fontSize: Math.round(18 * s), fontWeight: 700, color: accent, letterSpacing: 2, textTransform: 'uppercase', opacity: 0.9 }}>
-            ▸ ASSISTA ATÉ O FINAL
-          </div>
-        )}
       </div>
     </AbsoluteFill>
   );
@@ -204,17 +199,6 @@ function QuestionOverlay({ scene, dur }: { scene: Scene; dur: number }) {
           boxShadow: `0 0 ${60 * s}px ${accent}20, inset 0 1px 0 rgba(255,255,255,0.06)`,
         }}>
           <div style={{
-            fontSize: Math.round(14 * s),
-            fontWeight: 800,
-            color: accent,
-            letterSpacing: 3,
-            marginBottom: Math.round(14 * s),
-            textTransform: 'uppercase',
-            fontFamily: FONT,
-          }}>
-            ✦ VOCÊ SABIA?
-          </div>
-          <div style={{
             fontSize: Math.round(58 * s),
             fontWeight: 700,
             color: '#fff',
@@ -249,17 +233,6 @@ function ProblemOverlay({ scene, dur }: { scene: Scene; dur: number }) {
           backdropFilter: 'blur(10px)',
           boxShadow: `inset 0 0 ${60 * s}px rgba(239,68,68,0.06)`,
         }}>
-          <div style={{
-            fontSize: Math.round(12 * s),
-            fontWeight: 800,
-            color: accent,
-            letterSpacing: 3,
-            marginBottom: Math.round(10 * s),
-            textTransform: 'uppercase',
-            fontFamily: FONT,
-          }}>
-            O PROBLEMA
-          </div>
           <div style={{
             fontSize: Math.round(60 * s),
             fontWeight: 800,
@@ -367,17 +340,6 @@ function SolutionOverlay({ scene, dur }: { scene: Scene; dur: number }) {
         }}>
           <div style={{ width: `${barW}%`, height: Math.round(3 * s), background: `linear-gradient(to right, ${accent}, ${accent}88)`, borderRadius: 99, marginBottom: Math.round(16 * s) }} />
           <div style={{
-            fontSize: Math.round(12 * s),
-            fontWeight: 800,
-            color: accent,
-            letterSpacing: 3,
-            marginBottom: Math.round(10 * s),
-            textTransform: 'uppercase',
-            fontFamily: FONT,
-          }}>
-            ✓ A SOLUÇÃO
-          </div>
-          <div style={{
             fontSize: Math.round(60 * s),
             fontWeight: 800,
             color: '#fff',
@@ -415,17 +377,6 @@ function ProofOverlay({ scene, dur }: { scene: Scene; dur: number }) {
           padding: `${Math.round(22 * s)}px ${Math.round(44 * s)}px`,
           boxShadow: `0 4px ${55 * s}px ${accent}50, inset 0 1px 0 rgba(255,255,255,0.06)`,
         }}>
-          <div style={{
-            fontSize: Math.round(13 * s),
-            fontWeight: 800,
-            color: accent,
-            letterSpacing: 3,
-            marginBottom: Math.round(12 * s),
-            textTransform: 'uppercase',
-            fontFamily: FONT,
-          }}>
-            ⭐ RESULTADO REAL
-          </div>
           <div style={{
             fontSize: Math.round(84 * s),
             fontWeight: 900,
@@ -466,17 +417,6 @@ function UrgencyOverlay({ scene, dur }: { scene: Scene; dur: number }) {
           padding: `${Math.round(20 * s)}px ${Math.round(32 * s)}px`,
           boxShadow: `0 0 ${50 * s}px ${accent}55`,
         }}>
-          <div style={{
-            fontSize: Math.round(12 * s),
-            fontWeight: 900,
-            color: accent,
-            letterSpacing: 3,
-            marginBottom: Math.round(10 * s),
-            textTransform: 'uppercase',
-            fontFamily: FONT,
-          }}>
-            ⚡ ATENÇÃO — APENAS AGORA
-          </div>
           <div style={{
             fontSize: Math.round(60 * s),
             fontWeight: 900,
@@ -531,17 +471,6 @@ function CtaOverlay({ scene, dur }: { scene: Scene; dur: number }) {
             letterSpacing: `${-1 * s}px`,
           }}>
             {text}
-          </div>
-          <div style={{
-            marginTop: Math.round(8 * s),
-            fontSize: Math.round(13 * s),
-            fontWeight: 700,
-            color: 'rgba(255,255,255,0.75)',
-            letterSpacing: 2.5,
-            textTransform: 'uppercase',
-            fontFamily: FONT,
-          }}>
-            CLIQUE AGORA →
           </div>
         </div>
       </div>
@@ -626,6 +555,131 @@ function LowerThirdOverlay({ scene, dur }: { scene: Scene; dur: number }) {
   );
 }
 
+/** WORD SUBTITLE — TikTok karaoke: cada palavra aparece sequencialmente. */
+function WordSubtitleOverlay({ scene, dur }: { scene: Scene; dur: number }) {
+  const s = useScale();
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const accent = scene.accent_color || '#ffffff';
+
+  const words = (scene.text_overlay || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+
+  const timePerWord = Math.max(2, dur / words.length);
+
+  const exitStart = Math.max(2, dur - 8);
+  const overallOpacity = interpolate(frame, [exitStart, dur - 1], [1, 0], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+
+  return (
+    <AbsoluteFill>
+      <div style={{
+        position: 'absolute', bottom: '14%', left: '50%',
+        transform: 'translateX(-50%)', textAlign: 'center', width: '90%',
+        opacity: overallOpacity,
+      }}>
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', justifyContent: 'center',
+          gap: `${Math.round(4 * s)}px ${Math.round(12 * s)}px`,
+        }}>
+          {words.map((word, i) => {
+            const wordStart = Math.round(i * timePerWord);
+            const entered = spring({
+              frame: frame - wordStart,
+              fps,
+              config: { damping: 10, stiffness: 320, mass: 0.4 },
+              durationInFrames: 8,
+            });
+            const isCurrent = frame >= wordStart && frame < wordStart + timePerWord;
+            const scaleVal = interpolate(entered, [0, 1], [0.55, 1]);
+            const transY = interpolate(entered, [0, 1], [24 * s, 0]);
+
+            return (
+              <span key={i} style={{
+                fontSize: Math.round(78 * s),
+                fontWeight: 900,
+                fontFamily: FONT,
+                color: isCurrent ? accent : 'rgba(255,255,255,0.85)',
+                opacity: entered,
+                display: 'inline-block',
+                transform: `scale(${scaleVal}) translateY(${transY}px)`,
+                textShadow: hardShadow('rgba(0,0,0,0.95)', 9 * s),
+                transition: 'color 0.08s',
+              }}>
+                {word}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+}
+
+/** IMAGE BG — Imagem IA gerada via fal.ai como fundo da cena com Ken Burns + texto. */
+function ImageBgOverlay({ scene, dur }: { scene: Scene; dur: number }) {
+  const s = useScale();
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  const fadeIn = interpolate(frame, [0, 10], [0, 1], { extrapolateRight: 'clamp' });
+  const fadeOut = interpolate(frame, [dur - 10, dur - 1], [1, 0], {
+    extrapolateLeft: 'clamp', extrapolateRight: 'clamp',
+  });
+  const opacity = Math.min(fadeIn, fadeOut);
+
+  // Ken Burns: zoom suave
+  const zoom = interpolate(frame, [0, dur], [1.0, 1.06]);
+
+  const hasText = scene.text_overlay?.trim();
+
+  const textEntrance = spring({
+    frame: frame - 8,
+    fps,
+    config: { damping: 14, stiffness: 120, mass: 0.65 },
+    durationInFrames: 20,
+  });
+
+  return (
+    <AbsoluteFill>
+      <div style={{ position: 'absolute', inset: 0, opacity, overflow: 'hidden' }}>
+        <img
+          src={scene.image_url!}
+          style={{
+            width: '100%', height: '100%', objectFit: 'cover',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center center',
+          }}
+        />
+        {hasText && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.28) 55%, transparent 100%)',
+          }} />
+        )}
+      </div>
+      {hasText && (
+        <div style={{
+          position: 'absolute', bottom: '18%', left: '50%',
+          transform: `translateX(-50%) translateY(${interpolate(textEntrance, [0,1], [32*s, 0])}px)`,
+          opacity: Math.min(opacity, textEntrance),
+          textAlign: 'center', width: '88%',
+        }}>
+          <div style={{
+            fontSize: Math.round(68 * s), fontWeight: 900, color: '#fff',
+            fontFamily: FONT, lineHeight: 1.2,
+            textShadow: hardShadow('rgba(0,0,0,0.95)', 12 * s),
+            WebkitTextStroke: `${s}px rgba(0,0,0,0.3)`,
+          }}>
+            {scene.emoji ? `${scene.emoji} ` : ''}{scene.text_overlay}
+          </div>
+        </div>
+      )}
+    </AbsoluteFill>
+  );
+}
+
 /** CAPTION — Comentário sutil. Texto limpo com outline. */
 function CaptionOverlay({ scene, dur }: { scene: Scene; dur: number }) {
   const s = useScale();
@@ -663,24 +717,30 @@ function CaptionOverlay({ scene, dur }: { scene: Scene; dur: number }) {
 
 // ── Dispatcher ─────────────────────────────────────────────────────────────────
 function SceneOverlay({ scene, fps }: { scene: Scene; fps: number }) {
-  if (scene.style === 'none' || !scene.text_overlay?.trim()) return null;
   const dur = Math.max(4, Math.round((scene.end - scene.start) * fps));
   const p = { scene, dur };
+
+  // image_bg: não precisa de text_overlay para renderizar
+  if (scene.style === 'image_bg' && scene.image_url) return <ImageBgOverlay {...p} />;
+
+  if (scene.style === 'none' || !scene.text_overlay?.trim()) return null;
+
   switch (scene.style) {
-    case 'hook':        return <HookOverlay        {...p} />;
-    case 'bold_claim':  return <BoldClaimOverlay   {...p} />;
-    case 'question':    return <QuestionOverlay     {...p} />;
-    case 'problem':     return <ProblemOverlay      {...p} />;
-    case 'agitation':   return <AgitationOverlay    {...p} />;
-    case 'story':       return <StoryOverlay        {...p} />;
-    case 'solution':    return <SolutionOverlay     {...p} />;
-    case 'proof':       return <ProofOverlay        {...p} />;
-    case 'urgency':     return <UrgencyOverlay      {...p} />;
-    case 'cta':         return <CtaOverlay          {...p} />;
-    case 'subtitle':    return <SubtitleOverlay     {...p} />;
-    case 'lower_third': return <LowerThirdOverlay   {...p} />;
-    case 'caption':     return <CaptionOverlay      {...p} />;
-    default:            return null;
+    case 'hook':          return <HookOverlay        {...p} />;
+    case 'bold_claim':    return <BoldClaimOverlay   {...p} />;
+    case 'question':      return <QuestionOverlay    {...p} />;
+    case 'problem':       return <ProblemOverlay     {...p} />;
+    case 'agitation':     return <AgitationOverlay   {...p} />;
+    case 'story':         return <StoryOverlay       {...p} />;
+    case 'solution':      return <SolutionOverlay    {...p} />;
+    case 'proof':         return <ProofOverlay       {...p} />;
+    case 'urgency':       return <UrgencyOverlay     {...p} />;
+    case 'cta':           return <CtaOverlay         {...p} />;
+    case 'subtitle':      return <SubtitleOverlay    {...p} />;
+    case 'lower_third':   return <LowerThirdOverlay  {...p} />;
+    case 'caption':       return <CaptionOverlay     {...p} />;
+    case 'word_subtitle': return <WordSubtitleOverlay {...p} />;
+    default:              return null;
   }
 }
 

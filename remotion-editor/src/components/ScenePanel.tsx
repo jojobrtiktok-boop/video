@@ -1,19 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Scene, StyleVariant, AnimationType } from '../types';
 import { STYLE_COLORS, STYLE_LABELS } from '../types';
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL || '';
 
 interface Props {
   scenes: Scene[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onChange: (updated: Scene) => void;
+  isPortrait?: boolean;
 }
 
 const STYLE_OPTIONS: StyleVariant[] = [
   'hook', 'bold_claim', 'question',
   'problem', 'agitation', 'story',
   'solution', 'proof', 'urgency', 'cta',
-  'subtitle', 'lower_third', 'caption', 'none',
+  'subtitle', 'lower_third', 'caption',
+  'word_subtitle', 'image_bg', 'none',
 ];
 
 const ANIM_OPTIONS: AnimationType[] = ['zoom', 'slide_up', 'slide_left', 'slide_right', 'shake', 'typewriter', 'fade', 'none'];
@@ -24,7 +28,36 @@ function formatTime(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
-export const ScenePanel: React.FC<Props> = ({ scenes, selectedId, onSelect, onChange }) => {
+export const ScenePanel: React.FC<Props> = ({ scenes, selectedId, onSelect, onChange, isPortrait = true }) => {
+  const [imgLoading, setImgLoading] = useState<string | null>(null);
+  const [imgError, setImgError] = useState<string | null>(null);
+
+  const hasFalKey = true; // backend valida; se não tiver, retorna erro
+
+  const generateImage = async (sc: Scene) => {
+    const imagePrompt = sc.description || sc.title || sc.text_overlay || 'cinematic video scene';
+    setImgLoading(sc.id);
+    setImgError(null);
+    try {
+      const res = await fetch(`${BACKEND}/api/generate-scene-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: imagePrompt,
+          sceneId: sc.id,
+          orientation: isPortrait ? 'portrait' : 'landscape',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao gerar imagem');
+      onChange({ ...sc, image_url: data.url, style: sc.style === 'none' ? 'image_bg' : sc.style });
+    } catch (e: unknown) {
+      setImgError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImgLoading(null);
+    }
+  };
+
   return (
     <div style={styles.wrap}>
       <div style={styles.header}>Cenas ({scenes.length})</div>
@@ -118,6 +151,46 @@ export const ScenePanel: React.FC<Props> = ({ scenes, selectedId, onSelect, onCh
                       placeholder={STYLE_COLORS[sc.style] || '#7c71ff'}
                     />
                   </div>
+
+                  {/* Imagem IA por cena */}
+                  <label style={styles.label}>
+                    Imagem IA <span style={{ color: '#555', fontWeight: 400 }}>(FLUX Schnell)</span>
+                  </label>
+                  {sc.image_url && (
+                    <div style={{ position: 'relative', marginBottom: 4 }}>
+                      <img
+                        src={sc.image_url}
+                        alt="Cena IA"
+                        style={{ width: '100%', borderRadius: 6, display: 'block', maxHeight: 120, objectFit: 'cover' }}
+                      />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onChange({ ...sc, image_url: null }); }}
+                        style={{
+                          position: 'absolute', top: 4, right: 4,
+                          background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: 4,
+                          color: '#f87171', cursor: 'pointer', fontSize: 12, padding: '2px 6px',
+                        }}
+                        title="Remover imagem"
+                      >✕</button>
+                    </div>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); generateImage(sc); }}
+                    disabled={imgLoading === sc.id}
+                    style={{
+                      width: '100%', padding: '7px 10px',
+                      background: imgLoading === sc.id ? '#1a1a1a' : 'rgba(124,113,255,0.15)',
+                      border: '1px solid rgba(124,113,255,0.35)',
+                      borderRadius: 4, color: imgLoading === sc.id ? '#555' : '#a89fff',
+                      fontSize: 12, fontWeight: 600, cursor: imgLoading === sc.id ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit', marginBottom: 2,
+                    }}
+                  >
+                    {imgLoading === sc.id ? '⏳ Gerando…' : sc.image_url ? '🔄 Regerar Imagem' : '🎨 Gerar Imagem IA'}
+                  </button>
+                  {imgError && imgLoading !== sc.id && (
+                    <div style={{ fontSize: 10, color: '#f87171', marginBottom: 4 }}>{imgError}</div>
+                  )}
 
                   <label style={styles.label}>Título interno da cena</label>
                   <input
