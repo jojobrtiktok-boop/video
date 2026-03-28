@@ -38,6 +38,8 @@ export default function App() {
   const [language, setLanguage]     = useState('pt');
   const [editStyle, setEditStyle]   = useState('');
   const [claudeOpen, setClaudeOpen] = useState(false);
+  const [generateImages, setGenerateImages] = useState(false);
+  const [imgGenQueue, setImgGenQueue] = useState<string[]>([]); // scene ids being generated
 
   const playerRef = useRef<PlayerRef>(null);
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -76,6 +78,31 @@ export default function App() {
           setScenes(job.result.scenes);
           setSelectedId(job.result.scenes[0]?.id || null);
           setJobStatus('done');
+          if (generateImages && job.result.scenes.length > 0) {
+            const isPortraitVideo = (job.result.videoHeight || 1920) > (job.result.videoWidth || 1080);
+            const queue = job.result.scenes.map((sc: Scene) => sc.id);
+            setImgGenQueue(queue);
+            (async () => {
+              for (const sc of job.result!.scenes) {
+                try {
+                  const prompt = sc.description || sc.title || sc.text_overlay || 'cinematic video scene';
+                  const res = await fetch(`${BACKEND}/api/generate-scene-image`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, sceneId: sc.id, orientation: isPortraitVideo ? 'portrait' : 'landscape' }),
+                  });
+                  const data = await res.json();
+                  if (res.ok && data.url) {
+                    setScenes((prev) => prev.map((s) =>
+                      s.id === sc.id ? { ...s, image_url: data.url, style: s.style === 'none' ? 'image_bg' : s.style } : s
+                    ));
+                  }
+                } catch { /* silent */ } finally {
+                  setImgGenQueue((prev) => prev.filter((id) => id !== sc.id));
+                }
+              }
+            })();
+          }
         } else if (job.status === 'error') {
           clearInterval(pollRef.current!);
           setErrorMsg(job.error || 'Erro desconhecido');
@@ -234,6 +261,29 @@ export default function App() {
                       }}
                     />
                   </div>
+                  {/* Toggle: gerar imagens IA por cena */}
+                  <button
+                    onClick={() => setGenerateImages((v) => !v)}
+                    style={{
+                      marginTop: 10,
+                      padding: '8px 16px',
+                      borderRadius: 8,
+                      border: `1px solid ${generateImages ? ACCENT : BORDER}`,
+                      background: generateImages ? `rgba(124,113,255,0.15)` : 'transparent',
+                      color: generateImages ? ACCENT : MUTED,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <span style={{ fontSize: 14 }}>{generateImages ? '🎨' : '⬜'}</span>
+                    {generateImages ? 'Gerar Imagens IA por cena (FLUX Schnell ~$0.003/img)' : 'Sem geração de imagens IA'}
+                  </button>
                   {errorMsg && <div style={s.error}>{errorMsg}</div>}
                 </>
               )}
@@ -258,18 +308,31 @@ export default function App() {
             <div style={s.centerCol}>
               {/* Info do vídeo acima do player */}
               <div style={s.videoInfo}>
-                <span style={s.videoInfoBadge}>
-                  {videoW}×{videoH}
-                </span>
-                <span style={s.videoInfoBadge}>
-                  {fps}fps
-                </span>
-                <span style={s.videoInfoBadge}>
-                  {isPortrait ? '📱 Vertical' : '🖥 Horizontal'}
-                </span>
+                <span style={s.videoInfoBadge}>{videoW}×{videoH}</span>
+                <span style={s.videoInfoBadge}>{fps}fps</span>
+                <span style={s.videoInfoBadge}>{isPortrait ? '📱 Vertical' : '🖥 Horizontal'}</span>
                 <span style={s.videoInfoBadge}>
                   {Math.floor(duration / 60)}:{String(Math.floor(duration % 60)).padStart(2,'0')}
                 </span>
+                {result.narrativeType && (
+                  <span style={{ ...s.videoInfoBadge, color: ACCENT, borderColor: `${ACCENT}44` }}>
+                    {result.narrativeType}
+                  </span>
+                )}
+                {result.palette?.map((color, i) => (
+                  <span key={i} title={color} style={{
+                    ...s.videoInfoBadge,
+                    background: color,
+                    borderColor: 'transparent',
+                    width: 16, height: 16, borderRadius: '50%',
+                    padding: 0, flexShrink: 0,
+                  }} />
+                ))}
+                {imgGenQueue.length > 0 && (
+                  <span style={{ ...s.videoInfoBadge, color: ACCENT, borderColor: `${ACCENT}44`, animation: 'pulse 1s infinite' }}>
+                    🎨 {imgGenQueue.length} imagem{imgGenQueue.length > 1 ? 'ns' : ''} gerando…
+                  </span>
+                )}
               </div>
 
               {/* Player com aspect ratio correto */}
@@ -306,6 +369,7 @@ export default function App() {
               selectedId={selectedId}
               onSelect={setSelectedId}
               onChange={updateScene}
+              isPortrait={isPortrait}
             />
           </div>
         )}

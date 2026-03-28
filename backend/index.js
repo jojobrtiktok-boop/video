@@ -1195,16 +1195,41 @@ app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
   const model = (req.body.model || 'small').replace(/[^a-z0-9_-]/g, '');
   const language = (req.body.language || 'pt').replace(/[^a-z]/g, '');
 
-  autoEditJobs[jobId] = { status: 'transcribing', progress: 5, result: null, error: null };
+  autoEditJobs[jobId] = { status: 'normalizing', progress: 5, result: null, error: null };
   res.json({ id: jobId });
 
   (async () => {
     try {
+      // Passo 0: Normalização — converte HEVC/outros para H.264 30fps (compatibilidade browser)
+      let processPath = input;
+      try {
+        const normName = 'norm_' + path.basename(input);
+        const normPath = path.join(UPLOAD_DIR, normName);
+        await new Promise(resolve => {
+          const cmd = `"${FFMPEG}" -y -i "${input}" -c:v libx264 -preset fast -crf 22 -r 30 -pix_fmt yuv420p -c:a aac "${normPath}"`;
+          exec(cmd, { timeout: 5 * 60 * 1000 }, (err) => {
+            try {
+              if (!err && fs.existsSync(normPath) && fs.statSync(normPath).size > 1024) {
+                fs.unlink(input, () => {});
+                processPath = normPath;
+                console.log('[auto-edit] Normalizado H.264:', normName);
+              } else {
+                fs.unlink(normPath, () => {});
+              }
+            } catch (_) {}
+            resolve();
+          });
+        });
+      } catch (e) {
+        console.warn('[auto-edit] Normalização pulada:', e.message);
+      }
+
       // Passo 1: Transcrição com Whisper
-      autoEditJobs[jobId].progress = 10;
+      autoEditJobs[jobId].status = 'transcribing';
+      autoEditJobs[jobId].progress = 12;
       const transcription = await new Promise((resolve, reject) => {
         const scriptPath = path.join(__dirname, 'transcribe_json.py');
-        exec(`"${PYTHON}" "${scriptPath}" "${input}" "${model}" "${language}"`,
+        exec(`"${PYTHON}" "${scriptPath}" "${processPath}" "${model}" "${language}"`,
           { maxBuffer: 20 * 1024 * 1024 },
           (err, stdout, stderr) => {
             if (err) return reject(new Error(stderr || err.message));
@@ -1214,12 +1239,12 @@ app.post('/api/auto-edit', upload.single('video'), async (req, res) => {
         );
       });
 
-      autoEditJobs[jobId].progress = 40;
+      autoEditJobs[jobId].progress = 42;
       autoEditJobs[jobId].status = 'analyzing';
 
       // Passo 2: Info do vídeo via ffprobe
       const videoInfo = await new Promise((resolve) => {
-        exec(`"${FFPROBE}" -v quiet -print_format json -show_streams -select_streams v:0 -show_entries stream=width,height,r_frame_rate -show_entries format=duration "${input}"`,
+        exec(`"${FFPROBE}" -v quiet -print_format json -show_streams -select_streams v:0 -show_entries stream=width,height,r_frame_rate -show_entries format=duration "${processPath}"`,
           (err, stdout) => {
             try {
               const data = JSON.parse(stdout);
@@ -1288,101 +1313,103 @@ ESTRUTURA VSL DE 7 ESTÁGIOS (com timing proporcional à duração):
         ? `ESTILO PERSONALIZADO DO USUÁRIO:\n"${userStyle}"\n\nSiga rigorosamente este estilo, adaptando os tipos de overlay e animações para expressar essa identidade visual.`
         : `ESTILO PADRÃO: VSL Marketing Digital de Alta Conversão\n\n${defaultVSLGuide}`;
 
-      const prompt = `Você é um editor de vídeo sênior, copywriter de direct response e especialista em marketing digital. Sua função é analisar a transcrição e criar um roteiro de edição profissional que maximize engajamento e conversão.
+      const prompt = `Você é um copywriter de direct response e editor de vídeo especializado em marketing digital de alta conversão. Analise a transcrição e crie overlays que amplificam o impacto de cada momento — sem clichês, sem rótulos genéricos, só copy que converte.
 
-━━━ DADOS DO VÍDEO ━━━
-Duração: ${videoInfo.duration.toFixed(1)}s
-Formato: ${isPortrait ? '📱 Vertical TikTok/Reels/Shorts (9:16)' : '🖥 Horizontal YouTube/VSL (16:9)'}
-Dimensões: ${videoInfo.videoWidth}×${videoInfo.videoHeight}
-Idioma: ${transcription.language || language}
+━━━ VÍDEO ━━━
+Duração: ${videoInfo.duration.toFixed(1)}s | ${isPortrait ? 'Vertical 9:16 (TikTok/Reels/Shorts)' : 'Horizontal 16:9 (YouTube/VSL)'} | ${videoInfo.videoWidth}×${videoInfo.videoHeight} | Idioma: ${transcription.language || language}
 
-━━━ ESTILO DE EDIÇÃO ━━━
+━━━ ESTRATÉGIA DE EDIÇÃO ━━━
 ${styleGuide}
 
-━━━ TRANSCRIÇÃO COM TIMESTAMPS ━━━
+━━━ PRINCÍPIOS DE COPY QUE CONVERTE ━━━
+• Hook: quebre o padrão nos primeiros 3s — pergunta provocadora, número surpreendente, afirmação controversa
+• Dor: seja específico, não genérico — "você perde R$X todo mês" > "você perde dinheiro"
+• Desejo: pinte o resultado, não o processo — "acorde sem alarme" > "tenha liberdade"
+• Prova: números reais animam do zero — use-os para credibilidade instantânea
+• CTA: um único verbo de ação, urgente e claro — "Acessa agora", "Salva esse vídeo"
+• Nunca copie a transcrição — contraste, amplifique, surpreenda
+• Máximo 45 caracteres por overlay — cada palavra no limite tem mais força
+
+━━━ TRANSCRIÇÃO ━━━
 ${segmentsText}
 
-━━━ ESTILOS DISPONÍVEIS (escolha com intenção) ━━━
-hook        → Abertura impactante, texto 72px centralizado, acima do gradiente
-             Cor: ${VSL_COLORS.hook} | Animação ideal: zoom
-bold_claim  → Declaração audaciosa enorme no centro da tela
-             Cor: ${VSL_COLORS.bold_claim} | Animação ideal: zoom
-question    → Pergunta com efeito typewriter + cursor piscando no topo
-             Cor: ${VSL_COLORS.question} | Animação ideal: fade
-problem     → Barra lateral vermelha, slide bottom — dor do público
-             Cor: ${VSL_COLORS.problem} | Animação ideal: slide_up
-agitation   → Shake orgânico + vermelho intenso — amplifica a dor
-             Cor: ${VSL_COLORS.agitation} | Animação ideal: shake
-story       → Texto itálico suave no rodapé — conexão emocional
-             Cor: ${VSL_COLORS.story} | Animação ideal: fade
-solution    → Barra verde topo animada, slide esquerda — apresenta a saída
-             Cor: ${VSL_COLORS.solution} | Animação ideal: slide_left
-proof       → Caixa âmbar "RESULTADO REAL", números contam do zero até o valor
-             Cor: ${VSL_COLORS.proof} | Animação ideal: zoom
-urgency     → Laranja pulsante, badge "ATENÇÃO — AGORA" — escassez/oferta
-             Cor: ${VSL_COLORS.urgency} | Animação ideal: slide_up
-cta         → Botão roxo com glow pulsante — SOMENTE para call to action final
-             Cor: ${VSL_COLORS.cta} | Animação ideal: slide_up
-subtitle    → Pill escuro transparente no rodapé — narração contínua discreta
-             Cor: ${VSL_COLORS.subtitle} | Animação ideal: fade
-lower_third → Strip lateral esquerdo com barra — info/apresentação/fatos
-             Cor: ${VSL_COLORS.lower_third} | Animação ideal: slide_left
-caption     → Texto flutuante sutil — comentário ou contexto extra
-             Cor: ${VSL_COLORS.caption} | Animação ideal: fade
-none        → Sem overlay — pausa visual intencional
+━━━ ESTILOS DISPONÍVEIS ━━━
+hook        → Abertura, texto grande centralizado com linha de cor | zoom | ${VSL_COLORS.hook}
+bold_claim  → Declaração enorme no centro, sem fundo | zoom | ${VSL_COLORS.bold_claim}
+question    → Typewriter + cursor piscando no topo, caixa com borda | fade | ${VSL_COLORS.question}
+problem     → Caixa com borda esquerda colorida, slide rodapé | slide_up | ${VSL_COLORS.problem}
+agitation   → Tremor orgânico, fundo avermelhado pulsante | shake | ${VSL_COLORS.agitation}
+story       → Texto itálico suave, gradiente no rodapé | fade | ${VSL_COLORS.story}
+solution    → Barra animada no topo, caixa com borda verde | slide_left | ${VSL_COLORS.solution}
+proof       → Caixa com borda âmbar, número conta do zero | zoom | ${VSL_COLORS.proof}
+urgency     → Caixa laranja pulsante, borda neon | slide_up | ${VSL_COLORS.urgency}
+cta         → Botão gradiente com glow pulsante — só para o CTA final | slide_up | ${VSL_COLORS.cta}
+subtitle    → Pill escuro transparente no rodapé, texto limpo | fade | ${VSL_COLORS.subtitle}
+lower_third → Strip lateral esquerdo com barra vertical | slide_left | ${VSL_COLORS.lower_third}
+caption     → Texto flutuante com outline — comentário ou dado extra | fade | ${VSL_COLORS.caption}
+none        → Pausa visual intencional, sem overlay
 
-━━━ ANIMAÇÕES DISPONÍVEIS ━━━
-zoom       → Escala 0.78→1 com spring — impacto, destaque
-slide_up   → Desliza de baixo com spring — energia ascendente
-slide_left → Desliza da esquerda com spring — entrada lateral
-slide_right→ Desliza da direita com spring
-shake      → Tremor orgânico via noise2D — instabilidade, urgência
-typewriter → Efeito máquina de escrever — suspense, revelação (use com question)
-fade       → Fade in suave — narração, capção
-none       → Sem animação
+━━━ ANIMAÇÕES ━━━
+zoom | slide_up | slide_left | slide_right | shake | typewriter | fade | none
 
-━━━ REGRAS CRÍTICAS DE COPYWRITING ━━━
-1. text_overlay: MÁXIMO 45 caracteres — cada palavra conta
-2. NÃO copie a transcrição — crie texto que AMPLIFIQUE ou CONTRASTE
-3. Use verbos de ação: "Descubra", "Pare de", "Imagine", "Você sabia"
-4. Para proof: inclua NÚMEROS — o contador animado impressiona
-5. Emojis: máximo 1, somente se potencializar a mensagem
-6. CTA deve ter verbo imperativo claro: "Acesse agora", "Clique aqui"
-7. Cubra 100% da duração do vídeo sem lacunas
-8. Não use o mesmo estilo mais de 3× seguidos
+━━━ REGRAS ━━━
+1. Cubra 100% da duração sem lacunas
+2. Não repita o mesmo estilo mais de 2× seguidos
+3. Para proof: use números reais do vídeo ou estimativas crentes
+4. Emojis: máximo 1 por scene, só se potencializar (não decorar)
+5. CTA: único, no final, verbo imperativo direto
 
-━━━ FORMATO JSON EXIGIDO ━━━
-Retorne um JSON array onde cada objeto tem EXATAMENTE:
+━━━ JSON EXIGIDO ━━━
+Retorne APENAS um objeto JSON com EXATAMENTE esta estrutura:
 {
-  "id": "scene_1",
-  "start": 0.0,
-  "end": 4.5,
-  "title": "Nome interno (até 50 chars)",
-  "description": "O que acontece nesta cena (até 150 chars)",
-  "text_overlay": "TEXTO IMPACTANTE (máx 45 chars)",
-  "style": "hook",
-  "animation": "zoom",
-  "position": "bottom_center",
-  "accent_color": "#7c71ff",
-  "emoji": "🔥"
+  "narrative_type": "vsl",
+  "palette": ["#7c71ff", "#22c55e", "#f59e0b"],
+  "scenes": [
+    {
+      "id": "scene_1",
+      "start": 0.0,
+      "end": 4.5,
+      "title": "Nome interno curto",
+      "description": "O que acontece nesta cena",
+      "text_overlay": "Copy direto aqui (máx 45 chars)",
+      "style": "hook",
+      "animation": "zoom",
+      "position": "bottom_center",
+      "accent_color": "#7c71ff",
+      "emoji": "🔥"
+    }
+  ]
 }
 
-RETORNE APENAS O JSON ARRAY. Zero markdown. Zero explicação. Zero texto fora do array.`;
+narrative_type: um de — vsl | tutorial | storytelling | review | depoimento | educacional | produto | motivacional
+palette: 3 cores hex que se complementam e combinam com o tom emocional do vídeo
+
+Zero markdown. Zero explicação. Zero texto fora do objeto JSON.`;
 
       const claudeResponse = await callClaude(prompt);
       autoEditJobs[jobId].progress = 85;
 
-      // Parse da resposta do Claude
-      let scenes;
+      // Parse da resposta do Claude — suporta objeto {narrative_type, palette, scenes} ou array legado
+      let scenes, narrativeType = 'vsl', palette = ['#7c71ff', '#22c55e', '#f59e0b'];
       try {
-        const jsonStr = claudeResponse.match(/\[[\s\S]*\]/)?.[0] || claudeResponse;
-        scenes = JSON.parse(jsonStr);
+        // Tenta objeto JSON primeiro, depois array
+        const objMatch = claudeResponse.match(/\{[\s\S]*\}/)?.[0];
+        const arrMatch = claudeResponse.match(/\[[\s\S]*\]/)?.[0];
+        const jsonStr = objMatch || arrMatch || claudeResponse;
+        const raw = JSON.parse(jsonStr);
+        if (Array.isArray(raw)) {
+          scenes = raw;
+        } else {
+          scenes = raw.scenes || [];
+          narrativeType = raw.narrative_type || narrativeType;
+          if (Array.isArray(raw.palette) && raw.palette.length >= 2) palette = raw.palette;
+        }
       } catch {
         throw new Error('Claude retornou JSON inválido: ' + claudeResponse.slice(0, 300));
       }
 
-      const videoUrl = '/uploads/' + path.basename(input);
-      scheduleDelete(input, 7200000); // 2h
+      const videoUrl = '/uploads/' + path.basename(processPath);
+      scheduleDelete(processPath, 7200000); // 2h
 
       autoEditJobs[jobId].status = 'done';
       autoEditJobs[jobId].progress = 100;
@@ -1394,11 +1421,13 @@ RETORNE APENAS O JSON ARRAY. Zero markdown. Zero explicação. Zero texto fora d
         videoHeight: videoInfo.videoHeight,
         scenes,
         segments: transcription.segments,
-        language: transcription.language
+        language: transcription.language,
+        narrativeType,
+        palette,
       };
 
     } catch (err) {
-      fs.unlink(input, () => {});
+      fs.unlink(processPath || input, () => {});
       autoEditJobs[jobId].status = 'error';
       autoEditJobs[jobId].error = err.message;
       console.error('[auto-edit] Erro:', err.message);
@@ -1419,7 +1448,7 @@ app.post('/api/refine-scenes', async (req, res) => {
   if (!scenes || !userRequest) return res.status(400).json({ error: 'scenes e request são obrigatórios' });
 
   try {
-    const prompt = `Você é um editor de vídeo sênior e copywriter de direct response marketing. O usuário quer refinar as cenas de edição de um vídeo.
+    const prompt = `Você é um copywriter de direct response e editor de vídeo especializado em marketing digital. Refine as cenas conforme o pedido do usuário.
 
 ━━━ VÍDEO ━━━
 Duração: ${videoInfo?.duration || 0}s | ${videoInfo?.videoWidth || 1080}×${videoInfo?.videoHeight || 1920} | Idioma: ${videoInfo?.language || 'pt'}
@@ -1427,7 +1456,7 @@ Duração: ${videoInfo?.duration || 0}s | ${videoInfo?.videoWidth || 1080}×${vi
 ━━━ CENAS ATUAIS ━━━
 ${JSON.stringify(scenes, null, 2)}
 
-━━━ PEDIDO DO USUÁRIO ━━━
+━━━ PEDIDO ━━━
 "${userRequest}"
 
 ━━━ ESTILOS VÁLIDOS ━━━
@@ -1438,10 +1467,11 @@ zoom, slide_up, slide_left, slide_right, shake, typewriter, fade, none
 
 ━━━ REGRAS ━━━
 1. Execute EXATAMENTE o que foi pedido — nem mais, nem menos
-2. Mantenha inalteradas todas as cenas não solicitadas
-3. text_overlay: máximo 45 chars, impactante, copywriting de direct response
-4. Para proof: inclua números, eles animam de 0 até o valor
-5. Accent_color deve ser hex válido (#rrggbb)
+2. Mantenha inalteradas todas as cenas não mencionadas
+3. text_overlay: máximo 45 chars — copy direto, sem rótulos genéricos, sem clichês
+4. Para proof: números animam de 0 até o valor — use dados reais ou estimativas crentes
+5. accent_color deve ser hex válido (#rrggbb)
+6. Copy que converte: específico, verbos de ação, contraste com a transcrição
 
 RETORNE APENAS O JSON ARRAY COMPLETO. Zero markdown. Zero explicação.`;
 
@@ -1452,6 +1482,82 @@ RETORNE APENAS O JSON ARRAY COMPLETO. Zero markdown. Zero explicação.`;
   } catch (err) {
     console.error('[refine-scenes] Erro:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GERAR IMAGEM IA POR CENA via fal.ai FLUX Schnell ─────────────────────────
+app.post('/api/generate-scene-image', express.json(), async (req, res) => {
+  const falKey = process.env.FAL_API_KEY;
+  if (!falKey) return res.status(400).json({ error: 'FAL_API_KEY não configurada no .env' });
+
+  const { prompt, sceneId, orientation } = req.body || {};
+  if (!prompt) return res.status(400).json({ error: 'Prompt obrigatório.' });
+
+  const isPortrait = (orientation || 'portrait') === 'portrait';
+  // 9:16 portrait ≈ 576×1024 | 16:9 landscape ≈ 1024×576 (baixa resolução = mais barato e rápido)
+  const imageSize = isPortrait
+    ? { width: 576, height: 1024 }
+    : { width: 1024, height: 576 };
+
+  const payload = JSON.stringify({
+    prompt,
+    image_size: imageSize,
+    num_inference_steps: 4,
+    num_images: 1,
+    enable_safety_checker: true,
+    sync_mode: true,
+  });
+
+  try {
+    const falResult = await new Promise((resolve, reject) => {
+      const req2 = https.request({
+        hostname: 'fal.run',
+        path: '/fal-ai/flux/schnell',
+        method: 'POST',
+        headers: {
+          'Authorization': `Key ${falKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      }, (resp) => {
+        let raw = '';
+        resp.on('data', c => raw += c);
+        resp.on('end', () => {
+          try {
+            const json = JSON.parse(raw);
+            if (resp.statusCode >= 400) return reject(new Error(json.detail || json.error || `fal.ai HTTP ${resp.statusCode}`));
+            resolve(json);
+          } catch { reject(new Error('Resposta inválida do fal.ai')); }
+        });
+      });
+      req2.on('error', reject);
+      req2.write(payload);
+      req2.end();
+    });
+
+    const imageUrl = falResult.images?.[0]?.url;
+    if (!imageUrl) return res.status(500).json({ error: 'Imagem não retornada.', raw: falResult });
+
+    // Baixa e salva localmente para que o Remotion Player possa carregar
+    const dlBuffer = await new Promise((resolve, reject) => {
+      const parsed = new URL(imageUrl);
+      const lib = parsed.protocol === 'https:' ? https : require('http');
+      lib.get({ hostname: parsed.hostname, path: parsed.pathname + parsed.search }, (resp) => {
+        const chunks = [];
+        resp.on('data', c => chunks.push(c));
+        resp.on('end', () => resolve(Buffer.concat(chunks)));
+      }).on('error', reject);
+    });
+
+    const imgName = `scene-img-${sceneId || 's'}-${Date.now()}.jpg`;
+    const imgPath = path.join(UPLOAD_DIR, imgName);
+    fs.writeFileSync(imgPath, dlBuffer);
+    scheduleDelete(imgPath, 2 * 60 * 60 * 1000); // 2h
+
+    return res.json({ url: `/uploads/${imgName}` });
+  } catch (err) {
+    console.error('[scene-image] Erro:', err.message);
+    return res.status(500).json({ error: 'Erro ao gerar imagem: ' + err.message });
   }
 });
 
