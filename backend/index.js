@@ -25,8 +25,9 @@ function scheduleDelete(filePath, delayMs) {
 
 const app = express();
 
-const FFMPEG  = process.env.FFMPEG_BIN  || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffmpeg.exe'  : 'ffmpeg');
-const FFPROBE = process.env.FFPROBE_BIN || (process.platform === 'win32' ? 'Z:\\ffmpeg\\bin\\ffprobe.exe' : 'ffprobe');
+const _p = process.platform === 'win32';
+const FFMPEG  = process.env.FFMPEG_BIN  || (_p ? 'Z:\\ffmpeg\\bin\\ffmpeg.exe'  : 'ffmpeg');
+const FFPROBE = process.env.FFPROBE_BIN || (_p ? 'Z:\\ffmpeg\\bin\\ffprobe.exe' : 'ffprobe');
 const PYTHON  = process.env.PYTHON_BIN  || (process.platform === 'win32' ? 'python' : 'python3');
 
 // ── JOBS ASSÍNCRONOS (delogo/sora) ─────────────────────────────────────────
@@ -489,17 +490,29 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
   const posTag = (posX !== null && posY !== null) ? `{\\pos(${posX},${posY})}` : '';
 
   let animPrefix = '';
-  if (animation === 'fade')     animPrefix = '{\\fad(200,200)}';
-  else if (animation === 'pop') animPrefix = '{\\fscx0\\fscy0\\t(0,200,\\fscx100\\fscy100)}';
+  if (animation === 'fade')          animPrefix = '{\\fad(200,200)}';
+  else if (animation === 'pop')      animPrefix = '{\\fscx0\\fscy0\\t(0,200,\\fscx100\\fscy100)}';
   else if (animation === 'slide_up') {
     const ay = posY !== null ? posY : 980;
     const ax = posX !== null ? posX : 960;
     animPrefix = `{\\move(${ax},${ay + 60},${ax},${ay})}`;
   }
 
-  const dialogues = finalSubs.map(sub =>
-    `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}')}`
-  ).join('\n');
+  function typewriterText(text, durationSecs) {
+    const chars = String(text).split('');
+    const centisecs = Math.round(durationSecs * 100);
+    const perChar = Math.max(1, Math.round(centisecs / chars.length));
+    return chars.map(c => `{\\k${perChar}}${c === ',' ? '{\\,}' : c}`).join('');
+  }
+
+  const dialogues = finalSubs.map(sub => {
+    const startS = timeStrToSecs(sub.start);
+    const endS   = timeStrToSecs(sub.end);
+    const text = animation === 'typewriter'
+      ? typewriterText(sub.text, endS - startS)
+      : String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}');
+    return `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${text}`;
+  }).join('\n');
 
   const assContent = [
     '[Script Info]',
@@ -648,9 +661,21 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
       animPrefix = `{\\move(${ax},${ay + 60},${ax},${ay})}`;
     }
 
-    const dialogues = finalSubs.map(sub =>
-      `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}')}`
-    ).join('\n');
+    function typewriterText(text, durationSecs) {
+      const chars = String(text).split('');
+      const centisecs = Math.round(durationSecs * 100);
+      const perChar = Math.max(1, Math.round(centisecs / chars.length));
+      return chars.map(c => `{\\k${perChar}}${c === ',' ? '{\\,}' : c}`).join('');
+    }
+
+    const dialogues = finalSubs.map(sub => {
+      const startS = timeStrToSecs(sub.start);
+      const endS   = timeStrToSecs(sub.end);
+      const text = animation === 'typewriter'
+        ? typewriterText(sub.text, endS - startS)
+        : String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}');
+      return `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${text}`;
+    }).join('\n');
 
     const assContent = [
       '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1920', 'PlayResY: 1080', 'ScaledBorderAndShadow: yes', '',
@@ -667,14 +692,21 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
 
     fs.writeFileSync(assPath, assContent, 'utf8');
     const assEsc = assPath.replace(/\\/g, '/').replace(':', '\\:');
-    const cmd = `"${FFMPEG}" -y -i "${input}" -vf "ass='${assEsc}'" -c:a copy "${output}"`;
 
-    exec(cmd, { timeout: 10 * 60 * 1000 }, (burnErr, _stdout, burnStderr) => {
+    const ffmpegProc = spawn(FFMPEG, ['-y', '-i', input, '-vf', `ass='${assEsc}'`, '-c:a', 'copy', output]);
+    let burnStderr = '';
+    ffmpegProc.stderr.on('data', d => { burnStderr += d.toString(); });
+    ffmpegProc.on('close', code => {
       fs.unlink(input, () => {});
       fs.unlink(assPath, () => {});
-      if (burnErr) return res.status(500).json({ error: 'ffmpeg falhou: ' + burnStderr });
+      if (code !== 0) return res.status(500).json({ error: 'ffmpeg falhou: ' + burnStderr.slice(-500) });
       scheduleDelete(output, 30 * 60 * 1000);
       return res.json({ url: `/uploads/${path.basename(output)}` });
+    });
+    ffmpegProc.on('error', err => {
+      fs.unlink(input, () => {});
+      fs.unlink(assPath, () => {});
+      res.status(500).json({ error: 'ffmpeg não encontrado: ' + err.message });
     });
   });
 });
