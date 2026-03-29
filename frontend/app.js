@@ -555,7 +555,7 @@ const subAddBtn       = document.getElementById('sub-add-btn');
 const subEntriesEl    = document.getElementById('sub-entries');
 const subEmptyEl      = document.getElementById('sub-empty');
 
-let subFile = null, subEntries = [], subPreset = 'classico', subWordByWord = false;
+let subFile = null, subEntries = [], subPreset = 'classico', subWordByWord = false, subEntryAnim = 'none';
 let subSubMode = 'auto'; // 'auto' | 'manual'
 let subNextId = 1;
 
@@ -742,10 +742,19 @@ document.querySelectorAll('.preset-card').forEach(card => {
   });
 });
 
-// Animation mode
-document.querySelectorAll('.anim-btn').forEach(btn => {
+// Entry animation (fade/pop/slide_up)
+document.querySelectorAll('#entry-anim-btns .anim-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.anim-btn').forEach(b => b.classList.remove('pa-active'));
+    document.querySelectorAll('#entry-anim-btns .anim-btn').forEach(b => b.classList.remove('ea-active'));
+    btn.classList.add('ea-active');
+    subEntryAnim = btn.dataset.entry || 'none';
+  });
+});
+
+// Animation mode
+document.querySelectorAll('.anim-btn:not(#entry-anim-btns .anim-btn)').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.anim-btn:not(#entry-anim-btns .anim-btn)').forEach(b => b.classList.remove('pa-active'));
     btn.classList.add('pa-active');
     subWordByWord = btn.dataset.anim === 'word';
   });
@@ -838,6 +847,7 @@ if (subSubmitBtn) {
     fd.append('preset', subPreset);
     fd.append('fontsize', subFontSize ? subFontSize.value : '72');
     fd.append('wordbyword', subWordByWord ? '1' : '0');
+    fd.append('animation', subEntryAnim);
     fd.append('posX', posX);
     fd.append('posY', posY);
 

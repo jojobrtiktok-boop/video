@@ -411,9 +411,9 @@
       cursor: pointer; transition: all .15s; text-align: center; font-family: inherit;
     }
     .anim-btn:hover { border-color: var(--border-strong); color: var(--text-dim); }
-    .anim-btn.pa-active { background: var(--accent-dim); border-color: rgba(124,113,255,0.4); color: var(--text); }
+    .anim-btn.pa-active, .anim-btn.ea-active { background: var(--accent-dim); border-color: rgba(124,113,255,0.4); color: var(--text); }
     .anim-btn .anim-desc { font-size: 0.67rem; font-weight: 400; color: var(--text-muted); display: block; margin-top: 3px; }
-    .anim-btn.pa-active .anim-desc { color: rgba(226,232,242,.55); }
+    .anim-btn.pa-active .anim-desc, .anim-btn.ea-active .anim-desc { color: rgba(226,232,242,.55); }
 
     /* ── COMBINER ── */
     .combine-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
@@ -1072,6 +1072,26 @@
             <div class="preset-preview" style="color:#fff;text-shadow:-2px -2px 0 #FF00FF,2px -2px 0 #FF00FF,-2px 2px 0 #FF00FF,2px 2px 0 #FF00FF">Abc</div>
             <div class="preset-name">CapCut</div>
           </div>
+          <div class="preset-card" data-preset="tiktok">
+            <div class="preset-preview" style="color:#fff;font-weight:900;text-shadow:-3px -3px 0 #000,3px -3px 0 #000,-3px 3px 0 #000,3px 3px 0 #000;letter-spacing:1px">Abc</div>
+            <div class="preset-name">TikTok Bold</div>
+          </div>
+          <div class="preset-card" data-preset="cinema">
+            <div class="preset-preview" style="color:rgba(255,255,255,0.9);font-style:italic;background:rgba(0,0,0,0.55);padding:2px 8px;border-radius:2px;font-size:13px">Abc</div>
+            <div class="preset-name">Cinema</div>
+          </div>
+          <div class="preset-card" data-preset="fire">
+            <div class="preset-preview" style="color:#FF4500;text-shadow:0 0 10px #FF6B00,0 0 3px #aa2200,-1px -1px 0 #660000,1px 1px 0 #660000">Abc</div>
+            <div class="preset-name">Fire</div>
+          </div>
+          <div class="preset-card" data-preset="roxo">
+            <div class="preset-preview" style="color:#C271FF;text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000">Abc</div>
+            <div class="preset-name">Roxo</div>
+          </div>
+          <div class="preset-card" data-preset="branco_puro">
+            <div class="preset-preview" style="color:#fff;font-weight:300;letter-spacing:2px;text-shadow:none">Abc</div>
+            <div class="preset-name">Clean</div>
+          </div>
         </div>
 
         <div class="size-row">
@@ -1080,7 +1100,7 @@
           <span class="size-val" id="sub-fontsize-val">72</span>
         </div>
 
-        <div class="section-label" style="margin-top:18px">Animação</div>
+        <div class="section-label" style="margin-top:18px">Animação de entrada</div>
         <div class="anim-btns">
           <button class="anim-btn pa-active" data-anim="block">
             📝 Bloco completo
@@ -1089,6 +1109,26 @@
           <button class="anim-btn" data-anim="word">
             ✨ Palavra por palavra
             <span class="anim-desc">Cada palavra em sequência</span>
+          </button>
+        </div>
+
+        <div class="section-label" style="margin-top:18px">Efeito de entrada</div>
+        <div class="anim-btns" id="entry-anim-btns">
+          <button class="anim-btn ea-active" data-entry="none">
+            ▪ Sem efeito
+            <span class="anim-desc">Aparece instantaneamente</span>
+          </button>
+          <button class="anim-btn" data-entry="fade">
+            🌫 Fade In/Out
+            <span class="anim-desc">Dissolve suave de entrada e saída</span>
+          </button>
+          <button class="anim-btn" data-entry="pop">
+            💥 Pop
+            <span class="anim-desc">Cresce do zero — estilo dinâmico</span>
+          </button>
+          <button class="anim-btn" data-entry="slide_up">
+            ⬆ Slide Up
+            <span class="anim-desc">Sobe de baixo pra posição final</span>
           </button>
         </div>
       </div>

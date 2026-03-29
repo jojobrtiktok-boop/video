@@ -428,12 +428,19 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
   const posY = parseInt(req.body.posY) || null;
   const align = posX !== null ? 5 : (req.body.position === 'top' ? 8 : 2);
 
+  const animation  = req.body.animation || 'none';
+
   const STYLES = {
-    classico: `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,${align},10,10,50,1`,
-    amarelo:  `Style: Default,Arial,${fontSize},&H0000FFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,${align},10,10,50,1`,
-    caixa:    `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,3,10,0,${align},20,20,50,1`,
-    neon:     `Style: Default,Arial,${fontSize},&H0041FF00,&H0041FF00,&H00003200,&H00000000,-1,0,0,0,100,100,0,0,1,2,4,${align},10,10,50,1`,
-    capcut:   `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00FF00FF,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
+    classico:    `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,${align},10,10,50,1`,
+    amarelo:     `Style: Default,Arial,${fontSize},&H0000FFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,${align},10,10,50,1`,
+    caixa:       `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,3,10,0,${align},20,20,50,1`,
+    neon:        `Style: Default,Arial,${fontSize},&H0041FF00,&H0041FF00,&H00003200,&H00000000,-1,0,0,0,100,100,0,0,1,2,4,${align},10,10,50,1`,
+    capcut:      `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00FF00FF,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
+    tiktok:      `Style: Default,Arial Black,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,5,0,${align},10,10,50,1`,
+    cinema:      `Style: Default,Arial,${Math.round(fontSize*0.85)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H88000000,0,-1,0,0,100,100,1,0,3,0,3,${align},30,30,60,1`,
+    fire:        `Style: Default,Arial,${fontSize},&H000045FF,&H000045FF,&H000000AA,&H00000000,-1,0,0,0,100,100,0,0,1,4,2,${align},10,10,50,1`,
+    roxo:        `Style: Default,Arial,${fontSize},&H00FF71C2,&H00FF71C2,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
+    branco_puro: `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0.5,0,1,2,0,${align},10,10,50,1`,
   };
 
   function timeStrToSecs(t) {
@@ -450,6 +457,13 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
     return `${h}:${String(m).padStart(2,'0')}:${String(Math.floor(s)).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
   }
   function toAssTime(t) { return secsToAssTime(timeStrToSecs(t)); }
+
+  function getAnimTag(anim) {
+    if (anim === 'fade')     return '{\\fad(200,200)}';
+    if (anim === 'pop')      return '{\\fscx0\\fscy0\\t(0,200,\\fscx100\\fscy100)}';
+    if (anim === 'slide_up') return '{\\move(%PX%,%PY_OFF%,%PX%,%PY%)}'; // handled below
+    return '';
+  }
 
   let finalSubs = subs;
   if (wordByWord) {
@@ -473,8 +487,18 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
 
   const styleStr = STYLES[preset] || STYLES.classico;
   const posTag = (posX !== null && posY !== null) ? `{\\pos(${posX},${posY})}` : '';
+
+  let animPrefix = '';
+  if (animation === 'fade')     animPrefix = '{\\fad(200,200)}';
+  else if (animation === 'pop') animPrefix = '{\\fscx0\\fscy0\\t(0,200,\\fscx100\\fscy100)}';
+  else if (animation === 'slide_up') {
+    const ay = posY !== null ? posY : 980;
+    const ax = posX !== null ? posX : 960;
+    animPrefix = `{\\move(${ax},${ay + 60},${ax},${ay})}`;
+  }
+
   const dialogues = finalSubs.map(sub =>
-    `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}')}`
+    `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}')}`
   ).join('\n');
 
   const assContent = [
@@ -521,12 +545,13 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
   const input    = req.file.path;
   const lang     = req.body.lang    || 'pt';
   const model    = req.body.model   || 'small';
-  const preset   = req.body.preset  || 'classico';
-  const fontSize = Math.max(24, Math.min(120, parseInt(req.body.fontsize) || 72));
+  const preset     = req.body.preset  || 'classico';
+  const fontSize   = Math.max(24, Math.min(120, parseInt(req.body.fontsize) || 72));
   const wordByWord = req.body.wordbyword === '1';
-  const posX     = parseInt(req.body.posX) || null;
-  const posY     = parseInt(req.body.posY) || null;
-  const align    = posX !== null ? 5 : 2;
+  const posX       = parseInt(req.body.posX) || null;
+  const posY       = parseInt(req.body.posY) || null;
+  const align      = posX !== null ? 5 : 2;
+  const animation  = req.body.animation || 'none';
 
   const python = PYTHON;
   const script = path.join(__dirname, 'transcribe.py');
@@ -564,11 +589,16 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
 
     // Forward to /api/subtitle logic inline
     const STYLES = {
-      classico: `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,${align},10,10,50,1`,
-      amarelo:  `Style: Default,Arial,${fontSize},&H0000FFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,${align},10,10,50,1`,
-      caixa:    `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,3,10,0,${align},20,20,50,1`,
-      neon:     `Style: Default,Arial,${fontSize},&H0041FF00,&H0041FF00,&H00003200,&H00000000,-1,0,0,0,100,100,0,0,1,2,4,${align},10,10,50,1`,
-      capcut:   `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00FF00FF,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
+      classico:    `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,${align},10,10,50,1`,
+      amarelo:     `Style: Default,Arial,${fontSize},&H0000FFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,${align},10,10,50,1`,
+      caixa:       `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&HAA000000,-1,0,0,0,100,100,0,0,3,10,0,${align},20,20,50,1`,
+      neon:        `Style: Default,Arial,${fontSize},&H0041FF00,&H0041FF00,&H00003200,&H00000000,-1,0,0,0,100,100,0,0,1,2,4,${align},10,10,50,1`,
+      capcut:      `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00FF00FF,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
+      tiktok:      `Style: Default,Arial Black,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,2,0,1,5,0,${align},10,10,50,1`,
+      cinema:      `Style: Default,Arial,${Math.round(fontSize*0.85)},&H00FFFFFF,&H00FFFFFF,&H00000000,&H88000000,0,-1,0,0,100,100,1,0,3,0,3,${align},30,30,60,1`,
+      fire:        `Style: Default,Arial,${fontSize},&H000045FF,&H000045FF,&H000000AA,&H00000000,-1,0,0,0,100,100,0,0,1,4,2,${align},10,10,50,1`,
+      roxo:        `Style: Default,Arial,${fontSize},&H00FF71C2,&H00FF71C2,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
+      branco_puro: `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0.5,0,1,2,0,${align},10,10,50,1`,
     };
 
     function timeStrToSecs(t) {
@@ -608,8 +638,18 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
 
     const styleStr = STYLES[preset] || STYLES.classico;
     const posTag = (posX !== null && posY !== null) ? `{\\pos(${posX},${posY})}` : '';
+
+    let animPrefix = '';
+    if (animation === 'fade')          animPrefix = '{\\fad(200,200)}';
+    else if (animation === 'pop')      animPrefix = '{\\fscx0\\fscy0\\t(0,200,\\fscx100\\fscy100)}';
+    else if (animation === 'slide_up') {
+      const ay = posY !== null ? posY : 980;
+      const ax = posX !== null ? posX : 960;
+      animPrefix = `{\\move(${ax},${ay + 60},${ax},${ay})}`;
+    }
+
     const dialogues = finalSubs.map(sub =>
-      `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}')}`
+      `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}')}`
     ).join('\n');
 
     const assContent = [
