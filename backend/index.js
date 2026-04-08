@@ -1821,7 +1821,8 @@ app.post('/api/translate/analyze', upload.single('video'), async (req, res) => {
 
     // Tradução via Anthropic (ou OpenRouter com mesmo formato)
     const allText = segments.map((s, i) => `[${i}] ${s.original}`).join('\n');
-    const prompt = `Você é um tradutor profissional. Traduza cada linha numerada do idioma de origem para "${toLang}". Mantenha EXATAMENTE o mesmo número de linhas e a mesma numeração. Retorne SOMENTE as linhas traduzidas com os mesmos índices, sem explicações.\n\n${allText}`;
+    const toLangLabel = toLang === 'es-419' ? 'Español latinoamericano (variedade latino-americana, evitar expressões da Espanha)' : toLang;
+    const prompt = `Você é um tradutor profissional. Traduza cada linha numerada do idioma de origem para "${toLangLabel}". Mantenha EXATAMENTE o mesmo número de linhas e a mesma numeração. Retorne SOMENTE as linhas traduzidas com os mesmos índices, sem explicações.\n\n${allText}`;
 
     try {
       // Suporta Anthropic direto ou via OpenRouter
