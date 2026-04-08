@@ -2236,6 +2236,8 @@ function loadResizeFrame(file) {
     fd.append('to_lang', trToLang.value);
     fd.append('api_key', apiKey);
     fd.append('api_model', trApiModel.value);
+    const customInstr = document.getElementById('tr-custom-instructions').value.trim();
+    if (customInstr) fd.append('custom_instructions', customInstr);
     // Detectar se OpenRouter pela chave
     if (apiKey.startsWith('sk-or')) fd.append('api_base', 'https://openrouter.ai');
 
