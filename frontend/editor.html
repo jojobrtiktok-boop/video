@@ -1407,7 +1407,10 @@
 
         <div class="card">
           <div class="section-label">🤖 API de Tradução (Anthropic ou OpenRouter)</div>
-          <input id="tr-api-key" type="password" class="tool-input" placeholder="sk-ant-... ou sk-or-..." style="width:100%;box-sizing:border-box" />
+          <div style="display:flex;gap:8px">
+            <input id="tr-api-key" type="password" class="tool-input" placeholder="sk-ant-... ou sk-or-..." style="flex:1" />
+            <button id="tr-api-save-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">💾 Salvar</button>
+          </div>
           <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
             <label style="font-size:12px;color:var(--text-muted)">Modelo:</label>
             <select id="tr-api-model" class="tool-select" style="flex:1">
@@ -1417,7 +1420,7 @@
             </select>
           </div>
           <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
-            Anthropic: chave começa com <code>sk-ant</code> | OpenRouter: chave começa com <code>sk-or</code>
+            Anthropic: chave começa com <code>sk-ant</code> | OpenRouter: chave começa com <code>sk-or</code> · Salvo só no seu navegador
           </div>
         </div>
 
@@ -1441,8 +1444,10 @@
           <div class="section-label">🎙 Voz ElevenLabs</div>
           <div style="display:flex;gap:8px">
             <input id="tr-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+            <button id="tr-el-save-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:13px">💾</button>
             <button id="tr-load-voices-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">Carregar vozes</button>
           </div>
+          <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">Salvo só no seu navegador</div>
           <select id="tr-voice-select" class="tool-select" style="width:100%;margin-top:8px;display:none">
             <option value="">Selecione uma voz...</option>
           </select>

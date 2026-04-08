@@ -2138,6 +2138,7 @@ function loadResizeFrame(file) {
   const trFromLang      = document.getElementById('tr-from-lang');
   const trToLang        = document.getElementById('tr-to-lang');
   const trApiKey        = document.getElementById('tr-api-key');
+  const trApiSaveBtn    = document.getElementById('tr-api-save-btn');
   const trApiModel      = document.getElementById('tr-api-model');
   const trAnalyzeBtn    = document.getElementById('tr-analyze-btn');
   const trAnalyzeProgress = document.getElementById('tr-analyze-progress');
@@ -2148,6 +2149,7 @@ function loadResizeFrame(file) {
   const trBackBtn       = document.getElementById('tr-back-btn');
   const trSegContainer  = document.getElementById('tr-segments-container');
   const trElKey         = document.getElementById('tr-el-key');
+  const trElSaveBtn     = document.getElementById('tr-el-save-btn');
   const trLoadVoicesBtn = document.getElementById('tr-load-voices-btn');
   const trVoiceSelect   = document.getElementById('tr-voice-select');
   const trVoicesError   = document.getElementById('tr-voices-error');
@@ -2161,11 +2163,35 @@ function loadResizeFrame(file) {
 
   if (!trVideoInput) return;
 
-  // Restore saved keys
+  // ── Restore saved keys ──
   const savedApiKey = localStorage.getItem('tr_api_key');
   const savedElKey  = localStorage.getItem('tr_el_key');
-  if (savedApiKey) trApiKey.value = savedApiKey;
-  if (savedElKey)  trElKey.value  = savedElKey;
+  if (savedApiKey) { trApiKey.value = savedApiKey; if (trApiSaveBtn) trApiSaveBtn.textContent = '✅ Salvo'; }
+  if (savedElKey)  { trElKey.value  = savedElKey;  if (trElSaveBtn)  trElSaveBtn.textContent  = '✅'; }
+
+  // ── Save buttons ──
+  function makeSaveBtn(btn, input, storageKey) {
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const val = input.value.trim();
+      if (val) {
+        localStorage.setItem(storageKey, val);
+        btn.textContent = btn.textContent.includes('💾') ? '✅ Salvo' : '✅';
+        setTimeout(() => { btn.textContent = btn.textContent.includes('Salvo') ? '💾 Salvar' : '💾'; }, 2000);
+      } else {
+        localStorage.removeItem(storageKey);
+        btn.textContent = btn.textContent.includes('Salvo') ? '💾 Salvar' : '💾';
+      }
+    });
+    // Marcar como não salvo quando o usuário edita o campo
+    input.addEventListener('input', () => {
+      if (btn.textContent.includes('✅')) {
+        btn.textContent = btn.textContent.includes('Salvo') ? '💾 Salvar' : '💾';
+      }
+    });
+  }
+  makeSaveBtn(trApiSaveBtn, trApiKey, 'tr_api_key');
+  makeSaveBtn(trElSaveBtn,  trElKey,  'tr_el_key');
 
   let trFile = null;
   let trTempId = null;
