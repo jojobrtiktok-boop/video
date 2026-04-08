@@ -558,6 +558,17 @@ const subAddBtn       = document.getElementById('sub-add-btn');
 const subEntriesEl    = document.getElementById('sub-entries');
 const subEmptyEl      = document.getElementById('sub-empty');
 
+// Restore/save OpenRouter key for subtitles
+(function() {
+  const keyEl  = document.getElementById('sub-openrouter-key');
+  const saveEl = document.getElementById('sub-or-save-btn');
+  if (!keyEl || !saveEl) return;
+  const saved = localStorage.getItem('sub_or_key');
+  if (saved) { keyEl.value = saved; saveEl.textContent = '✅'; }
+  saveEl.addEventListener('click', () => { localStorage.setItem('sub_or_key', keyEl.value.trim()); saveEl.textContent = '✅'; });
+  keyEl.addEventListener('input', () => { saveEl.textContent = '💾'; });
+})();
+
 let subFile = null, subEntries = [], subPreset = 'classico', subWordByWord = false, subEntryAnim = 'none', subUppercase = false;
 let subSubMode = 'auto'; // 'auto' | 'manual'
 let subNextId = 1;
@@ -918,6 +929,9 @@ if (subSubmitBtn) {
       endpoint = '/api/subtitle/auto';
       fd.append('lang', document.getElementById('sub-auto-lang').value);
       fd.append('model', document.getElementById('sub-auto-model').value);
+      const orKey = document.getElementById('sub-openrouter-key')?.value.trim();
+      const orModel = document.getElementById('sub-openrouter-model')?.value;
+      if (orKey) { fd.append('openrouter_key', orKey); fd.append('openrouter_model', orModel || 'openai/gpt-4o-mini'); }
     } else {
       endpoint = '/api/subtitle';
       const valid = subEntries.filter(e => e.text.trim());
@@ -2160,8 +2174,17 @@ function loadResizeFrame(file) {
   const trResultCard    = document.getElementById('tr-result-card');
   const trResultVideo   = document.getElementById('tr-result-video');
   const trDownloadBtn   = document.getElementById('tr-download-btn');
+  const trNewBtn        = document.getElementById('tr-new-btn');
+  const trTrimVideo     = document.getElementById('tr-trim-video');
+  const trMaxTempo      = document.getElementById('tr-max-tempo');
+  const trMaxTempoVal   = document.getElementById('tr-max-tempo-val');
 
   if (!trVideoInput) return;
+
+  // ── Slider velocidade ──
+  if (trMaxTempo && trMaxTempoVal) {
+    trMaxTempo.addEventListener('input', () => { trMaxTempoVal.textContent = parseFloat(trMaxTempo.value).toFixed(1) + '×'; });
+  }
 
   // ── Restore saved keys ──
   const savedApiKey = localStorage.getItem('tr_api_key');
@@ -2378,6 +2401,8 @@ function loadResizeFrame(file) {
           segments: trSegments,
           elevenlabs_key: elKey,
           voice_id: trVoiceSelect.value,
+          trim_to_audio: trTrimVideo && trTrimVideo.checked,
+          max_tempo: trMaxTempo ? parseFloat(trMaxTempo.value) : 1.8,
         })
       });
       const json = await resp.json();
@@ -2405,6 +2430,20 @@ function loadResizeFrame(file) {
       lib.unshift(item);
       localStorage.setItem('video_library', JSON.stringify(lib.slice(0, 50)));
     } catch {}
+  }
+
+  // ── Traduzir novo vídeo ──
+  if (trNewBtn) {
+    trNewBtn.addEventListener('click', () => {
+      trResultCard.style.display = 'none';
+      trStep2.style.display = 'none';
+      trStep1.style.display = '';
+      trFile = null; trTempId = null; trSegments = [];
+      document.getElementById('tr-file-name').textContent = '';
+      document.getElementById('tr-analyze-btn').disabled = true;
+      document.getElementById('tr-analyze-btn').textContent = 'Selecione um vídeo';
+      document.getElementById('tr-analyze-error').style.display = 'none';
+    });
   }
 })();
 

@@ -642,6 +642,8 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
   const align      = posX !== null ? 5 : 2;
   const animation  = req.body.animation || 'none';
   const uppercase  = req.body.uppercase === '1';
+  const openrouterKey   = (req.body.openrouter_key  || '').trim();
+  const openrouterModel = req.body.openrouter_model || 'openai/gpt-4o-mini';
   // Sync offset: medium model tends to lag slightly behind audio
   const syncOffset = model === 'medium' ? -0.15 : (model === 'large' ? -0.2 : 0);
 
@@ -650,7 +652,7 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
   // Usa modo word_timestamps (arg "1") para timing exato por palavra
   const transcribeCmd = `"${python}" "${script}" "${input}" "${model}" "${lang}" "1"`;
 
-  exec(transcribeCmd, { maxBuffer: 10 * 1024 * 1024, timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
+  exec(transcribeCmd, { maxBuffer: 10 * 1024 * 1024, timeout: 10 * 60 * 1000 }, async (err, stdout, stderr) => {
     if (err) {
       fs.unlink(input, () => {});
       return res.status(500).json({ error: 'Transcricao falhou: ' + (stderr || err.message) });
@@ -664,6 +666,31 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
     // Parse JSON com word timestamps
     let wordData = [];
     try { wordData = JSON.parse(raw); } catch (_) {}
+
+    // Correção de texto via IA (OpenRouter) — preserva timing, corrige transcrição
+    if (openrouterKey && wordData.length) {
+      try {
+        const segTexts = wordData.map((s, i) => `[${i}] ${s.text}`).join('\n');
+        const corrPrompt = `Você é um corretor de transcrições de áudio. Corrija apenas os erros de transcrição no texto a seguir, mantendo EXATAMENTE o mesmo número de linhas e a mesma numeração. Não altere o significado, não reformule frases, apenas corrija palavras grafadas errado ou palavras trocadas por sons parecidos (erro do Whisper). Retorne SOMENTE as linhas com os mesmos índices.\n\n${segTexts}`;
+        const corrBody = JSON.stringify({ model: openrouterModel, messages: [{ role: 'user', content: corrPrompt }], max_tokens: 2048 });
+        const corrData = Buffer.from(corrBody);
+        const corrText = await new Promise((resolve) => {
+          const opts = { hostname: 'openrouter.ai', port: 443, path: '/api/v1/chat/completions', method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openrouterKey}`, 'Content-Length': corrData.length } };
+          const r = https.request(opts, r2 => {
+            let out = ''; r2.on('data', c => out += c);
+            r2.on('end', () => { try { resolve(JSON.parse(out).choices?.[0]?.message?.content || ''); } catch { resolve(''); } });
+          });
+          r.on('error', () => resolve('')); r.write(corrData); r.end();
+        });
+        if (corrText) {
+          const lines = corrText.trim().split('\n').filter(l => l.trim());
+          lines.forEach(line => {
+            const m = line.match(/^\[?(\d+)\]?[.\s]+(.+)/);
+            if (m && wordData[parseInt(m[1])]) wordData[parseInt(m[1])].text = m[2].trim();
+          });
+        }
+      } catch (_) { /* se GPT falhar, continua com Whisper original */ }
+    }
 
     // Flatten: lista global de todas as palavras com start/end exatos
     const allWords = [];
@@ -1926,9 +1953,10 @@ async function elevenLabsDeleteVoice(voiceId, elKey) {
 
 // Paso 2: gera vídeo traduzido com os segmentos aprovados (editados pelo usuário)
 app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req, res) => {
-  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync } = req.body;
+  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync, trim_to_audio, max_tempo } = req.body;
   if (!tempId || !segments || !elevenlabs_key || !voice_id)
     return res.status(400).json({ error: 'tempId, segments, elevenlabs_key e voice_id são obrigatórios' });
+  const maxTempoRate = Math.max(1.0, Math.min(2.5, parseFloat(max_tempo) || 1.8));
 
   const metaPath = path.join(UPLOAD_DIR, tempId + '.meta.json');
   if (!fs.existsSync(metaPath)) return res.status(404).json({ error: 'Sessão expirada, faça o upload novamente.' });
@@ -2043,15 +2071,18 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
     }
 
     const adjustedPaths = [];
+    let trimEndTime = 0; // tracks when the last segment ends in translated audio (for trim_to_audio)
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
       const slotDur = Math.max(0.2, srtTimeToSecs(seg.end) - srtTimeToSecs(seg.start));
       const ttsDur  = await getAudioDuration(ttsPaths[i]);
       const adjPath = path.join(ttsAdjDir, `seg_${i}.wav`);
+      const segStart = srtTimeToSecs(seg.start);
 
       if (ttsDur > 0 && Math.abs(ttsDur - slotDur) > 0.05) {
         let rate = ttsDur / slotDur;
-        // Clamp: atempo aceita 0.5–2.0; para fora disso encadeamos filtros
+        // Clamp: never exceed maxTempoRate; atempo aceita 0.5–2.0; para fora encadeamos filtros
+        rate = Math.min(rate, maxTempoRate);
         let filterStr = '';
         if (rate < 0.5) {
           filterStr = `atempo=0.5,atempo=${(rate/0.5).toFixed(4)}`;
@@ -2063,11 +2094,13 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
         await new Promise((resolve, reject) => {
           exec(`"${FFMPEG}" -y -i "${ttsPaths[i]}" -af "${filterStr}" "${adjPath}"`, (e, _, se) => e ? reject(new Error(se)) : resolve());
         });
+        trimEndTime = Math.max(trimEndTime, segStart + ttsDur / rate);
       } else {
         // Apenas converte para wav sem ajuste
         await new Promise((resolve, reject) => {
           exec(`"${FFMPEG}" -y -i "${ttsPaths[i]}" "${adjPath}"`, (e, _, se) => e ? reject(new Error(se)) : resolve());
         });
+        trimEndTime = Math.max(trimEndTime, segStart + ttsDur);
       }
       adjustedPaths.push(adjPath);
     }
@@ -2112,8 +2145,9 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
     // 7. Substituir áudio no vídeo
     const outputName = 'traducao-' + path.basename(input);
     const output = path.join(UPLOAD_DIR, outputName);
+    const trimFlag = trim_to_audio && trimEndTime > 0 ? `-t ${(trimEndTime + 0.5).toFixed(3)}` : '';
     await new Promise((resolve, reject) => {
-      exec(`"${FFMPEG}" -y -i "${input}" -i "${finalAudio}" -c:v copy -map 0:v:0 -map 1:a:0 -shortest "${output}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
+      exec(`"${FFMPEG}" -y -i "${input}" -i "${finalAudio}" -c:v copy -map 0:v:0 -map 1:a:0 ${trimFlag} -shortest "${output}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
     });
 
     // 8. Limpeza de temporários

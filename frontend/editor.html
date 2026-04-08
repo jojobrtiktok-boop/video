@@ -1055,6 +1055,19 @@
               </select>
             </div>
           </div>
+          <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">🤖 Corrigir transcrição com IA <span style="font-size:11px">(opcional — OpenRouter)</span></div>
+            <div style="display:flex;gap:8px;margin-bottom:6px">
+              <input id="sub-openrouter-key" type="password" class="tool-input" placeholder="sk-or-... (OpenRouter)" style="flex:1;font-size:12px" />
+              <button id="sub-or-save-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">💾</button>
+            </div>
+            <select id="sub-openrouter-model" class="tool-select" style="width:100%;font-size:12px">
+              <option value="openai/gpt-4o-mini" selected>GPT-4o Mini (rápido)</option>
+              <option value="openai/gpt-4o">GPT-4o (preciso)</option>
+              <option value="anthropic/claude-3-haiku">Claude 3 Haiku</option>
+            </select>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Corrige erros de transcrição do Whisper. O timing vem do Whisper.</div>
+          </div>
         </div>
 
         <div id="sub-manual-panel" style="display:none">
@@ -1463,6 +1476,20 @@
         </div>
 
         <button id="tr-generate-btn" class="submit-btn" disabled>Configure a voz para gerar</button>
+
+        <div class="card" style="padding:14px">
+          <div class="section-label" style="margin-bottom:10px">⚙️ Opções avançadas</div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px">
+            <input type="checkbox" id="tr-trim-video" style="width:16px;height:16px;accent-color:var(--accent)">
+            <span>✂️ Cortar vídeo na duração da tradução <span style="font-size:11px;color:var(--text-muted)">(mais natural — remove silêncio do final)</span></span>
+          </label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">🎚️ Velocidade máx da fala</label>
+            <input type="range" id="tr-max-tempo" min="1.0" max="2.5" step="0.1" value="1.8" style="flex:1">
+            <span id="tr-max-tempo-val" style="font-size:13px;font-weight:600;min-width:30px">1.8×</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">1.0× = voz natural (sem acelerar) · 2.5× = máxima compressão para caber no slot</div>
+        </div>
         <div id="tr-generate-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
         <div id="tr-generate-status" class="status-text"></div>
         <div id="tr-generate-error" class="error-msg"></div>
@@ -1473,6 +1500,7 @@
         <h3>✓ Vídeo traduzido!</h3>
         <video id="tr-result-video" class="result-video" controls></video><br/>
         <a id="tr-download-btn" class="download-btn" download>⬇ Baixar vídeo traduzido</a>
+        <button id="tr-new-btn" class="submit-btn" style="margin-top:10px;background:none;border:1px solid var(--border);color:var(--text)">🔄 Traduzir novo vídeo</button>
       </div>
     </div>
 
