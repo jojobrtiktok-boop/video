@@ -1619,6 +1619,22 @@
           </div>
         </div>
 
+        <button id="atr-analyze-btn" class="submit-btn" disabled>Selecione um vídeo</button>
+        <div id="atr-analyze-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="atr-analyze-status" class="status-text"></div>
+        <div id="atr-analyze-error" class="error-msg"></div>
+      </div>
+
+      <!-- ═══ FASE 1b: Revisão de segmentos ═══ -->
+      <div id="atr-phase-segments" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-label" style="margin:0">📝 Revise a tradução</div>
+            <button id="atr-back-btn" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">← Voltar</button>
+          </div>
+          <div id="atr-segments-container" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+
         <div class="card">
           <div class="section-label">🎙 Voz ElevenLabs</div>
           <div style="display:flex;gap:8px">
@@ -1635,32 +1651,33 @@
 
         <div class="card" style="padding:14px">
           <div class="section-label" style="margin-bottom:10px">⚙️ Opções avançadas</div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px">
             <input type="checkbox" id="atr-trim-video" style="width:16px;height:16px;accent-color:var(--accent)">
-            <span>✂️ Cortar vídeo na duração da tradução</span>
+            <span>✂️ Cortar vídeo na duração da tradução <span style="font-size:11px;color:var(--text-muted)">(remove silêncio do final)</span></span>
           </label>
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🔊 Modo de montagem do áudio</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <label id="atr-mode-normal-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:2px solid var(--accent);border-radius:8px;cursor:pointer;background:color-mix(in srgb,var(--accent) 10%,transparent)">
+                <input type="radio" name="atr-audio-mode" value="normal" checked style="display:none">
+                <span style="font-size:13px;font-weight:600">🎛️ Normal</span>
+                <span style="font-size:11px;color:var(--text-muted)">Mantém os timestamps originais. Pausas preservadas.</span>
+              </label>
+              <label id="atr-mode-dynamic-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+                <input type="radio" name="atr-audio-mode" value="dynamic" style="display:none">
+                <span style="font-size:13px;font-weight:600">⚡ Dinâmico</span>
+                <span style="font-size:11px;color:var(--text-muted)">Segmentos um após o outro, sem pausas — edição dinâmica.</span>
+              </label>
+            </div>
+          </div>
           <div style="display:flex;align-items:center;gap:10px">
-            <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">🎚️ Velocidade máx</label>
+            <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">🎚️ Velocidade máx da fala</label>
             <input type="range" id="atr-max-tempo" min="1.0" max="2.5" step="0.1" value="1.8" style="flex:1">
             <span id="atr-max-tempo-val" style="font-size:13px;font-weight:600;min-width:30px">1.8×</span>
           </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">1.0× = voz natural · 2.5× = máxima compressão</div>
         </div>
 
-        <button id="atr-analyze-btn" class="submit-btn" disabled>Selecione um vídeo</button>
-        <div id="atr-analyze-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
-        <div id="atr-analyze-status" class="status-text"></div>
-        <div id="atr-analyze-error" class="error-msg"></div>
-      </div>
-
-      <!-- ═══ FASE 1b: Revisão de segmentos ═══ -->
-      <div id="atr-phase-segments" style="display:none">
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <div class="section-label" style="margin:0">📝 Revise a tradução</div>
-            <button id="atr-back-btn" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">← Voltar</button>
-          </div>
-          <div id="atr-segments-container" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
-        </div>
         <button id="atr-generate-btn" class="submit-btn" disabled>Configure a voz para gerar</button>
         <div id="atr-generate-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
         <div id="atr-generate-status" class="status-text"></div>

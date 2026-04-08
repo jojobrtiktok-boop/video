@@ -2599,6 +2599,22 @@ function loadResizeFrame(file) {
     });
   }
 
+  // ── Radio mode toggle visual (atr) ──
+  document.querySelectorAll('input[name="atr-audio-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      const nLbl = document.getElementById('atr-mode-normal-lbl');
+      const dLbl = document.getElementById('atr-mode-dynamic-lbl');
+      if (nLbl) {
+        nLbl.style.border      = radio.value === 'normal'  ? '2px solid var(--accent)' : '1px solid var(--border)';
+        nLbl.style.background  = radio.value === 'normal'  ? 'color-mix(in srgb,var(--accent) 10%,transparent)' : '';
+      }
+      if (dLbl) {
+        dLbl.style.border      = radio.value === 'dynamic' ? '2px solid var(--accent)' : '1px solid var(--border)';
+        dLbl.style.background  = radio.value === 'dynamic' ? 'color-mix(in srgb,var(--accent) 10%,transparent)' : '';
+      }
+    });
+  });
+
   // ── Phase 1a: Analyze ──
   if (atrAnalyzeBtn) {
     atrAnalyzeBtn.addEventListener('click', async () => {
@@ -2628,6 +2644,12 @@ function loadResizeFrame(file) {
         atrTempId = json.tempId;
         atrSegments = json.segments;
         atrRenderSegments();
+        // Pre-fill ElevenLabs key when entering segments phase
+        const _elSaved = localStorage.getItem('tr_el_key');
+        if (_elSaved && atrElKey && !atrElKey.value) {
+          atrElKey.value = _elSaved;
+          if (atrElSaveBtn) atrElSaveBtn.textContent = '✅';
+        }
         const hasVoice = atrVoiceSel && atrVoiceSel.value;
         const genBtn = document.getElementById('atr-generate-btn');
         genBtn.disabled = !hasVoice;
@@ -2691,7 +2713,7 @@ function loadResizeFrame(file) {
             elevenlabs_key: elKey, voice_id: atrVoiceSel.value,
             trim_to_audio: document.getElementById('atr-trim-video')?.checked,
             max_tempo: parseFloat(atrMaxTempo?.value || 1.8),
-            dynamic_mode: false
+            dynamic_mode: (document.querySelector('input[name="atr-audio-mode"]:checked')?.value === 'dynamic')
           })
         });
         const json = await resp.json();
