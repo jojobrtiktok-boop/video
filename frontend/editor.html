@@ -1723,58 +1723,123 @@
 
       <!-- ═══ FASE 3: Legendas ═══ -->
       <div id="atr-phase-subtitle" style="display:none">
+
+        <!-- Canvas preview para posicionar legendas -->
         <div class="card">
-          <div class="section-label">Vídeo atual</div>
-          <video id="atr-sub-source" controls style="width:100%;border-radius:8px;background:#000;max-height:260px"></video>
+          <div class="section-label">Posição das legendas — <span style="color:var(--accent);font-weight:400">arraste o bloco</span></div>
+          <div id="atr-sub-canvas-wrap"><canvas id="atr-sub-canvas"></canvas></div>
+          <div class="video-controls">
+            <button id="atr-sub-vc-play" class="vc-play">⏸</button>
+            <span id="atr-sub-vc-time" class="vc-time">0:00 / 0:00</span>
+            <input type="range" id="atr-sub-vc-seek" class="vc-seek" min="0" max="1000" step="1" value="0">
+          </div>
         </div>
+
+        <!-- Idioma + Whisper -->
         <div class="card">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div>
-              <div class="section-label">Idioma do vídeo</div>
-              <select id="atr-sub-lang" class="tool-select" style="width:100%">
+          <div class="auto-settings">
+            <div class="auto-field">
+              <label>Idioma</label>
+              <select id="atr-sub-lang">
                 <option value="pt">Português</option>
                 <option value="en" selected>Inglês</option>
                 <option value="es">Espanhol</option>
                 <option value="auto">Auto-detectar</option>
               </select>
             </div>
-            <div>
-              <div class="section-label">Modelo Whisper</div>
-              <select id="atr-sub-model" class="tool-select" style="width:100%">
-                <option value="base">Base (rápido)</option>
-                <option value="small" selected>Small (balanceado)</option>
+            <div class="auto-field">
+              <label>Modelo Whisper</label>
+              <select id="atr-sub-model">
+                <option value="tiny">Tiny (rápido)</option>
+                <option value="base">Base</option>
+                <option value="small" selected>Small (recomendado)</option>
                 <option value="medium">Medium (preciso)</option>
-                <option value="large-v3">Large-v3 (melhor)</option>
               </select>
             </div>
-            <div>
-              <div class="section-label">Estilo</div>
-              <select id="atr-sub-preset" class="tool-select" style="width:100%">
-                <option value="default">Padrão</option>
-                <option value="tiktok" selected>TikTok Bold</option>
-                <option value="minimal">Minimal</option>
-                <option value="shadow">Shadow</option>
-                <option value="neon">Neon</option>
-              </select>
-            </div>
-            <div>
-              <div class="section-label">Posição</div>
-              <select id="atr-sub-pos" class="tool-select" style="width:100%">
-                <option value="bottom" selected>Baixo</option>
-                <option value="center">Centro</option>
-                <option value="top">Cima</option>
-              </select>
-            </div>
-          </div>
-          <div style="display:flex;gap:20px;margin-top:10px">
-            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
-              <input type="checkbox" id="atr-sub-wbw" style="accent-color:var(--accent)" checked> Palavra a palavra
-            </label>
-            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
-              <input type="checkbox" id="atr-sub-upper" style="accent-color:var(--accent)"> MAIÚSCULAS
-            </label>
           </div>
         </div>
+
+        <!-- Estilos (igual ao painel de legendas) -->
+        <div class="card">
+          <div class="section-label">Estilo</div>
+          <div class="presets-grid" id="atr-presets-grid">
+            <div class="preset-card atr-sp-active" data-atr-preset="classico">
+              <div class="preset-preview" style="color:#fff;text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000">Abc</div>
+              <div class="preset-name">Clássico</div>
+            </div>
+            <div class="preset-card" data-atr-preset="amarelo">
+              <div class="preset-preview" style="color:#FFFF00;text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000">Abc</div>
+              <div class="preset-name">Amarelo</div>
+            </div>
+            <div class="preset-card" data-atr-preset="caixa">
+              <div class="preset-preview"><span style="color:#fff;background:rgba(0,0,0,0.82);padding:2px 9px;border-radius:3px">Abc</span></div>
+              <div class="preset-name">Caixa</div>
+            </div>
+            <div class="preset-card" data-atr-preset="neon">
+              <div class="preset-preview" style="color:#00FF41;text-shadow:0 0 8px #00FF41,0 0 2px #000">Abc</div>
+              <div class="preset-name">Néon</div>
+            </div>
+            <div class="preset-card" data-atr-preset="capcut">
+              <div class="preset-preview" style="color:#fff;text-shadow:-2px -2px 0 #FF00FF,2px -2px 0 #FF00FF,-2px 2px 0 #FF00FF,2px 2px 0 #FF00FF">Abc</div>
+              <div class="preset-name">CapCut</div>
+            </div>
+            <div class="preset-card" data-atr-preset="tiktok">
+              <div class="preset-preview" style="color:#fff;font-weight:900;text-shadow:-3px -3px 0 #000,3px -3px 0 #000,-3px 3px 0 #000,3px 3px 0 #000;letter-spacing:1px">Abc</div>
+              <div class="preset-name">TikTok Bold</div>
+            </div>
+            <div class="preset-card" data-atr-preset="cinema">
+              <div class="preset-preview" style="color:rgba(255,255,255,0.9);font-style:italic;background:rgba(0,0,0,0.55);padding:2px 8px;border-radius:2px;font-size:13px">Abc</div>
+              <div class="preset-name">Cinema</div>
+            </div>
+            <div class="preset-card" data-atr-preset="fire">
+              <div class="preset-preview" style="color:#FF4500;text-shadow:0 0 10px #FF6B00,0 0 3px #aa2200,-1px -1px 0 #660000,1px 1px 0 #660000">Abc</div>
+              <div class="preset-name">Fire</div>
+            </div>
+            <div class="preset-card" data-atr-preset="roxo">
+              <div class="preset-preview" style="color:#C271FF;text-shadow:-2px -2px 0 #000,2px -2px 0 #000,-2px 2px 0 #000,2px 2px 0 #000">Abc</div>
+              <div class="preset-name">Roxo</div>
+            </div>
+            <div class="preset-card" data-atr-preset="branco_puro">
+              <div class="preset-preview" style="color:#fff;font-weight:300;letter-spacing:2px;text-shadow:none">Abc</div>
+              <div class="preset-name">Clean</div>
+            </div>
+            <div class="preset-card" data-atr-preset="karaoke">
+              <div class="preset-preview">
+                <span style="color:#fff;text-shadow:-1px -1px 0 #000,1px 1px 0 #000">ola </span><span style="color:#FFFF00;text-shadow:-1px -1px 0 #000,1px 1px 0 #000">mundo</span>
+              </div>
+              <div class="preset-name">Karaoke</div>
+            </div>
+          </div>
+
+          <div class="size-row">
+            <label>Fonte</label>
+            <input type="range" id="atr-sub-fontsize" min="36" max="120" step="4" value="72">
+            <span class="size-val" id="atr-sub-fontsize-val">72</span>
+            <button id="atr-sub-uppercase-btn" class="uppercase-toggle" title="Tudo maiúsculo">AA</button>
+          </div>
+
+          <div class="section-label" style="margin-top:18px">Animação de entrada</div>
+          <div class="anim-btns">
+            <button class="anim-btn pa-active" id="atr-anim-block" data-atr-anim="block">
+              📝 Bloco completo
+              <span class="anim-desc">Frase inteira aparece de uma vez</span>
+            </button>
+            <button class="anim-btn" id="atr-anim-word" data-atr-anim="word">
+              ✨ Palavra por palavra
+              <span class="anim-desc">Cada palavra em sequência</span>
+            </button>
+          </div>
+
+          <div class="section-label" style="margin-top:18px">Efeito de entrada</div>
+          <div class="anim-btns" id="atr-entry-anim-btns">
+            <button class="anim-btn ea-active" data-atr-entry="none">▪ Sem efeito<span class="anim-desc">Aparece instantaneamente</span></button>
+            <button class="anim-btn" data-atr-entry="fade">🌫 Fade In/Out<span class="anim-desc">Dissolve suave</span></button>
+            <button class="anim-btn" data-atr-entry="pop">💥 Pop<span class="anim-desc">Cresce do zero</span></button>
+            <button class="anim-btn" data-atr-entry="slide_up">⬆ Slide Up<span class="anim-desc">Sobe de baixo</span></button>
+            <button class="anim-btn" data-atr-entry="typewriter">⌨ Typewriter<span class="anim-desc">Letra por letra</span></button>
+          </div>
+        </div>
+
         <button id="atr-sub-process-btn" class="submit-btn">🤖 Gerar AutoCaption</button>
         <div id="atr-sub-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
         <div id="atr-sub-status" class="status-text"></div>

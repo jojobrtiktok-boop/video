@@ -2482,6 +2482,14 @@ function loadResizeFrame(file) {
   const ATR_HANDLE_SIZE = 10, ATR_HANDLE_HALF = 5;
   const ATR_AUTO_MODES = new Set(['sora', 'heygen']);
 
+  // Subtitle canvas state
+  let atrSubVideoEl = null, atrSubPreviewW = 0, atrSubPreviewH = 0;
+  let atrSubVideoW = 0, atrSubVideoH = 0, atrSubAnimFrame = null;
+  let atrSubIsPaused = false, atrSubIsSeeking = false;
+  let atrSubBlockX = 0.5, atrSubBlockY = 0.88, atrSubBlockDragging = false;
+  let atrSubPreset = 'classico', atrSubWordByWord = false, atrSubEntryAnim = 'none', atrSubUppercase = false;
+  const ATR_SUB_BLOCK_W_FRAC = 0.82;
+
   // ── Stepper ──
   function atrSetStep(n) {
     for (let i = 1; i <= 4; i++) {
@@ -3012,6 +3020,212 @@ function loadResizeFrame(file) {
     });
   }
 
+  // ════ SUBTITLE CANVAS ════
+  const atrSubCanvas    = document.getElementById('atr-sub-canvas');
+  const atrSubCtx       = atrSubCanvas ? atrSubCanvas.getContext('2d') : null;
+  const atrSubVcPlay    = document.getElementById('atr-sub-vc-play');
+  const atrSubVcTime    = document.getElementById('atr-sub-vc-time');
+  const atrSubVcSeek    = document.getElementById('atr-sub-vc-seek');
+  const atrSubFontSizeEl  = document.getElementById('atr-sub-fontsize');
+  const atrSubFontSizeVal = document.getElementById('atr-sub-fontsize-val');
+  const atrSubUppercaseBtn = document.getElementById('atr-sub-uppercase-btn');
+
+  function updateAtrSubCanvasSize() {
+    if (!atrSubVideoW || !atrSubVideoH || !atrSubCanvas) return;
+    const wrap = document.getElementById('atr-sub-canvas-wrap');
+    const maxW = 760, dW = Math.min(maxW, Math.max(200, (wrap && wrap.clientWidth) || maxW));
+    const dH = Math.round(dW * atrSubVideoH / atrSubVideoW), dpr = window.devicePixelRatio || 1;
+    atrSubCanvas.style.width = dW + 'px'; atrSubCanvas.style.height = dH + 'px';
+    atrSubCanvas.width  = Math.max(1, Math.round(dW * dpr));
+    atrSubCanvas.height = Math.max(1, Math.round(dH * dpr));
+    atrSubCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    atrSubPreviewW = dW; atrSubPreviewH = dH;
+  }
+
+  function startAtrSubLoop() {
+    atrSubIsPaused = false; atrSubIsSeeking = false;
+    atrSubVideoEl.loop = true; atrSubVideoEl.play().catch(() => {});
+    if (atrSubVcPlay) atrSubVcPlay.textContent = '\u23F8';
+    function loop() { drawAtrSubFrame(); atrSubAnimFrame = requestAnimationFrame(loop); }
+    atrSubAnimFrame = requestAnimationFrame(loop);
+  }
+
+  function drawAtrSubFrame() {
+    if (!atrSubVideoEl || !atrSubCtx) return;
+    if (!atrSubIsSeeking && atrSubVcSeek && atrSubVcTime) {
+      const dur = atrSubVideoEl.duration || 0;
+      atrSubVcSeek.value = dur ? Math.round((atrSubVideoEl.currentTime / dur) * 1000) : 0;
+      atrSubVcTime.textContent = formatTime(atrSubVideoEl.currentTime) + ' / ' + formatTime(dur);
+    }
+    atrSubCtx.clearRect(0, 0, atrSubPreviewW, atrSubPreviewH);
+    atrSubCtx.drawImage(atrSubVideoEl, 0, 0, atrSubPreviewW, atrSubPreviewH);
+    const fsRaw = atrSubFontSizeEl ? parseInt(atrSubFontSizeEl.value) || 72 : 72;
+    const scaleFactor = atrSubPreviewW / 1920;
+    const fs = Math.max(8, Math.round(fsRaw * scaleFactor));
+    const lineH = fs * 1.5, lines = atrSubPreset === 'karaoke' ? 2 : 1, bPad = fs * 0.4;
+    const bW = atrSubPreviewW * ATR_SUB_BLOCK_W_FRAC, bH = lineH * lines + bPad * 2;
+    const bX = atrSubBlockX * atrSubPreviewW - bW / 2;
+    const bY = atrSubBlockY * atrSubPreviewH - bH / 2;
+    atrSubCtx.fillStyle = 'rgba(108,99,255,0.18)';
+    roundRect(atrSubCtx, bX, bY, bW, bH, 8); atrSubCtx.fill();
+    atrSubCtx.strokeStyle = atrSubBlockDragging ? '#ffffff' : '#6c63ff';
+    atrSubCtx.lineWidth = 2; atrSubCtx.setLineDash([5, 3]);
+    roundRect(atrSubCtx, bX, bY, bW, bH, 8); atrSubCtx.stroke(); atrSubCtx.setLineDash([]);
+    atrSubCtx.textAlign = 'center'; atrSubCtx.textBaseline = 'middle';
+    const sampleText = atrSubUppercase ? 'LEGENDA MODELO' : 'Legenda Modelo';
+    if (atrSubPreset === 'karaoke') {
+      const row1 = atrSubUppercase ? 'TEXTO ANTERIOR' : 'texto anterior';
+      const row2Parts = [
+        { text: atrSubUppercase ? 'PALAVRA ' : 'palavra ', color: '#fff' },
+        { text: atrSubUppercase ? 'DESTAQUE' : 'destaque', color: '#FFFF00' }
+      ];
+      const y1 = bY + bPad + lineH * 0.5, y2 = bY + bPad + lineH * 1.5;
+      atrSubCtx.font = `bold ${fs}px Arial Black, Arial, sans-serif`;
+      atrSubCtx.lineWidth = Math.max(2, fs * 0.08);
+      atrSubCtx.strokeStyle = '#000'; atrSubCtx.fillStyle = '#fff';
+      atrSubCtx.strokeText(row1, bX + bW / 2, y1); atrSubCtx.fillText(row1, bX + bW / 2, y1);
+      const word1W = atrSubCtx.measureText(row2Parts[0].text).width;
+      const word2W = atrSubCtx.measureText(row2Parts[1].text).width;
+      let cx = bX + bW / 2 - (word1W + word2W) / 2;
+      row2Parts.forEach(part => {
+        const w = atrSubCtx.measureText(part.text).width;
+        atrSubCtx.strokeStyle = '#000'; atrSubCtx.fillStyle = part.color;
+        atrSubCtx.strokeText(part.text, cx + w / 2, y2); atrSubCtx.fillText(part.text, cx + w / 2, y2);
+        cx += w;
+      });
+    } else {
+      atrSubCtx.font = `bold ${fs}px Arial, sans-serif`;
+      atrSubCtx.lineWidth = Math.max(2, fs * 0.06);
+      atrSubCtx.strokeStyle = '#000'; atrSubCtx.fillStyle = '#fff';
+      atrSubCtx.strokeText(sampleText, bX + bW / 2, bY + bH / 2);
+      atrSubCtx.fillText(sampleText, bX + bW / 2, bY + bH / 2);
+    }
+    atrSubCtx.font = `${Math.max(9, Math.round(11 * atrSubPreviewH / 360))}px Arial`;
+    atrSubCtx.fillStyle = 'rgba(255,255,255,0.55)';
+    atrSubCtx.textAlign = 'center';
+    atrSubCtx.fillText('\u2195 arraste', bX + bW / 2, bY + bH + 14);
+  }
+
+  function atrSubCanvasPos(e) {
+    if (!atrSubCanvas) return { x: 0, y: 0 };
+    const rect = atrSubCanvas.getBoundingClientRect(), src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+
+  function isNearAtrSubBlock(px, py) {
+    const fsRaw = atrSubFontSizeEl ? parseInt(atrSubFontSizeEl.value) || 72 : 72;
+    const fs = Math.max(8, Math.round(fsRaw * (atrSubPreviewW / 1920)));
+    const lineH = fs * 1.5, lines = atrSubPreset === 'karaoke' ? 2 : 1, bPad = fs * 0.4;
+    const bW = atrSubPreviewW * ATR_SUB_BLOCK_W_FRAC, bH = lineH * lines + bPad * 2;
+    const bX = atrSubBlockX * atrSubPreviewW - bW / 2, bY = atrSubBlockY * atrSubPreviewH - bH / 2;
+    return px >= bX - 8 && px <= bX + bW + 8 && py >= bY - 8 && py <= bY + bH + 8;
+  }
+
+  function atrSubLoadVideo(url) {
+    if (atrSubAnimFrame) { cancelAnimationFrame(atrSubAnimFrame); atrSubAnimFrame = null; }
+    atrSubVideoEl = document.createElement('video');
+    atrSubVideoEl.muted = true; atrSubVideoEl.playsInline = true; atrSubVideoEl.preload = 'auto';
+    atrSubVideoEl.crossOrigin = 'anonymous';
+    atrSubVideoEl.src = url; atrSubVideoEl.currentTime = 0.1;
+    atrSubVideoEl.addEventListener('seeked', function onS() {
+      atrSubVideoEl.removeEventListener('seeked', onS);
+      atrSubVideoW = atrSubVideoEl.videoWidth; atrSubVideoH = atrSubVideoEl.videoHeight;
+      const wrap = document.getElementById('atr-sub-canvas-wrap');
+      if (wrap) wrap.style.display = '';
+      requestAnimationFrame(() => { updateAtrSubCanvasSize(); startAtrSubLoop(); });
+    });
+  }
+
+  if (atrSubCanvas) {
+    atrSubCanvas.style.cursor = 'default';
+    atrSubCanvas.addEventListener('mousedown', e => {
+      const p = atrSubCanvasPos(e);
+      if (isNearAtrSubBlock(p.x, p.y)) { atrSubBlockDragging = true; atrSubCanvas.style.cursor = 'grabbing'; }
+    });
+    atrSubCanvas.addEventListener('mousemove', e => {
+      const p = atrSubCanvasPos(e);
+      if (atrSubBlockDragging) {
+        atrSubBlockX = Math.max(0.1, Math.min(0.9, p.x / atrSubPreviewW));
+        atrSubBlockY = Math.max(0.05, Math.min(0.97, p.y / atrSubPreviewH));
+      } else {
+        atrSubCanvas.style.cursor = isNearAtrSubBlock(p.x, p.y) ? 'grab' : 'default';
+      }
+    });
+    atrSubCanvas.addEventListener('mouseup', () => { atrSubBlockDragging = false; atrSubCanvas.style.cursor = 'default'; });
+    atrSubCanvas.addEventListener('mouseleave', () => { atrSubBlockDragging = false; });
+    atrSubCanvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const p = atrSubCanvasPos(e);
+      if (isNearAtrSubBlock(p.x, p.y)) atrSubBlockDragging = true;
+    }, { passive: false });
+    atrSubCanvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (!atrSubBlockDragging) return;
+      const p = atrSubCanvasPos(e);
+      atrSubBlockX = Math.max(0.1, Math.min(0.9, p.x / atrSubPreviewW));
+      atrSubBlockY = Math.max(0.05, Math.min(0.97, p.y / atrSubPreviewH));
+    }, { passive: false });
+    atrSubCanvas.addEventListener('touchend', () => { atrSubBlockDragging = false; });
+  }
+
+  // Subtitle video controls
+  if (atrSubVcPlay) {
+    atrSubVcPlay.addEventListener('click', () => {
+      if (!atrSubVideoEl) return;
+      if (atrSubIsPaused) { atrSubVideoEl.play().catch(() => {}); atrSubIsPaused = false; atrSubVcPlay.textContent = '\u23F8'; }
+      else { atrSubVideoEl.pause(); atrSubIsPaused = true; atrSubVcPlay.textContent = '\u25B6'; }
+    });
+  }
+  if (atrSubVcSeek) {
+    atrSubVcSeek.addEventListener('mousedown', () => { atrSubIsSeeking = true; });
+    atrSubVcSeek.addEventListener('input', () => {
+      if (!atrSubVideoEl || !atrSubVideoEl.duration) return;
+      atrSubVideoEl.currentTime = (atrSubVcSeek.value / 1000) * atrSubVideoEl.duration;
+      if (atrSubVcTime) atrSubVcTime.textContent = formatTime(atrSubVideoEl.currentTime) + ' / ' + formatTime(atrSubVideoEl.duration);
+    });
+    atrSubVcSeek.addEventListener('mouseup', () => { atrSubIsSeeking = false; });
+  }
+
+  // Subtitle presets
+  document.querySelectorAll('[data-atr-preset]').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('[data-atr-preset]').forEach(c => c.classList.remove('atr-sp-active'));
+      card.classList.add('atr-sp-active');
+      atrSubPreset = card.dataset.atrPreset;
+    });
+  });
+
+  // Subtitle animation mode (word / block)
+  document.querySelectorAll('[data-atr-anim]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-atr-anim]').forEach(b => b.classList.remove('pa-active'));
+      btn.classList.add('pa-active');
+      atrSubWordByWord = btn.dataset.atrAnim === 'word';
+    });
+  });
+
+  // Subtitle entry animation
+  document.querySelectorAll('#atr-entry-anim-btns [data-atr-entry]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#atr-entry-anim-btns [data-atr-entry]').forEach(b => b.classList.remove('ea-active'));
+      btn.classList.add('ea-active');
+      atrSubEntryAnim = btn.dataset.atrEntry || 'none';
+    });
+  });
+
+  // Font size
+  if (atrSubFontSizeEl && atrSubFontSizeVal) {
+    atrSubFontSizeEl.addEventListener('input', () => { atrSubFontSizeVal.textContent = atrSubFontSizeEl.value; });
+  }
+
+  // Uppercase
+  if (atrSubUppercaseBtn) {
+    atrSubUppercaseBtn.addEventListener('click', () => {
+      atrSubUppercase = !atrSubUppercase;
+      atrSubUppercaseBtn.classList.toggle('uc-active', atrSubUppercase);
+    });
+  }
+
   // Aprovar watermark → legendas
   const atrWmAprovarBtn = document.getElementById('atr-wm-aprovar-btn');
   if (atrWmAprovarBtn) {
@@ -3019,8 +3233,7 @@ function loadResizeFrame(file) {
       if (!atrWmUrl) return;
       atrSetStep(3);
       atrShowPhase(atrPhaseSub);
-      const srcVid = document.getElementById('atr-sub-source');
-      if (srcVid) srcVid.src = atrWmUrl;
+      atrSubLoadVideo(atrWmUrl);
     });
   }
 
@@ -3034,9 +3247,6 @@ function loadResizeFrame(file) {
       atrSubProcessBtn.disabled = true; atrSubProcessBtn.textContent = '⏳ Processando...';
       document.getElementById('atr-sub-progress').style.display = '';
       document.getElementById('atr-sub-status').textContent = '⏳ Transcrevendo com faster-whisper…';
-      const posMap = { bottom:{x:0.5,y:0.87}, center:{x:0.5,y:0.5}, top:{x:0.5,y:0.12} };
-      const posKey = document.getElementById('atr-sub-pos')?.value || 'bottom';
-      const pos = posMap[posKey] || posMap.bottom;
       try {
         const blob = await fetch(atrWmUrl).then(r => { if (!r.ok) throw new Error('Erro ao carregar vídeo'); return r.blob(); });
         const file = new File([blob], 'wm_removed.mp4', { type: 'video/mp4' });
@@ -3044,13 +3254,13 @@ function loadResizeFrame(file) {
         fd.append('video', file);
         fd.append('lang',      document.getElementById('atr-sub-lang').value);
         fd.append('model',     document.getElementById('atr-sub-model').value);
-        fd.append('preset',    document.getElementById('atr-sub-preset')?.value || 'default');
-        fd.append('fontsize',  '72');
-        fd.append('wordbyword', document.getElementById('atr-sub-wbw')?.checked ? '1' : '0');
-        fd.append('uppercase',  document.getElementById('atr-sub-upper')?.checked ? '1' : '0');
-        fd.append('animation', 'none');
-        fd.append('posX', Math.round(pos.x * 1920));
-        fd.append('posY', Math.round(pos.y * 1080));
+        fd.append('preset',    atrSubPreset);
+        fd.append('fontsize',  atrSubFontSizeEl ? (atrSubFontSizeEl.value || '72') : '72');
+        fd.append('wordbyword', atrSubWordByWord ? '1' : '0');
+        fd.append('uppercase',  atrSubUppercase ? '1' : '0');
+        fd.append('animation', atrSubEntryAnim);
+        fd.append('posX', Math.round(atrSubBlockX * 1920));
+        fd.append('posY', Math.round(atrSubBlockY * 1080));
         const resp = await fetch(API + '/api/subtitle/auto', { method: 'POST', body: fd });
         const json = await resp.json();
         if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
@@ -3098,6 +3308,14 @@ function loadResizeFrame(file) {
       atrWmSelRect=null;
       if (atrWmAnimFrame) { cancelAnimationFrame(atrWmAnimFrame); atrWmAnimFrame=null; }
       atrWmVideoEl=null;
+      if (atrSubAnimFrame) { cancelAnimationFrame(atrSubAnimFrame); atrSubAnimFrame=null; }
+      atrSubVideoEl=null;
+      atrSubBlockX=0.5; atrSubBlockY=0.88;
+      atrSubPreset='classico'; atrSubWordByWord=false; atrSubEntryAnim='none'; atrSubUppercase=false;
+      if (atrSubUppercaseBtn) atrSubUppercaseBtn.classList.remove('uc-active');
+      document.querySelectorAll('[data-atr-preset]').forEach(c => c.classList.remove('atr-sp-active'));
+      const defaultAtrPreset = document.querySelector('[data-atr-preset="classico"]');
+      if (defaultAtrPreset) defaultAtrPreset.classList.add('atr-sp-active');
       if (atrFileName) atrFileName.textContent='';
       atrAnalyzeBtn.disabled=true; atrAnalyzeBtn.textContent='Selecione um vídeo';
       atrAnalyzeErr.style.display='none';
