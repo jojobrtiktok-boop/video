@@ -1953,7 +1953,7 @@ async function elevenLabsDeleteVoice(voiceId, elKey) {
 
 // Paso 2: gera vídeo traduzido com os segmentos aprovados (editados pelo usuário)
 app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req, res) => {
-  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync, trim_to_audio, max_tempo } = req.body;
+  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync, trim_to_audio, max_tempo, dynamic_mode } = req.body;
   if (!tempId || !segments || !elevenlabs_key || !voice_id)
     return res.status(400).json({ error: 'tempId, segments, elevenlabs_key e voice_id são obrigatórios' });
   const maxTempoRate = Math.max(1.0, Math.min(2.5, parseFloat(max_tempo) || 1.8));
@@ -2104,30 +2104,56 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
       adjustedPaths.push(adjPath);
     }
 
-    // 5. Montar trilha de áudio traduzido: silêncio base + sobrepor cada clipe no timestamp correto
-    //    Obtém duração total do vídeo
-    const vidDur = await getAudioDuration(audioRaw);
-    const silencePath = path.join(ttsDir, 'silence.wav');
-    await new Promise((resolve, reject) => {
-      exec(`"${FFMPEG}" -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${vidDur} "${silencePath}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
-    });
+    // 5. Montar trilha de áudio traduzido
+    let translatedVoice;
 
-    // Overlay iterativo: adiciona cada clipe no timestamp correto sobre a faixa base
-    let mixBase = silencePath;
-    let prevMix = null;
-    for (let i = 0; i < segments.length; i++) {
-      const delay = Math.round(srtTimeToSecs(segments[i].start) * 1000); // ms
-      const mixOut = path.join(ttsDir, `mix_${i}.wav`);
+    if (dynamic_mode) {
+      // ── Modo Dinâmico: concatena todos os clipes sem pausa ──
+      // Adiciona 120ms de silêncio entre segmentos para não cortar a fala
+      const GAP_MS = 120;
+      const gapPath = path.join(ttsDir, 'gap.wav');
       await new Promise((resolve, reject) => {
-        const cmd = `"${FFMPEG}" -y -i "${mixBase}" -i "${adjustedPaths[i]}" -filter_complex "[1]adelay=${delay}|${delay}[a];[0][a]amix=inputs=2:duration=longest,volume=2" "${mixOut}"`;
-        exec(cmd, { timeout: 60000 }, (e,_,se) => e ? reject(new Error(se)) : resolve());
+        exec(`"${FFMPEG}" -y -f lavfi -i anullsrc=r=44100:cl=stereo -t 0.12 "${gapPath}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
       });
-      // Limpar mix intermediário anterior para economizar disco
-      if (prevMix && prevMix !== silencePath) fs.unlink(prevMix, () => {});
-      prevMix = mixBase;
-      mixBase = mixOut;
+
+      // Monta lista de inputs intercalados com gap
+      const concatInputs = [];
+      for (let i = 0; i < adjustedPaths.length; i++) {
+        concatInputs.push(adjustedPaths[i]);
+        if (i < adjustedPaths.length - 1) concatInputs.push(gapPath);
+      }
+      const inputFlags = concatInputs.map(p => `-i "${p}"`).join(' ');
+      const filterInputs = concatInputs.map((_, idx) => `[${idx}:a]`).join('');
+      const concatOut = path.join(ttsDir, 'dynamic_voice.wav');
+      const concatFilter = `${filterInputs}concat=n=${concatInputs.length}:v=0:a=1[out]`;
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y ${inputFlags} -filter_complex "${concatFilter}" -map "[out]" "${concatOut}"`, { timeout: 120000 }, (e,_,se) => e ? reject(new Error(se)) : resolve());
+      });
+      translatedVoice = concatOut;
+      trimEndTime = await getAudioDuration(concatOut);
+    } else {
+      // ── Modo Normal: sobrepõe cada clipe no timestamp original ──
+      const vidDur = await getAudioDuration(audioRaw);
+      const silencePath = path.join(ttsDir, 'silence.wav');
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${vidDur} "${silencePath}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
+      });
+
+      let mixBase = silencePath;
+      let prevMix = null;
+      for (let i = 0; i < segments.length; i++) {
+        const delay = Math.round(srtTimeToSecs(segments[i].start) * 1000); // ms
+        const mixOut = path.join(ttsDir, `mix_${i}.wav`);
+        await new Promise((resolve, reject) => {
+          const cmd = `"${FFMPEG}" -y -i "${mixBase}" -i "${adjustedPaths[i]}" -filter_complex "[1]adelay=${delay}|${delay}[a];[0][a]amix=inputs=2:duration=longest,volume=2" "${mixOut}"`;
+          exec(cmd, { timeout: 60000 }, (e,_,se) => e ? reject(new Error(se)) : resolve());
+        });
+        if (prevMix && prevMix !== silencePath) fs.unlink(prevMix, () => {});
+        prevMix = mixBase;
+        mixBase = mixOut;
+      }
+      translatedVoice = mixBase;
     }
-    const translatedVoice = mixBase;
 
     // 6. Mixar voz traduzida com fundo original
     // Fundo a 60% para dar espaço à voz e evitar estouro
