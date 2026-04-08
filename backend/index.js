@@ -1943,6 +1943,8 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
     return p[0]*3600 + p[1]*60 + p[2];
   }
 
+  let clonedVoiceId = null; // declarado fora do try para o catch conseguir deletar o clone em caso de erro
+
   try {
     // 1. Extrair áudio do vídeo
     const audioRaw = input + '_raw.wav';
@@ -1973,9 +1975,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
 
     // 3. Clonar voz (se solicitado) / definir voice_id efetivo
     let actualVoiceId = voice_id;
-    let clonedVoiceId = null;
     if (voice_id === '__clone__') {
-      trGenerateStatus && void 0; // só para IDE
       const cloneSrc = (vocalsPath && fs.existsSync(vocalsPath)) ? vocalsPath : audioRaw;
       clonedVoiceId = await elevenLabsCloneVoice(cloneSrc, elevenlabs_key);
       actualVoiceId = clonedVoiceId;
