@@ -2304,12 +2304,13 @@ function loadResizeFrame(file) {
       const resp = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
       if (!resp.ok) throw new Error('Chave inválida ou erro na API');
       const data = await resp.json();
-      trVoiceSelect.innerHTML = '<option value="">Selecione uma voz...</option>';
+      trVoiceSelect.innerHTML = '<option value="">Selecione uma voz...</option><option value="__clone__">🎤 Clonar voz do vídeo (temporário, não salva)</option><optgroup label="── Sua biblioteca ──"></optgroup>';
+      const group = trVoiceSelect.querySelector('optgroup');
       (data.voices || []).forEach(v => {
         const opt = document.createElement('option');
         opt.value = v.voice_id;
         opt.textContent = v.name + (v.labels?.accent ? ` (${v.labels.accent})` : '');
-        trVoiceSelect.appendChild(opt);
+        group.appendChild(opt);
       });
       trVoiceSelect.style.display = '';
     } catch (e) {

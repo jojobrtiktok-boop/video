@@ -1790,7 +1790,7 @@ app.post('/api/translate/analyze', upload.single('video'), async (req, res) => {
   // Guarda referência do arquivo original para o passo generate
   const tempId = Date.now().toString(36) + Math.random().toString(36).slice(2);
   const tempMeta = path.join(UPLOAD_DIR, tempId + '.meta.json');
-  fs.writeFileSync(tempMeta, JSON.stringify({ input, originalname: req.file.originalname }));
+  fs.writeFileSync(tempMeta, JSON.stringify({ input, originalname: req.file.originalname, toLang }));
   scheduleDelete(input, 60 * 60 * 1000);      // 1h para expirar
   scheduleDelete(tempMeta, 60 * 60 * 1000);
 
@@ -1888,6 +1888,42 @@ app.post('/api/translate/analyze', upload.single('video'), async (req, res) => {
   });
 });
 
+// ── Helpers ElevenLabs Voice Cloning ──────────────────────────────────────────
+async function elevenLabsCloneVoice(audioPath, elKey) {
+  const boundary = 'B' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const audioData = fs.readFileSync(audioPath);
+  const voiceName = 'TempClone_' + Date.now();
+  const nl = '\r\n';
+  const namePart  = Buffer.from(`--${boundary}${nl}Content-Disposition: form-data; name="name"${nl}${nl}${voiceName}${nl}`);
+  const fileHead  = Buffer.from(`--${boundary}${nl}Content-Disposition: form-data; name="files"; filename="vocals.mp3"${nl}Content-Type: audio/mpeg${nl}${nl}`);
+  const fileFoot  = Buffer.from(`${nl}--${boundary}--${nl}`);
+  const body  = Buffer.concat([namePart, fileHead, audioData, fileFoot]);
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: 'api.elevenlabs.io', port: 443,
+      path: '/v1/voices/add', method: 'POST',
+      headers: { 'xi-api-key': elKey, 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': body.length }
+    };
+    const r = https.request(opts, res2 => {
+      let out = '';
+      res2.on('data', c => out += c);
+      res2.on('end', () => {
+        try { const j = JSON.parse(out); j.voice_id ? resolve(j.voice_id) : reject(new Error('Clone falhou: ' + out)); }
+        catch { reject(new Error('Resposta inválida ElevenLabs clone: ' + out)); }
+      });
+    });
+    r.on('error', reject); r.write(body); r.end();
+  });
+}
+
+async function elevenLabsDeleteVoice(voiceId, elKey) {
+  return new Promise(resolve => {
+    const opts = { hostname: 'api.elevenlabs.io', port: 443, path: `/v1/voices/${voiceId}`, method: 'DELETE', headers: { 'xi-api-key': elKey } };
+    const r = https.request(opts, res2 => { res2.resume(); res2.on('end', resolve); });
+    r.on('error', () => resolve()); r.end();
+  });
+}
+
 // Paso 2: gera vídeo traduzido com os segmentos aprovados (editados pelo usuário)
 app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req, res) => {
   const { tempId, segments, elevenlabs_key, voice_id, with_lipsync } = req.body;
@@ -1899,6 +1935,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
 
   const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
   const input = meta.input;
+  const toLang = meta.toLang || '';
   if (!fs.existsSync(input)) return res.status(404).json({ error: 'Arquivo original expirado.' });
 
   function srtTimeToSecs(t) {
@@ -1924,15 +1961,27 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
     });
 
     let noVocalsPath = null;
+    let vocalsPath = null;
     for (const line of sepOut.split('\n')) {
       if (line.startsWith('no_vocals:')) noVocalsPath = line.slice(10).trim();
+      if (line.startsWith('vocals:')) vocalsPath = line.slice(7).trim();
     }
     if (!noVocalsPath || !fs.existsSync(noVocalsPath)) {
       // Fallback: sem separação, usa áudio original com volume reduzido
       noVocalsPath = null;
     }
 
-    // 3. Gerar TTS via ElevenLabs para cada segmento
+    // 3. Clonar voz (se solicitado) / definir voice_id efetivo
+    let actualVoiceId = voice_id;
+    let clonedVoiceId = null;
+    if (voice_id === '__clone__') {
+      trGenerateStatus && void 0; // só para IDE
+      const cloneSrc = (vocalsPath && fs.existsSync(vocalsPath)) ? vocalsPath : audioRaw;
+      clonedVoiceId = await elevenLabsCloneVoice(cloneSrc, elevenlabs_key);
+      actualVoiceId = clonedVoiceId;
+    }
+
+    // 4. Gerar TTS via ElevenLabs para cada segmento
     const ttsDir = input + '_tts';
     fs.mkdirSync(ttsDir, { recursive: true });
 
@@ -1943,7 +1992,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
       await new Promise((resolve, reject) => {
         const options = {
           hostname: 'api.elevenlabs.io', port: 443,
-          path: `/v1/text-to-speech/${voice_id}`,
+          path: `/v1/text-to-speech/${actualVoiceId}`,
           method: 'POST',
           headers: { 'xi-api-key': elevenlabs_key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg', 'Content-Length': data.length }
         };
@@ -1974,8 +2023,13 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
     const ttsTasks = segments.map((seg, i) => () => generateTTS(seg.translated || seg.original, i));
     const ttsPaths = await pLimit(ttsTasks, 3);
 
-    // 4. Ajustar duração de cada clipe TTS para caber no slot de tempo original
-    //    usando ffmpeg atempo (limitado a 0.5x–2.0x)
+    // Deletar clone temporário após gerar todos os áudios
+    if (clonedVoiceId) {
+      elevenLabsDeleteVoice(clonedVoiceId, elevenlabs_key).catch(() => {});
+      clonedVoiceId = null;
+    }
+
+    // 5. Ajustar duração de cada clipe TTS para caber no slot de tempo original
     const ttsAdjDir = input + '_tts_adj';
     fs.mkdirSync(ttsAdjDir, { recursive: true });
 
@@ -2068,6 +2122,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
     return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id, friendlyName: fn });
 
   } catch (e) {
+    if (clonedVoiceId) elevenLabsDeleteVoice(clonedVoiceId, elevenlabs_key).catch(() => {});
     return res.status(500).json({ error: e.message });
   }
 });
