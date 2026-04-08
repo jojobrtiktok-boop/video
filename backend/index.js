@@ -2030,7 +2030,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
       const delay = Math.round(srtTimeToSecs(segments[i].start) * 1000); // ms
       const mixOut = path.join(ttsDir, `mix_${i}.wav`);
       await new Promise((resolve, reject) => {
-        const cmd = `"${FFMPEG}" -y -i "${mixBase}" -i "${adjustedPaths[i]}" -filter_complex "[1]adelay=${delay}|${delay}[a];[0][a]amix=inputs=2:normalize=0" "${mixOut}"`;
+        const cmd = `"${FFMPEG}" -y -i "${mixBase}" -i "${adjustedPaths[i]}" -filter_complex "[1]adelay=${delay}|${delay}[a];[0][a]amix=inputs=2:duration=longest,volume=2" "${mixOut}"`;
         exec(cmd, { timeout: 60000 }, (e,_,se) => e ? reject(new Error(se)) : resolve());
       });
       mixBase = mixOut;
@@ -2041,7 +2041,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
     const finalAudio = input + '_final_audio.wav';
     if (noVocalsPath) {
       await new Promise((resolve, reject) => {
-        const cmd = `"${FFMPEG}" -y -i "${noVocalsPath}" -i "${translatedVoice}" -filter_complex "[0][1]amix=inputs=2:normalize=0" "${finalAudio}"`;
+        const cmd = `"${FFMPEG}" -y -i "${noVocalsPath}" -i "${translatedVoice}" -filter_complex "[0][1]amix=inputs=2:duration=longest,volume=2" "${finalAudio}"`;
         exec(cmd, (e,_,se) => e ? reject(new Error(se)) : resolve());
       });
     } else {
