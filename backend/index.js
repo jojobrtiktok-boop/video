@@ -647,50 +647,51 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
 
   const python = PYTHON;
   const script = path.join(__dirname, 'transcribe.py');
-  const transcribeCmd = `"${python}" "${script}" "${input}" "${model}" "${lang}"`;
+  // Usa modo word_timestamps (arg "1") para timing exato por palavra
+  const transcribeCmd = `"${python}" "${script}" "${input}" "${model}" "${lang}" "1"`;
 
   exec(transcribeCmd, { maxBuffer: 10 * 1024 * 1024, timeout: 10 * 60 * 1000 }, (err, stdout, stderr) => {
     if (err) {
       fs.unlink(input, () => {});
       return res.status(500).json({ error: 'Transcricao falhou: ' + (stderr || err.message) });
     }
-    const srtContent = stdout.trim();
-    if (!srtContent) {
+    const raw = stdout.trim();
+    if (!raw) {
       fs.unlink(input, () => {});
       return res.status(500).json({ error: 'Nenhuma fala detectada no video.' });
     }
 
-    // Parse SRT into segments
+    // Parse JSON com word timestamps
+    let wordData = [];
+    try { wordData = JSON.parse(raw); } catch (_) {}
+
+    // Flatten: lista global de todas as palavras com start/end exatos
+    const allWords = [];
+    for (const seg of wordData) {
+      for (const w of (seg.words || [])) {
+        if (w.word && w.word.trim()) {
+          allWords.push({
+            word:  uppercase ? w.word.trim().toUpperCase() : w.word.trim(),
+            start: Math.max(0, w.start + syncOffset),
+            end:   Math.max(0, w.end   + syncOffset),
+          });
+        }
+      }
+    }
+
+    // Fallback: se não veio word data, usa os segmentos inteiros
     const segments = [];
-    const blocks = srtContent.split(/\n\n+/);
-    for (const block of blocks) {
-      const lines = block.trim().split('\n');
-      if (lines.length < 3) continue;
-      const timeLine = lines[1];
-      const match = timeLine.match(/(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}[,\.]\d{3})/);
-      if (!match) continue;
-      const text = lines.slice(2).join(' ').trim();
-      if (!text) continue;
-      segments.push({ start: match[1].replace(',', '.'), end: match[2].replace(',', '.'), text });
+    if (!allWords.length) {
+      for (const seg of wordData) {
+        const s0 = Math.max(0, seg.start + syncOffset);
+        const e0 = Math.max(s0 + 0.05, seg.end + syncOffset);
+        segments.push({ start: secsToAssTime(s0), end: secsToAssTime(e0), text: uppercase ? String(seg.text).toUpperCase() : String(seg.text) });
+      }
+      if (!segments.length) {
+        fs.unlink(input, () => {});
+        return res.status(500).json({ error: 'Nenhuma fala detectada.' });
+      }
     }
-
-    if (!segments.length) {
-      fs.unlink(input, () => {});
-      return res.status(500).json({ error: 'Nenhuma fala detectada.' });
-    }
-
-    // Apply sync offset to all segment timestamps
-    if (syncOffset !== 0) {
-      segments.forEach(seg => {
-        const s0 = Math.max(0, timeStrToSecs(seg.start) + syncOffset);
-        const e0 = Math.max(s0 + 0.05, timeStrToSecs(seg.end) + syncOffset);
-        seg.start = secsToAssTime(s0);
-        seg.end   = secsToAssTime(e0);
-      });
-    }
-
-    // Apply uppercase transformation
-    if (uppercase) segments.forEach(seg => { seg.text = String(seg.text).toUpperCase(); });
 
     // Forward to /api/subtitle logic inline
     const STYLES = {
@@ -722,83 +723,54 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
     }
     function toAssTime(t) { return secsToAssTime(timeStrToSecs(t)); }
 
-    // Karaoke mode: pair words 2-at-a-time with \k timing tags
-    if (preset === 'karaoke') {
-      const styleStr = STYLES.karaoke;
-      const posTag = (posX !== null && posY !== null) ? `{\\pos(${posX},${posY})}` : '';
-      const karaokeDialogues = [];
-      segments.forEach(sub => {
-        const words = String(sub.text).trim().split(/\s+/).filter(Boolean);
-        if (!words.length) return;
-        const startS = timeStrToSecs(sub.start);
-        const endS   = timeStrToSecs(sub.end);
-        const dur    = Math.max(0.1, endS - startS);
-        const perW   = dur / words.length;
-        for (let i = 0; i < words.length; i += 2) {
-          const w1 = words[i];
-          const w2 = words[i + 1];
-          const pairStart = startS + i * perW;
-          const pairEnd   = startS + (Math.min(i + 2, words.length)) * perW;
-          const cs1 = Math.round(perW * 100);
-          const cs2 = w2 ? Math.round(perW * 100) : 0;
-          let text;
-          if (w2) {
-            text = `{\\k${cs1}}${w1} {\\c&H00FFFFFF&\\k${cs2}}${w2}`;
-          } else {
-            text = `{\\k${cs1}}${w1}`;
-          }
-          karaokeDialogues.push(`Dialogue: 0,${secsToAssTime(pairStart)},${secsToAssTime(pairEnd)},Default,,0,0,0,,${posTag}${text}`);
+    // ── Karaoke: usa timestamps exatos por palavra com \k tags ──
+    // Funciona para preset===karaoke OU wordByWord em qualquer preset
+    // No karaoke: mostra 2 palavras por linha, a ativa fica amarela
+    // No wordByWord capcut-style: cada palavra aparece sozinha com destaque em amarelo
+
+    function buildKaraokeASS(wordsArr, style, posTag) {
+      // Agrupa palavras em pares para o modo karaoke (2 por linha)
+      const dialogues = [];
+      for (let i = 0; i < wordsArr.length; i += 2) {
+        const w1 = wordsArr[i];
+        const w2 = wordsArr[i + 1];
+        const lineStart = w1.start;
+        const lineEnd   = w2 ? w2.end : w1.end;
+        const cs1 = Math.max(1, Math.round((w1.end - w1.start) * 100));
+        const cs2 = w2 ? Math.max(1, Math.round((w2.end - w2.start) * 100)) : 0;
+        // \k<cs> → palavra fica na cor Secondary até ser "cantada", depois vai para Primary
+        // Primary = amarelo (ativo), Secondary = branco (aguardando)
+        let text;
+        if (w2) {
+          text = `{\\k${cs1}}${w1.word.replace(/,/g,'{\\,}')} {\\c&H00FFFFFF&\\k${cs2}}${w2.word.replace(/,/g,'{\\,}')}`;
+        } else {
+          text = `{\\k${cs1}}${w1.word.replace(/,/g,'{\\,}')}`;
         }
-      });
-      const assContent = [
-        '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1920', 'PlayResY: 1080', 'ScaledBorderAndShadow: yes', '',
-        '[V4+ Styles]',
-        'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-        styleStr, '', '[Events]',
-        'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-        karaokeDialogues.join('\n'), ''
-      ].join('\n');
-      const assPath2  = input + '.ass';
-      const outputName2 = 'autosub-' + path.basename(input);
-      const output2   = path.join(UPLOAD_DIR, outputName2);
-      fs.writeFileSync(assPath2, assContent, 'utf8');
-      const assEsc2 = assPath2.replace(/\\/g, '/').replace(':', '\\:');
-      const ffmpegProc2 = spawn(FFMPEG, ['-y', '-i', input, '-vf', `ass='${assEsc2}'`, '-c:a', 'copy', output2]);
-      let burnStderr2 = '';
-      ffmpegProc2.stderr.on('data', d => { burnStderr2 += d.toString(); });
-      ffmpegProc2.on('close', code => {
-        fs.unlink(input, () => {});
-        fs.unlink(assPath2, () => {});
-        if (code !== 0) return res.status(500).json({ error: 'ffmpeg falhou: ' + burnStderr2.slice(-500) });
-        scheduleDelete(output2, 30 * 60 * 1000);
-        return res.json({ url: `/uploads/${path.basename(output2)}`, friendlyName: friendlyFilename(req.file.originalname, 'com legenda auto') });
-      });
-      ffmpegProc2.on('error', err2 => {
-        fs.unlink(input, () => {});
-        fs.unlink(assPath2, () => {});
-        res.status(500).json({ error: 'ffmpeg não encontrado: ' + err2.message });
-      });
-      return; // Early return — karaoke handled above
+        dialogues.push(`Dialogue: 0,${secsToAssTime(lineStart)},${secsToAssTime(lineEnd)},Default,,0,0,0,,${posTag}${text}`);
+      }
+      return dialogues;
     }
 
-    let finalSubs = segments;
-    if (wordByWord) {
-      finalSubs = [];
-      segments.forEach(sub => {
-        const words = String(sub.text).trim().split(/\s+/).filter(Boolean);
-        if (!words.length) return;
-        const startS = timeStrToSecs(sub.start);
-        const endS   = timeStrToSecs(sub.end);
-        const dur    = Math.max(0.1, endS - startS);
-        const perW   = dur / words.length;
-        words.forEach((word, i) => {
-          finalSubs.push({
-            start: secsToAssTime(startS + i * perW),
-            end:   secsToAssTime(startS + (i + 1) * perW),
-            text:  word
-          });
-        });
+    function buildWordByWordASS(wordsArr, style, posTag, animPrefix) {
+      // Cada palavra como linha separada com seu timing exato
+      return wordsArr.map(w => {
+        const text = w.word.replace(/,/g, '{\\,}');
+        return `Dialogue: 0,${secsToAssTime(w.start)},${secsToAssTime(w.end)},Default,,0,0,0,,${posTag}${animPrefix}${text}`;
       });
+    }
+
+    // Helper: agrupa palavras em blocos de N palavras mantendo timing coerente
+    function groupWords(wordsArr, groupSize) {
+      const groups = [];
+      for (let i = 0; i < wordsArr.length; i += groupSize) {
+        const chunk = wordsArr.slice(i, i + groupSize);
+        groups.push({
+          start: secsToAssTime(chunk[0].start),
+          end:   secsToAssTime(chunk[chunk.length - 1].end),
+          text:  chunk.map(w => w.word).join(' ')
+        });
+      }
+      return groups;
     }
 
     const styleStr = STYLES[preset] || STYLES.classico;
@@ -813,27 +785,40 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
       animPrefix = `{\\move(${ax},${ay + 60},${ax},${ay})}`;
     }
 
-    function typewriterText(text, durationSecs) {
-      const chars = String(text).split('');
-      const centisecs = Math.round(durationSecs * 100);
-      const perChar = Math.max(1, Math.round(centisecs / chars.length));
-      return chars.map(c => `{\\k${perChar}}${c === ',' ? '{\\,}' : c}`).join('');
-    }
+    let dialogues;
 
-    const dialogues = finalSubs.map(sub => {
-      const startS = timeStrToSecs(sub.start);
-      const endS   = timeStrToSecs(sub.end);
-      const text = animation === 'typewriter'
-        ? typewriterText(sub.text, endS - startS)
-        : String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}');
-      return `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${text}`;
-    }).join('\n');
+    if (preset === 'karaoke' && allWords.length) {
+      // Karaoke com timing exato – 2 palavras por tela, destaque amarelo sincronizado
+      dialogues = buildKaraokeASS(allWords, STYLES.karaoke, posTag).join('\n');
+    } else if (wordByWord && allWords.length) {
+      // Palavra por palavra com timing exato (CapCut style)
+      dialogues = buildWordByWordASS(allWords, styleStr, posTag, animPrefix).join('\n');
+    } else {
+      // Modo padrão: segmentos inteiros
+      let finalSubs = segments.length ? segments : groupWords(allWords, 6);
+
+      function typewriterText(text, durationSecs) {
+        const chars = String(text).split('');
+        const centisecs = Math.round(durationSecs * 100);
+        const perChar = Math.max(1, Math.round(centisecs / chars.length));
+        return chars.map(c => `{\\k${perChar}}${c === ',' ? '{\\,}' : c}`).join('');
+      }
+
+      dialogues = finalSubs.map(sub => {
+        const startS = timeStrToSecs(sub.start);
+        const endS   = timeStrToSecs(sub.end);
+        const text = animation === 'typewriter'
+          ? typewriterText(sub.text, endS - startS)
+          : String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}');
+        return `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${text}`;
+      }).join('\n');
+    }
 
     const assContent = [
       '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1920', 'PlayResY: 1080', 'ScaledBorderAndShadow: yes', '',
       '[V4+ Styles]',
       'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-      styleStr, '', '[Events]',
+      (preset === 'karaoke' ? STYLES.karaoke : styleStr), '', '[Events]',
       'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
       dialogues, ''
     ].join('\n');
