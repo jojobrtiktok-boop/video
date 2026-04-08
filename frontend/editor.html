@@ -301,6 +301,19 @@
     }
     .download-btn:hover { opacity: .85; }
 
+    /* ── AUTO TRADUTOR STEPPER ── */
+    .atr-stepper { display:flex;align-items:center;margin-bottom:22px;padding:0 2px; }
+    .atr-step { display:flex;flex-direction:column;align-items:center;gap:5px;min-width:58px; }
+    .atr-step-dot { width:28px;height:28px;border-radius:50%;background:var(--surface);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--text-muted);transition:all .2s; }
+    .atr-step.atr-s-active .atr-step-dot { background:var(--accent);border-color:var(--accent);color:#fff; }
+    .atr-step.atr-s-done .atr-step-dot { background:#22c55e;border-color:#22c55e;color:#fff; }
+    .atr-step-lbl { font-size:10px;color:var(--text-muted);text-align:center;line-height:1.2;white-space:nowrap; }
+    .atr-step.atr-s-active .atr-step-lbl { color:var(--text);font-weight:600; }
+    .atr-step-line { flex:1;height:2px;background:var(--border);margin:0 4px;margin-bottom:14px;transition:background .2s; }
+    .atr-step-line.atr-line-done { background:#22c55e; }
+    .atr-approve-row { display:flex;gap:10px;margin-top:12px; }
+    .atr-approve-row .submit-btn { flex:1; }
+
     /* ── ERROR ── */
     .error-msg {
       display: none; margin-top: 14px; padding: 11px 16px;
@@ -867,6 +880,10 @@
           <button class="nav-item" data-tool="translate">
             <span class="nav-item-title">Traduzir Vídeo</span>
             <span class="nav-item-desc">Voz + fundo preservado</span>
+          </button>
+          <button class="nav-item" data-tool="autotr">
+            <span class="nav-item-title" style="color:var(--accent)">🤖 Auto Tradutor</span>
+            <span class="nav-item-desc">Tradução → Marca d'Água → Legendas</span>
           </button>
           <a href="/editor/" class="nav-item" style="text-decoration:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;">
             <span class="nav-item-title" style="color:var(--accent);display:flex;align-items:center;gap:5px;">
@@ -1483,6 +1500,21 @@
             <input type="checkbox" id="tr-trim-video" style="width:16px;height:16px;accent-color:var(--accent)">
             <span>✂️ Cortar vídeo na duração da tradução <span style="font-size:11px;color:var(--text-muted)">(mais natural — remove silêncio do final)</span></span>
           </label>
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🔊 Modo de montagem do áudio</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <label id="tr-mode-normal-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:2px solid var(--accent);border-radius:8px;cursor:pointer;background:color-mix(in srgb,var(--accent) 10%,transparent)">
+                <input type="radio" name="tr-audio-mode" value="normal" checked style="display:none">
+                <span style="font-size:13px;font-weight:600">🎛️ Normal</span>
+                <span style="font-size:11px;color:var(--text-muted)">Mantém os timestamps originais. Pausas preservadas.</span>
+              </label>
+              <label id="tr-mode-dynamic-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+                <input type="radio" name="tr-audio-mode" value="dynamic" style="display:none">
+                <span style="font-size:13px;font-weight:600">⚡ Dinâmico</span>
+                <span style="font-size:11px;color:var(--text-muted)">Segmentos um após o outro, sem pausas — corte dinâmico.</span>
+              </label>
+            </div>
+          </div>
           <div style="display:flex;align-items:center;gap:10px">
             <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">🎚️ Velocidade máx da fala</label>
             <input type="range" id="tr-max-tempo" min="1.0" max="2.5" step="0.1" value="1.8" style="flex:1">
@@ -1501,6 +1533,253 @@
         <video id="tr-result-video" class="result-video" controls></video><br/>
         <a id="tr-download-btn" class="download-btn" download>⬇ Baixar vídeo traduzido</a>
         <button id="tr-new-btn" class="submit-btn" style="margin-top:10px;background:none;border:1px solid var(--border);color:var(--text)">🔄 Traduzir novo vídeo</button>
+      </div>
+    </div>
+
+    <!-- AUTO TRADUTOR PIPELINE -->
+    <div id="tool-autotr" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🤖 Auto Tradutor</h1>
+        <p class="tool-subtitle">Pipeline automático: Tradução → Remoção de Marca d'Água → Legendas</p>
+      </div>
+
+      <!-- Stepper -->
+      <div class="atr-stepper">
+        <div class="atr-step atr-s-active" id="atr-s1"><span class="atr-step-dot">1</span><span class="atr-step-lbl">Tradução</span></div>
+        <div class="atr-step-line" id="atr-line1"></div>
+        <div class="atr-step" id="atr-s2"><span class="atr-step-dot">2</span><span class="atr-step-lbl">Marca d'Água</span></div>
+        <div class="atr-step-line" id="atr-line2"></div>
+        <div class="atr-step" id="atr-s3"><span class="atr-step-dot">3</span><span class="atr-step-lbl">Legendas</span></div>
+        <div class="atr-step-line" id="atr-line3"></div>
+        <div class="atr-step" id="atr-s4"><span class="atr-step-dot">✓</span><span class="atr-step-lbl">Pronto</span></div>
+      </div>
+
+      <!-- ═══ FASE 1a: Configurar ═══ -->
+      <div id="atr-phase-config">
+        <div class="card">
+          <div class="section-label">📹 Vídeo</div>
+          <label for="atr-video-input" id="atr-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
+            <p><strong>Selecione o vídeo</strong></p>
+            <div id="atr-file-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="atr-video-input" accept="video/*" class="hidden-input" />
+        </div>
+
+        <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div class="section-label">🌍 Idioma de origem</div>
+            <select id="atr-from-lang" class="tool-select" style="width:100%">
+              <option value="auto">🔍 Auto-detectar</option>
+              <option value="pt">Português</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="es-419">Espanhol Latam</option>
+              <option value="fr">Francês</option>
+              <option value="de">Alemão</option>
+              <option value="it">Italiano</option>
+              <option value="ja">Japonês</option>
+              <option value="zh">Chinês</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label">🎯 Traduzir para</div>
+            <select id="atr-to-lang" class="tool-select" style="width:100%">
+              <option value="en">Inglês</option>
+              <option value="pt">Português</option>
+              <option value="es">Espanhol</option>
+              <option value="es-419">Espanhol Latam</option>
+              <option value="fr">Francês</option>
+              <option value="de">Alemão</option>
+              <option value="it">Italiano</option>
+              <option value="ja">Japonês</option>
+              <option value="zh">Chinês</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">✏️ Personalização <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(opcional)</span></div>
+          <textarea id="atr-custom-instructions" class="tool-input" rows="2" placeholder="Ex: use linguagem informal; converta preços para pesos mexicanos..." style="width:100%;resize:vertical;font-family:inherit;line-height:1.5"></textarea>
+        </div>
+
+        <div class="card">
+          <div class="section-label">🤖 API Tradução (Anthropic ou OpenRouter)</div>
+          <div style="display:flex;gap:8px">
+            <input id="atr-api-key" type="password" class="tool-input" placeholder="sk-ant-... ou sk-or-..." style="flex:1" />
+            <button id="atr-api-save-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">💾 Salvar</button>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+            <label style="font-size:12px;color:var(--text-muted)">Modelo:</label>
+            <select id="atr-api-model" class="tool-select" style="flex:1">
+              <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+              <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+              <option value="openai/gpt-4o-mini" selected>GPT-4o Mini (OpenRouter)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">🎙 Voz ElevenLabs</div>
+          <div style="display:flex;gap:8px">
+            <input id="atr-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+            <button id="atr-el-save-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:13px">💾</button>
+            <button id="atr-load-voices-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">Carregar vozes</button>
+          </div>
+          <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">Salvo só no seu navegador</div>
+          <select id="atr-voice-select" class="tool-select" style="width:100%;margin-top:8px;display:none">
+            <option value="">Selecione uma voz...</option>
+          </select>
+          <div id="atr-voices-error" class="error-msg"></div>
+        </div>
+
+        <div class="card" style="padding:14px">
+          <div class="section-label" style="margin-bottom:10px">⚙️ Opções avançadas</div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:10px">
+            <input type="checkbox" id="atr-trim-video" style="width:16px;height:16px;accent-color:var(--accent)">
+            <span>✂️ Cortar vídeo na duração da tradução</span>
+          </label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <label style="font-size:12px;color:var(--text-muted);white-space:nowrap">🎚️ Velocidade máx</label>
+            <input type="range" id="atr-max-tempo" min="1.0" max="2.5" step="0.1" value="1.8" style="flex:1">
+            <span id="atr-max-tempo-val" style="font-size:13px;font-weight:600;min-width:30px">1.8×</span>
+          </div>
+        </div>
+
+        <button id="atr-analyze-btn" class="submit-btn" disabled>Selecione um vídeo</button>
+        <div id="atr-analyze-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="atr-analyze-status" class="status-text"></div>
+        <div id="atr-analyze-error" class="error-msg"></div>
+      </div>
+
+      <!-- ═══ FASE 1b: Revisão de segmentos ═══ -->
+      <div id="atr-phase-segments" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-label" style="margin:0">📝 Revise a tradução</div>
+            <button id="atr-back-btn" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">← Voltar</button>
+          </div>
+          <div id="atr-segments-container" style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+        <button id="atr-generate-btn" class="submit-btn" disabled>Configure a voz para gerar</button>
+        <div id="atr-generate-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="atr-generate-status" class="status-text"></div>
+        <div id="atr-generate-error" class="error-msg"></div>
+      </div>
+
+      <!-- ═══ FASE 2: Marca d'Água ═══ -->
+      <div id="atr-phase-watermark" style="display:none">
+        <div class="card">
+          <p class="canvas-hint"><strong>Arraste</strong> para marcar a área da marca d'água &nbsp;·&nbsp; <strong>Mova</strong> para reposicionar &nbsp;·&nbsp; <strong>Handles</strong> para redimensionar</p>
+          <div id="atr-wm-canvas-wrap"><canvas id="atr-wm-canvas"></canvas></div>
+          <div class="video-controls">
+            <button id="atr-wm-play" class="vc-play" title="Play / Pause">⏸</button>
+            <span id="atr-wm-time" class="vc-time">0:00 / 0:00</span>
+            <input type="range" id="atr-wm-seek" class="vc-seek" min="0" max="1000" step="1" value="0">
+          </div>
+          <div id="atr-wm-region-info" style="font-size:12px;color:var(--text-muted);margin-top:6px">Nenhuma região selecionada — arraste para marcar</div>
+        </div>
+        <div class="card">
+          <div class="section-label">Modo de remoção</div>
+          <div class="mode-toggle">
+            <button class="mode-btn active" data-atr-mode="blur">🌫️ Blur</button>
+            <button class="mode-btn" data-atr-mode="simple">⚡ Remoção Simples</button>
+            <button class="mode-btn" data-atr-mode="delogo">✨ Remoção Limpa</button>
+            <button class="mode-btn" data-atr-mode="sora">🎵 Sora / TikTok</button>
+            <button class="mode-btn" data-atr-mode="heygen">🤖 HeyGen</button>
+          </div>
+          <div id="atr-mode-desc" class="mode-desc">Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.</div>
+        </div>
+        <button id="atr-wm-process-btn" class="submit-btn">▶ Remover Marca d'Água</button>
+        <div id="atr-wm-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="atr-wm-status" class="status-text"></div>
+        <div id="atr-wm-error" class="error-msg"></div>
+        <div id="atr-wm-result" class="result-card" style="display:none">
+          <h3>✓ Marca d'água removida!</h3>
+          <video id="atr-wm-result-video" class="result-video" controls></video>
+          <div class="atr-approve-row">
+            <button id="atr-wm-regerar-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text)">🔄 Regerar</button>
+            <button id="atr-wm-aprovar-btn" class="submit-btn">✅ Aprovar → Legendas</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ FASE 3: Legendas ═══ -->
+      <div id="atr-phase-subtitle" style="display:none">
+        <div class="card">
+          <div class="section-label">Vídeo atual</div>
+          <video id="atr-sub-source" controls style="width:100%;border-radius:8px;background:#000;max-height:260px"></video>
+        </div>
+        <div class="card">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <div class="section-label">Idioma do vídeo</div>
+              <select id="atr-sub-lang" class="tool-select" style="width:100%">
+                <option value="pt">Português</option>
+                <option value="en" selected>Inglês</option>
+                <option value="es">Espanhol</option>
+                <option value="auto">Auto-detectar</option>
+              </select>
+            </div>
+            <div>
+              <div class="section-label">Modelo Whisper</div>
+              <select id="atr-sub-model" class="tool-select" style="width:100%">
+                <option value="base">Base (rápido)</option>
+                <option value="small" selected>Small (balanceado)</option>
+                <option value="medium">Medium (preciso)</option>
+                <option value="large-v3">Large-v3 (melhor)</option>
+              </select>
+            </div>
+            <div>
+              <div class="section-label">Estilo</div>
+              <select id="atr-sub-preset" class="tool-select" style="width:100%">
+                <option value="default">Padrão</option>
+                <option value="tiktok" selected>TikTok Bold</option>
+                <option value="minimal">Minimal</option>
+                <option value="shadow">Shadow</option>
+                <option value="neon">Neon</option>
+              </select>
+            </div>
+            <div>
+              <div class="section-label">Posição</div>
+              <select id="atr-sub-pos" class="tool-select" style="width:100%">
+                <option value="bottom" selected>Baixo</option>
+                <option value="center">Centro</option>
+                <option value="top">Cima</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:20px;margin-top:10px">
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="atr-sub-wbw" style="accent-color:var(--accent)" checked> Palavra a palavra
+            </label>
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="atr-sub-upper" style="accent-color:var(--accent)"> MAIÚSCULAS
+            </label>
+          </div>
+        </div>
+        <button id="atr-sub-process-btn" class="submit-btn">🤖 Gerar AutoCaption</button>
+        <div id="atr-sub-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="atr-sub-status" class="status-text"></div>
+        <div id="atr-sub-error" class="error-msg"></div>
+        <div id="atr-sub-result" class="result-card" style="display:none">
+          <h3>✓ Legendas adicionadas!</h3>
+          <video id="atr-sub-result-video" class="result-video" controls></video>
+          <div class="atr-approve-row">
+            <button id="atr-sub-regerar-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text)">🔄 Regerar</button>
+            <button id="atr-sub-aprovar-btn" class="submit-btn">✅ Finalizar →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ FASE 4: Pronto ═══ -->
+      <div id="atr-phase-done" style="display:none">
+        <div class="result-card" style="display:block;text-align:center">
+          <h3 style="font-size:1.2rem;margin-bottom:16px">🎉 Vídeo pronto!</h3>
+          <video id="atr-final-video" class="result-video" controls></video><br/>
+          <a id="atr-download-btn" class="download-btn" download>⬇ Baixar vídeo final</a>
+          <button id="atr-restart-btn" class="submit-btn" style="margin-top:12px;background:none;border:1px solid var(--border);color:var(--text);display:block;width:100%">🔁 Novo pipeline</button>
+        </div>
       </div>
     </div>
 

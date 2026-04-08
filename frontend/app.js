@@ -110,6 +110,7 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
+  translate: 'video', lipsync: 'video', autotr: 'video',
   rembg: 'imagem',
   imagegen: 'ia', videogen: 'ia',
   'video-library': null
@@ -2186,6 +2187,16 @@ function loadResizeFrame(file) {
     trMaxTempo.addEventListener('input', () => { trMaxTempoVal.textContent = parseFloat(trMaxTempo.value).toFixed(1) + '×'; });
   }
 
+  // ── Radio mode toggle visual ──
+  document.querySelectorAll('input[name="tr-audio-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.getElementById('tr-mode-normal-lbl').style.border  = radio.value === 'normal'  ? '2px solid var(--accent)' : '1px solid var(--border)';
+      document.getElementById('tr-mode-normal-lbl').style.background  = radio.value === 'normal'  ? 'color-mix(in srgb,var(--accent) 10%,transparent)' : '';
+      document.getElementById('tr-mode-dynamic-lbl').style.border = radio.value === 'dynamic' ? '2px solid var(--accent)' : '1px solid var(--border)';
+      document.getElementById('tr-mode-dynamic-lbl').style.background = radio.value === 'dynamic' ? 'color-mix(in srgb,var(--accent) 10%,transparent)' : '';
+    });
+  });
+
   // ── Restore saved keys ──
   const savedApiKey = localStorage.getItem('tr_api_key');
   const savedElKey  = localStorage.getItem('tr_el_key');
@@ -2403,6 +2414,7 @@ function loadResizeFrame(file) {
           voice_id: trVoiceSelect.value,
           trim_to_audio: trTrimVideo && trTrimVideo.checked,
           max_tempo: trMaxTempo ? parseFloat(trMaxTempo.value) : 1.8,
+          dynamic_mode: (document.querySelector('input[name="tr-audio-mode"]:checked')?.value === 'dynamic'),
         })
       });
       const json = await resp.json();
@@ -2445,6 +2457,647 @@ function loadResizeFrame(file) {
       document.getElementById('tr-analyze-error').style.display = 'none';
     });
   }
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// AUTO TRADUTOR PIPELINE
+// ════════════════════════════════════════════════════════════════════
+;(function() {
+  const atrPhaseConfig   = document.getElementById('atr-phase-config');
+  const atrPhaseSegments = document.getElementById('atr-phase-segments');
+  const atrPhaseWm       = document.getElementById('atr-phase-watermark');
+  const atrPhaseSub      = document.getElementById('atr-phase-subtitle');
+  const atrPhaseDone     = document.getElementById('atr-phase-done');
+  if (!atrPhaseConfig) return;
+
+  // ── State ──
+  let atrFile = null, atrTempId = null, atrSegments = [];
+  let atrTranslatedUrl = null, atrWmUrl = null, atrFinalUrl = null;
+  let atrWmVideoEl = null, atrWmPreviewW = 0, atrWmPreviewH = 0;
+  let atrWmVideoW = 0, atrWmVideoH = 0;
+  let atrWmSelRect = null, atrWmDragMode = null, atrWmActiveHandle = null;
+  let atrWmDragStart = null, atrWmDragOrigRect = null;
+  let atrWmAnimFrame = null, atrWmIsPaused = false, atrWmIsSeeking = false;
+  let atrWmMode = 'blur';
+  const ATR_HANDLE_SIZE = 10, ATR_HANDLE_HALF = 5;
+  const ATR_AUTO_MODES = new Set(['sora', 'heygen']);
+
+  // ── Stepper ──
+  function atrSetStep(n) {
+    for (let i = 1; i <= 4; i++) {
+      const s = document.getElementById('atr-s' + i);
+      if (!s) continue;
+      s.classList.remove('atr-s-active', 'atr-s-done');
+      if (i < n) s.classList.add('atr-s-done');
+      else if (i === n) s.classList.add('atr-s-active');
+    }
+    for (let i = 1; i <= 3; i++) {
+      const l = document.getElementById('atr-line' + i);
+      if (l) l.classList.toggle('atr-line-done', i < n);
+    }
+  }
+
+  // ── Phase visibility ──
+  function atrShowPhase(phase) {
+    [atrPhaseConfig, atrPhaseSegments, atrPhaseWm, atrPhaseSub, atrPhaseDone].forEach(p => { p.style.display = 'none'; });
+    phase.style.display = '';
+    phase.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ── Element refs ──
+  const atrApiKey      = document.getElementById('atr-api-key');
+  const atrApiSaveBtn  = document.getElementById('atr-api-save-btn');
+  const atrApiModel    = document.getElementById('atr-api-model');
+  const atrElKey       = document.getElementById('atr-el-key');
+  const atrElSaveBtn   = document.getElementById('atr-el-save-btn');
+  const atrLoadVBtn    = document.getElementById('atr-load-voices-btn');
+  const atrVoiceSel    = document.getElementById('atr-voice-select');
+  const atrVoicesErr   = document.getElementById('atr-voices-error');
+  const atrAnalyzeBtn  = document.getElementById('atr-analyze-btn');
+  const atrAnalyzeProg = document.getElementById('atr-analyze-progress');
+  const atrAnalyzeStat = document.getElementById('atr-analyze-status');
+  const atrAnalyzeErr  = document.getElementById('atr-analyze-error');
+  const atrMaxTempo    = document.getElementById('atr-max-tempo');
+  const atrMaxTempoVal = document.getElementById('atr-max-tempo-val');
+
+  // Pre-fill saved keys (shared with translate tool)
+  const _savedApiKey = localStorage.getItem('tr_api_key');
+  const _savedElKey  = localStorage.getItem('tr_el_key');
+  if (_savedApiKey && atrApiKey) { atrApiKey.value = _savedApiKey; if (atrApiSaveBtn) atrApiSaveBtn.textContent = '✅ Salvo'; }
+  if (_savedElKey  && atrElKey)  { atrElKey.value  = _savedElKey;  if (atrElSaveBtn)  atrElSaveBtn.textContent  = '✅'; }
+
+  function makeSaveBtnAtr(btn, input, key) {
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const v = input.value.trim();
+      if (v) {
+        localStorage.setItem(key, v);
+        btn.textContent = btn.textContent.includes('Salvar') ? '✅ Salvo' : '✅';
+        setTimeout(() => { btn.textContent = btn.textContent.includes('Salvo') ? '💾 Salvar' : '💾'; }, 2000);
+      } else { localStorage.removeItem(key); }
+    });
+    input.addEventListener('input', () => { if (btn.textContent.includes('✅')) btn.textContent = btn.textContent.includes('Salvo') ? '💾 Salvar' : '💾'; });
+  }
+  makeSaveBtnAtr(atrApiSaveBtn, atrApiKey, 'tr_api_key');
+  makeSaveBtnAtr(atrElSaveBtn,  atrElKey,  'tr_el_key');
+
+  if (atrMaxTempo && atrMaxTempoVal) {
+    atrMaxTempo.addEventListener('input', () => { atrMaxTempoVal.textContent = parseFloat(atrMaxTempo.value).toFixed(1) + '×'; });
+  }
+
+  // ── File drop ──
+  const atrDropZone   = document.getElementById('atr-drop-zone');
+  const atrVideoInput = document.getElementById('atr-video-input');
+  const atrFileName   = document.getElementById('atr-file-name');
+  if (atrDropZone) {
+    atrDropZone.addEventListener('click', () => atrVideoInput.click());
+    atrDropZone.addEventListener('dragover', e => e.preventDefault());
+    atrDropZone.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('video/')) atrSetFile(f); });
+  }
+  if (atrVideoInput) atrVideoInput.addEventListener('change', () => { if (atrVideoInput.files[0]) atrSetFile(atrVideoInput.files[0]); });
+
+  function atrSetFile(f) {
+    atrFile = f;
+    atrFileName.textContent = f.name;
+    atrAnalyzeBtn.disabled = false;
+    atrAnalyzeBtn.textContent = '🔍 Transcrever e Traduzir';
+  }
+
+  // ── Load voices ──
+  if (atrLoadVBtn) {
+    atrLoadVBtn.addEventListener('click', async () => {
+      const key = atrElKey.value.trim();
+      if (!key) { atrVoicesErr.style.display = 'block'; atrVoicesErr.textContent = 'Informe a chave do ElevenLabs.'; return; }
+      localStorage.setItem('tr_el_key', key);
+      atrVoicesErr.style.display = 'none';
+      atrLoadVBtn.disabled = true; atrLoadVBtn.textContent = 'Carregando...';
+      try {
+        const resp = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+        if (!resp.ok) throw new Error('Chave inválida');
+        const data = await resp.json();
+        atrVoiceSel.innerHTML = '<option value="">Selecione uma voz...</option><option value="__clone__">🎤 Clonar voz do vídeo</option><optgroup label="── Biblioteca ──"></optgroup>';
+        const grp = atrVoiceSel.querySelector('optgroup');
+        (data.voices || []).forEach(v => {
+          const o = document.createElement('option');
+          o.value = v.voice_id; o.textContent = v.name + (v.labels?.accent ? ` (${v.labels.accent})` : '');
+          grp.appendChild(o);
+        });
+        atrVoiceSel.style.display = '';
+      } catch (e) { atrVoicesErr.style.display = 'block'; atrVoicesErr.textContent = 'Erro: ' + e.message; }
+      finally { atrLoadVBtn.disabled = false; atrLoadVBtn.textContent = 'Carregar vozes'; }
+    });
+  }
+
+  // Update generate button when voice changes
+  if (atrVoiceSel) {
+    atrVoiceSel.addEventListener('change', () => {
+      const btn = document.getElementById('atr-generate-btn');
+      if (btn && atrPhaseSegments.style.display !== 'none') {
+        btn.disabled = !atrVoiceSel.value;
+        btn.textContent = atrVoiceSel.value ? '🌐 Gerar Vídeo Traduzido' : 'Configure a voz para gerar';
+      }
+    });
+  }
+
+  // ── Phase 1a: Analyze ──
+  if (atrAnalyzeBtn) {
+    atrAnalyzeBtn.addEventListener('click', async () => {
+      if (!atrFile) return;
+      const apiKey = atrApiKey.value.trim();
+      if (!apiKey) { atrAnalyzeErr.style.display = 'block'; atrAnalyzeErr.textContent = 'Informe a chave da API.'; return; }
+      localStorage.setItem('tr_api_key', apiKey);
+      atrAnalyzeBtn.disabled = true;
+      atrAnalyzeErr.style.display = 'none';
+      atrAnalyzeProg.style.display = '';
+      atrAnalyzeStat.textContent = 'Transcrevendo e traduzindo...';
+
+      const fd = new FormData();
+      fd.append('video', atrFile);
+      fd.append('from_lang', document.getElementById('atr-from-lang').value);
+      fd.append('to_lang',   document.getElementById('atr-to-lang').value);
+      fd.append('api_key',   apiKey);
+      fd.append('api_model', atrApiModel.value);
+      const ci = document.getElementById('atr-custom-instructions').value.trim();
+      if (ci) fd.append('custom_instructions', ci);
+      if (apiKey.startsWith('sk-or')) fd.append('api_base', 'https://openrouter.ai');
+
+      try {
+        const resp = await fetch(API + '/api/translate/analyze', { method: 'POST', body: fd });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.error || 'Erro');
+        atrTempId = json.tempId;
+        atrSegments = json.segments;
+        atrRenderSegments();
+        const hasVoice = atrVoiceSel && atrVoiceSel.value;
+        const genBtn = document.getElementById('atr-generate-btn');
+        genBtn.disabled = !hasVoice;
+        genBtn.textContent = hasVoice ? '🌐 Gerar Vídeo Traduzido' : 'Configure a voz para gerar';
+        atrShowPhase(atrPhaseSegments);
+      } catch (e) {
+        atrAnalyzeErr.style.display = 'block';
+        atrAnalyzeErr.textContent = 'Erro: ' + e.message;
+      } finally {
+        atrAnalyzeBtn.disabled = false;
+        atrAnalyzeProg.style.display = 'none';
+        atrAnalyzeStat.textContent = '';
+      }
+    });
+  }
+
+  // Back to config
+  const atrBackBtn = document.getElementById('atr-back-btn');
+  if (atrBackBtn) atrBackBtn.addEventListener('click', () => atrShowPhase(atrPhaseConfig));
+
+  // ── Render segments ──
+  function atrRenderSegments() {
+    const container = document.getElementById('atr-segments-container');
+    if (!container) return;
+    container.innerHTML = '';
+    atrSegments.forEach((seg, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:80px 1fr 1fr;gap:6px;align-items:start';
+      row.innerHTML = `
+        <div style="font-size:11px;color:var(--text-muted);padding-top:6px">${seg.start.slice(0,8)}<br>${seg.end.slice(0,8)}</div>
+        <textarea data-ao="${i}" style="background:var(--bg-card,#16162a);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;color:var(--text-muted);resize:vertical;min-height:44px;font-family:inherit">${atrEsc(seg.original)}</textarea>
+        <textarea data-at="${i}" style="background:var(--bg-input,#1a1a2e);border:1px solid var(--accent);border-radius:6px;padding:6px;font-size:12px;color:var(--text);resize:vertical;min-height:44px;font-family:inherit">${atrEsc(seg.translated || seg.original)}</textarea>`;
+      container.appendChild(row);
+    });
+    container.querySelectorAll('textarea[data-at]').forEach(ta => {
+      ta.addEventListener('input', () => { atrSegments[+ta.dataset.at].translated = ta.value; });
+    });
+    container.querySelectorAll('textarea[data-ao]').forEach(ta => {
+      ta.addEventListener('input', () => { atrSegments[+ta.dataset.ao].original = ta.value; });
+    });
+  }
+  function atrEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── Phase 1b: Generate translation ──
+  const atrGenerateBtn = document.getElementById('atr-generate-btn');
+  if (atrGenerateBtn) {
+    atrGenerateBtn.addEventListener('click', async () => {
+      if (!atrVoiceSel?.value || !atrTempId) return;
+      const elKey = atrElKey.value.trim();
+      if (!elKey) { document.getElementById('atr-generate-error').style.display = 'block'; document.getElementById('atr-generate-error').textContent = 'Informe a chave do ElevenLabs.'; return; }
+      atrGenerateBtn.disabled = true;
+      document.getElementById('atr-generate-error').style.display = 'none';
+      document.getElementById('atr-generate-progress').style.display = '';
+      document.getElementById('atr-generate-status').textContent = 'Separando vozes e gerando áudio traduzido…';
+
+      try {
+        const resp = await fetch(API + '/api/translate/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tempId: atrTempId, segments: atrSegments,
+            elevenlabs_key: elKey, voice_id: atrVoiceSel.value,
+            trim_to_audio: document.getElementById('atr-trim-video')?.checked,
+            max_tempo: parseFloat(atrMaxTempo?.value || 1.8),
+            dynamic_mode: false
+          })
+        });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.error || 'Erro');
+        atrTranslatedUrl = API + json.url;
+        // Sync subtitle language to translation target lang
+        const toLang = document.getElementById('atr-to-lang')?.value || 'en';
+        const subLang = document.getElementById('atr-sub-lang');
+        if (subLang) {
+          const match = Array.from(subLang.options).find(o => o.value === toLang || o.value === toLang.split('-')[0]);
+          if (match) subLang.value = match.value;
+        }
+        atrSetStep(2);
+        atrShowPhase(atrPhaseWm);
+        atrWmLoadVideoFromUrl(atrTranslatedUrl);
+      } catch (e) {
+        document.getElementById('atr-generate-error').style.display = 'block';
+        document.getElementById('atr-generate-error').textContent = 'Erro: ' + e.message;
+      } finally {
+        atrGenerateBtn.disabled = false;
+        document.getElementById('atr-generate-progress').style.display = 'none';
+        document.getElementById('atr-generate-status').textContent = '';
+      }
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // WATERMARK CANVAS
+  // ══════════════════════════════════════════════════════════════
+  const atrWmCanvas = document.getElementById('atr-wm-canvas');
+  const atrWmCtx    = atrWmCanvas ? atrWmCanvas.getContext('2d') : null;
+  const atrWmRegInf = document.getElementById('atr-wm-region-info');
+
+  const atrModeDescs = {
+    blur:   'Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.',
+    simple: '⚡ Remoção rápida via FFmpeg — ideal para testes.',
+    delogo: '✨ Reconstrução avançada de pixels com OpenCV — melhor resultado.',
+    sora:   '🎵 Detecta automaticamente a marca d\'água do Sora em cada frame.',
+    heygen: '🤖 Remove automaticamente a marca d\'água do HeyGen (canto inferior direito).',
+  };
+  document.querySelectorAll('[data-atr-mode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-atr-mode]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      atrWmMode = btn.dataset.atrMode;
+      const d = document.getElementById('atr-mode-desc');
+      if (d) d.textContent = atrModeDescs[atrWmMode] || '';
+    });
+  });
+
+  function atrWmLoadVideoFromUrl(url) {
+    atrWmSelRect = null; atrWmDragMode = null;
+    if (atrWmRegInf) atrWmRegInf.textContent = 'Nenhuma região selecionada — arraste para marcar';
+    if (atrWmAnimFrame) { cancelAnimationFrame(atrWmAnimFrame); atrWmAnimFrame = null; }
+    atrWmVideoEl = document.createElement('video');
+    atrWmVideoEl.muted = true; atrWmVideoEl.playsInline = true; atrWmVideoEl.loop = true;
+    atrWmVideoEl.crossOrigin = 'anonymous';
+    atrWmVideoEl.src = url; atrWmVideoEl.currentTime = 0.5;
+    atrWmVideoEl.addEventListener('seeked', function onS() {
+      atrWmVideoEl.removeEventListener('seeked', onS);
+      atrWmVideoW = atrWmVideoEl.videoWidth; atrWmVideoH = atrWmVideoEl.videoHeight;
+      atrWmUpdateCanvasSize();
+      atrWmStartLoop();
+    });
+    atrWmVideoEl.load();
+  }
+
+  function atrWmUpdateCanvasSize() {
+    if (!atrWmCanvas || !atrWmVideoW || !atrWmVideoH) return;
+    const wrap = document.getElementById('atr-wm-canvas-wrap');
+    const maxW = 760, dW = Math.min(maxW, Math.max(200, (wrap ? wrap.clientWidth : maxW) || maxW));
+    const dH = Math.round(dW * atrWmVideoH / atrWmVideoW);
+    const dpr = window.devicePixelRatio || 1;
+    atrWmCanvas.style.width = dW + 'px'; atrWmCanvas.style.height = dH + 'px';
+    atrWmCanvas.width = Math.round(dW * dpr); atrWmCanvas.height = Math.round(dH * dpr);
+    atrWmCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    atrWmPreviewW = dW; atrWmPreviewH = dH;
+  }
+
+  function atrWmStartLoop() {
+    if (atrWmAnimFrame) cancelAnimationFrame(atrWmAnimFrame);
+    atrWmIsPaused = false;
+    atrWmVideoEl.play().catch(() => {});
+    const pb = document.getElementById('atr-wm-play');
+    if (pb) pb.textContent = '⏸';
+    function loop() { atrWmDrawFrame(); atrWmAnimFrame = requestAnimationFrame(loop); }
+    atrWmAnimFrame = requestAnimationFrame(loop);
+  }
+
+  function atrRoundRect(c, x, y, w, h, r) {
+    const R = Math.min(r, Math.abs(w)/2, Math.abs(h)/2);
+    c.beginPath();
+    c.moveTo(x+R,y); c.lineTo(x+w-R,y); c.arcTo(x+w,y,x+w,y+R,R);
+    c.lineTo(x+w,y+h-R); c.arcTo(x+w,y+h,x+w-R,y+h,R);
+    c.lineTo(x+R,y+h); c.arcTo(x,y+h,x,y+h-R,R);
+    c.lineTo(x,y+R); c.arcTo(x,y,x+R,y,R);
+    c.closePath();
+  }
+
+  function atrWmDrawFrame() {
+    if (!atrWmVideoEl || !atrWmCtx) return;
+    const seekEl = document.getElementById('atr-wm-seek');
+    const timeEl = document.getElementById('atr-wm-time');
+    if (!atrWmIsSeeking && seekEl && timeEl) {
+      const dur = atrWmVideoEl.duration || 0;
+      seekEl.value = dur ? Math.round((atrWmVideoEl.currentTime / dur) * 1000) : 0;
+      timeEl.textContent = formatTime(atrWmVideoEl.currentTime) + ' / ' + formatTime(dur);
+    }
+    atrWmCtx.clearRect(0, 0, atrWmPreviewW, atrWmPreviewH);
+    atrWmCtx.drawImage(atrWmVideoEl, 0, 0, atrWmPreviewW, atrWmPreviewH);
+    if (!atrWmSelRect || atrWmSelRect.w < 2 || atrWmSelRect.h < 2) return;
+    const { x, y, w, h } = atrWmSelRect;
+    atrWmCtx.fillStyle = 'rgba(0,0,0,0.45)'; atrWmCtx.fillRect(0, 0, atrWmPreviewW, atrWmPreviewH);
+    atrWmCtx.save(); atrRoundRect(atrWmCtx, x, y, w, h, 8); atrWmCtx.clip();
+    atrWmCtx.drawImage(atrWmVideoEl, 0, 0, atrWmPreviewW, atrWmPreviewH); atrWmCtx.restore();
+    atrWmCtx.strokeStyle = '#6c63ff'; atrWmCtx.lineWidth = 2; atrWmCtx.setLineDash([6,3]);
+    atrRoundRect(atrWmCtx, x, y, w, h, 8); atrWmCtx.stroke(); atrWmCtx.setLineDash([]);
+    atrWmGetHandles().forEach(hh => {
+      atrWmCtx.fillStyle = '#fff'; atrWmCtx.fillRect(hh.x-ATR_HANDLE_HALF, hh.y-ATR_HANDLE_HALF, ATR_HANDLE_SIZE, ATR_HANDLE_SIZE);
+      atrWmCtx.strokeStyle = '#6c63ff'; atrWmCtx.lineWidth = 1.5;
+      atrWmCtx.strokeRect(hh.x-ATR_HANDLE_HALF, hh.y-ATR_HANDLE_HALF, ATR_HANDLE_SIZE, ATR_HANDLE_SIZE);
+    });
+    const rW = Math.round(w * atrWmVideoW / atrWmPreviewW), rH = Math.round(h * atrWmVideoH / atrWmPreviewH);
+    atrWmCtx.font = 'bold 11px Segoe UI,system-ui,sans-serif';
+    const lw = atrWmCtx.measureText(rW + 'x' + rH).width + 12;
+    atrWmCtx.fillStyle = '#6c63ff'; atrWmCtx.fillRect(x, Math.max(0, y-22), lw, 20);
+    atrWmCtx.fillStyle = '#fff'; atrWmCtx.fillText(rW + 'x' + rH, x+6, Math.max(14, y-6));
+  }
+
+  function atrWmGetHandles() {
+    if (!atrWmSelRect) return [];
+    const {x,y,w,h} = atrWmSelRect;
+    return [
+      {id:'tl',x,y,cursor:'nwse-resize'},{id:'tr',x:x+w,y,cursor:'nesw-resize'},
+      {id:'bl',x,y:y+h,cursor:'nesw-resize'},{id:'br',x:x+w,y:y+h,cursor:'nwse-resize'},
+      {id:'tm',x:x+w/2,y,cursor:'ns-resize'},{id:'bm',x:x+w/2,y:y+h,cursor:'ns-resize'},
+      {id:'ml',x,y:y+h/2,cursor:'ew-resize'},{id:'mr',x:x+w,y:y+h/2,cursor:'ew-resize'},
+    ];
+  }
+  function atrWmHitHandle(px,py) {
+    for (const h of atrWmGetHandles()) if (Math.abs(px-h.x)<=ATR_HANDLE_HALF+3 && Math.abs(py-h.y)<=ATR_HANDLE_HALF+3) return h;
+    return null;
+  }
+  function atrWmIsInside(px,py) {
+    if (!atrWmSelRect) return false;
+    return px>=atrWmSelRect.x && px<=atrWmSelRect.x+atrWmSelRect.w && py>=atrWmSelRect.y && py<=atrWmSelRect.y+atrWmSelRect.h;
+  }
+  function atrWmCanvasPos(e) {
+    const rect = atrWmCanvas.getBoundingClientRect(), src = e.touches ? e.touches[0] : e;
+    return { x: Math.max(0, Math.min(atrWmPreviewW, src.clientX - rect.left)), y: Math.max(0, Math.min(atrWmPreviewH, src.clientY - rect.top)) };
+  }
+
+  if (atrWmCanvas) {
+    atrWmCanvas.addEventListener('mousedown', e => {
+      const p = atrWmCanvasPos(e);
+      if (atrWmSelRect && atrWmSelRect.w > 4 && atrWmSelRect.h > 4) {
+        const handle = atrWmHitHandle(p.x, p.y);
+        if (handle) { atrWmDragMode='resize'; atrWmActiveHandle=handle.id; atrWmDragStart=p; atrWmDragOrigRect={...atrWmSelRect}; return; }
+        if (atrWmIsInside(p.x,p.y)) { atrWmDragMode='move'; atrWmDragStart=p; atrWmDragOrigRect={...atrWmSelRect}; return; }
+      }
+      atrWmDragMode='new'; atrWmDragStart=p; atrWmSelRect={x:p.x,y:p.y,w:0,h:0};
+    });
+    atrWmCanvas.addEventListener('mousemove', e => {
+      const p = atrWmCanvasPos(e);
+      if (!atrWmDragMode) {
+        if (atrWmSelRect && atrWmSelRect.w > 4 && atrWmSelRect.h > 4) {
+          const h = atrWmHitHandle(p.x,p.y);
+          atrWmCanvas.style.cursor = h ? h.cursor : (atrWmIsInside(p.x,p.y) ? 'move' : 'crosshair');
+        } else atrWmCanvas.style.cursor = 'crosshair';
+        return;
+      }
+      atrWmHandleDrag(p);
+    });
+    atrWmCanvas.addEventListener('mouseup', () => atrWmEndDrag());
+    atrWmCanvas.addEventListener('mouseleave', () => { if (atrWmDragMode) atrWmEndDrag(); });
+    atrWmCanvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const p = atrWmCanvasPos(e);
+      if (atrWmSelRect && atrWmSelRect.w > 4 && atrWmSelRect.h > 4) {
+        const handle = atrWmHitHandle(p.x,p.y);
+        if (handle) { atrWmDragMode='resize'; atrWmActiveHandle=handle.id; atrWmDragStart=p; atrWmDragOrigRect={...atrWmSelRect}; return; }
+        if (atrWmIsInside(p.x,p.y)) { atrWmDragMode='move'; atrWmDragStart=p; atrWmDragOrigRect={...atrWmSelRect}; return; }
+      }
+      atrWmDragMode='new'; atrWmDragStart=p; atrWmSelRect={x:p.x,y:p.y,w:0,h:0};
+    }, {passive:false});
+    atrWmCanvas.addEventListener('touchmove', e => { e.preventDefault(); if (!atrWmDragMode) return; atrWmHandleDrag(atrWmCanvasPos(e)); }, {passive:false});
+    atrWmCanvas.addEventListener('touchend', () => atrWmEndDrag());
+  }
+
+  function atrWmHandleDrag(p) {
+    const dx = p.x - atrWmDragStart.x, dy = p.y - atrWmDragStart.y;
+    if (atrWmDragMode === 'new') {
+      atrWmSelRect = {x:dx>=0?atrWmDragStart.x:p.x, y:dy>=0?atrWmDragStart.y:p.y, w:Math.abs(dx), h:Math.abs(dy)};
+    } else if (atrWmDragMode === 'move') {
+      atrWmSelRect = {x:Math.max(0,Math.min(atrWmDragOrigRect.x+dx,atrWmPreviewW-atrWmDragOrigRect.w)), y:Math.max(0,Math.min(atrWmDragOrigRect.y+dy,atrWmPreviewH-atrWmDragOrigRect.h)), w:atrWmDragOrigRect.w, h:atrWmDragOrigRect.h};
+    } else if (atrWmDragMode === 'resize') {
+      let {x,y,w,h} = atrWmDragOrigRect;
+      if (atrWmActiveHandle.includes('l')) { x+=dx; w-=dx; } if (atrWmActiveHandle.includes('r')) { w+=dx; }
+      if (atrWmActiveHandle.includes('t')) { y+=dy; h-=dy; } if (atrWmActiveHandle.includes('b')) { h+=dy; }
+      if (w<0){x+=w;w=-w;} if (h<0){y+=h;h=-h;}
+      x=Math.max(0,x); y=Math.max(0,y); w=Math.min(w,atrWmPreviewW-x); h=Math.min(h,atrWmPreviewH-y);
+      atrWmSelRect={x,y,w,h};
+    }
+    atrWmDrawFrame();
+  }
+
+  function atrWmEndDrag() {
+    if (!atrWmDragMode) return;
+    atrWmDragMode=null; atrWmActiveHandle=null; atrWmDragStart=null; atrWmDragOrigRect=null;
+    if (!atrWmSelRect || atrWmSelRect.w < 5 || atrWmSelRect.h < 5) {
+      atrWmSelRect=null; atrWmDrawFrame();
+      if (atrWmRegInf) atrWmRegInf.textContent='Nenhuma região selecionada — arraste para marcar'; return;
+    }
+    const rx=Math.round(atrWmSelRect.x*atrWmVideoW/atrWmPreviewW), ry=Math.round(atrWmSelRect.y*atrWmVideoH/atrWmPreviewH);
+    const rw=Math.round(atrWmSelRect.w*atrWmVideoW/atrWmPreviewW), rh=Math.round(atrWmSelRect.h*atrWmVideoH/atrWmPreviewH);
+    if (atrWmRegInf) atrWmRegInf.innerHTML='Região: <span>'+rw+' × '+rh+' px</span> em <span>('+rx+', '+ry+')</span>';
+    atrWmDrawFrame();
+  }
+
+  // Video controls
+  const atrWmPlayBtn = document.getElementById('atr-wm-play');
+  const atrWmSeekEl  = document.getElementById('atr-wm-seek');
+  if (atrWmPlayBtn) {
+    atrWmPlayBtn.addEventListener('click', () => {
+      if (!atrWmVideoEl) return;
+      if (atrWmIsPaused) { atrWmVideoEl.play(); atrWmIsPaused=false; atrWmPlayBtn.textContent='⏸'; }
+      else { atrWmVideoEl.pause(); atrWmIsPaused=true; atrWmPlayBtn.textContent='▶'; }
+    });
+  }
+  if (atrWmSeekEl) {
+    atrWmSeekEl.addEventListener('mousedown', () => { atrWmIsSeeking=true; });
+    atrWmSeekEl.addEventListener('input', () => {
+      if (!atrWmVideoEl || !atrWmVideoEl.duration) return;
+      atrWmVideoEl.currentTime = (atrWmSeekEl.value/1000)*atrWmVideoEl.duration;
+    });
+    atrWmSeekEl.addEventListener('mouseup', () => { atrWmIsSeeking=false; });
+  }
+
+  // ── Process watermark ──
+  const atrWmProcessBtn = document.getElementById('atr-wm-process-btn');
+  if (atrWmProcessBtn) {
+    atrWmProcessBtn.addEventListener('click', async () => {
+      if (!atrTranslatedUrl) return;
+      if (!ATR_AUTO_MODES.has(atrWmMode) && (!atrWmSelRect || atrWmSelRect.w < 5 || atrWmSelRect.h < 5)) {
+        document.getElementById('atr-wm-error').style.display = 'block';
+        document.getElementById('atr-wm-error').textContent = 'Selecione a região da marca d\'água antes de processar.';
+        return;
+      }
+      document.getElementById('atr-wm-error').style.display = 'none';
+      document.getElementById('atr-wm-result').style.display = 'none';
+      atrWmProcessBtn.disabled = true; atrWmProcessBtn.textContent = '⏳ Processando...';
+      document.getElementById('atr-wm-progress').style.display = '';
+      document.getElementById('atr-wm-status').textContent = 'Removendo marca d\'água…';
+      try {
+        const blob = await fetch(atrTranslatedUrl).then(r => { if (!r.ok) throw new Error('Erro ao carregar vídeo'); return r.blob(); });
+        const file = new File([blob], 'translated.mp4', { type: 'video/mp4' });
+        const fd = new FormData();
+        fd.append('video', file); fd.append('mode', atrWmMode);
+        if (!ATR_AUTO_MODES.has(atrWmMode) && atrWmSelRect) {
+          fd.append('x', Math.round(atrWmSelRect.x * atrWmVideoW / atrWmPreviewW));
+          fd.append('y', Math.round(atrWmSelRect.y * atrWmVideoH / atrWmPreviewH));
+          fd.append('w', Math.round(atrWmSelRect.w * atrWmVideoW / atrWmPreviewW));
+          fd.append('h', Math.round(atrWmSelRect.h * atrWmVideoH / atrWmPreviewH));
+        }
+        const resp = await fetch(API + '/api/process', { method: 'POST', body: fd });
+        const json = await resp.json();
+        if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+        let url;
+        const ASYNC_WM = new Set(['delogo', 'sora']);
+        if (ASYNC_WM.has(atrWmMode) && json.status === 'processing' && json.id) {
+          url = await atrPollJob(json.id, txt => { document.getElementById('atr-wm-status').textContent = txt; });
+        } else { url = API + json.url; }
+        atrWmUrl = url;
+        document.getElementById('atr-wm-result-video').src = atrWmUrl;
+        document.getElementById('atr-wm-result').style.display = '';
+        document.getElementById('atr-wm-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {
+        document.getElementById('atr-wm-error').style.display = 'block';
+        document.getElementById('atr-wm-error').textContent = 'Erro: ' + e.message;
+      } finally {
+        atrWmProcessBtn.disabled = false; atrWmProcessBtn.textContent = '▶ Remover Marca d\'Água';
+        document.getElementById('atr-wm-progress').style.display = 'none';
+        document.getElementById('atr-wm-status').textContent = '';
+      }
+    });
+  }
+
+  // Regerar watermark — hide result, reset selection
+  const atrWmRegerarBtn = document.getElementById('atr-wm-regerar-btn');
+  if (atrWmRegerarBtn) {
+    atrWmRegerarBtn.addEventListener('click', () => {
+      document.getElementById('atr-wm-result').style.display = 'none';
+      atrWmSelRect = null;
+      if (atrWmRegInf) atrWmRegInf.textContent = 'Nenhuma região selecionada — arraste para marcar';
+      atrWmDrawFrame();
+    });
+  }
+
+  // Aprovar watermark → legendas
+  const atrWmAprovarBtn = document.getElementById('atr-wm-aprovar-btn');
+  if (atrWmAprovarBtn) {
+    atrWmAprovarBtn.addEventListener('click', () => {
+      if (!atrWmUrl) return;
+      atrSetStep(3);
+      atrShowPhase(atrPhaseSub);
+      const srcVid = document.getElementById('atr-sub-source');
+      if (srcVid) srcVid.src = atrWmUrl;
+    });
+  }
+
+  // ── Process subtitles ──
+  const atrSubProcessBtn = document.getElementById('atr-sub-process-btn');
+  if (atrSubProcessBtn) {
+    atrSubProcessBtn.addEventListener('click', async () => {
+      if (!atrWmUrl) return;
+      document.getElementById('atr-sub-error').style.display = 'none';
+      document.getElementById('atr-sub-result').style.display = 'none';
+      atrSubProcessBtn.disabled = true; atrSubProcessBtn.textContent = '⏳ Processando...';
+      document.getElementById('atr-sub-progress').style.display = '';
+      document.getElementById('atr-sub-status').textContent = '⏳ Transcrevendo com faster-whisper…';
+      const posMap = { bottom:{x:0.5,y:0.87}, center:{x:0.5,y:0.5}, top:{x:0.5,y:0.12} };
+      const posKey = document.getElementById('atr-sub-pos')?.value || 'bottom';
+      const pos = posMap[posKey] || posMap.bottom;
+      try {
+        const blob = await fetch(atrWmUrl).then(r => { if (!r.ok) throw new Error('Erro ao carregar vídeo'); return r.blob(); });
+        const file = new File([blob], 'wm_removed.mp4', { type: 'video/mp4' });
+        const fd = new FormData();
+        fd.append('video', file);
+        fd.append('lang',      document.getElementById('atr-sub-lang').value);
+        fd.append('model',     document.getElementById('atr-sub-model').value);
+        fd.append('preset',    document.getElementById('atr-sub-preset')?.value || 'default');
+        fd.append('fontsize',  '72');
+        fd.append('wordbyword', document.getElementById('atr-sub-wbw')?.checked ? '1' : '0');
+        fd.append('uppercase',  document.getElementById('atr-sub-upper')?.checked ? '1' : '0');
+        fd.append('animation', 'none');
+        fd.append('posX', Math.round(pos.x * 1920));
+        fd.append('posY', Math.round(pos.y * 1080));
+        const resp = await fetch(API + '/api/subtitle/auto', { method: 'POST', body: fd });
+        const json = await resp.json();
+        if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
+        atrFinalUrl = API + json.url;
+        document.getElementById('atr-sub-result-video').src = atrFinalUrl;
+        document.getElementById('atr-sub-result').style.display = '';
+        document.getElementById('atr-sub-result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {
+        document.getElementById('atr-sub-error').style.display = 'block';
+        document.getElementById('atr-sub-error').textContent = 'Erro: ' + e.message;
+      } finally {
+        atrSubProcessBtn.disabled = false; atrSubProcessBtn.textContent = '🤖 Gerar AutoCaption';
+        document.getElementById('atr-sub-progress').style.display = 'none';
+        document.getElementById('atr-sub-status').textContent = '';
+      }
+    });
+  }
+
+  // Regerar subtitles
+  const atrSubRegerarBtn = document.getElementById('atr-sub-regerar-btn');
+  if (atrSubRegerarBtn) {
+    atrSubRegerarBtn.addEventListener('click', () => { document.getElementById('atr-sub-result').style.display = 'none'; });
+  }
+
+  // Aprovar subtitles → done
+  const atrSubAprovarBtn = document.getElementById('atr-sub-aprovar-btn');
+  if (atrSubAprovarBtn) {
+    atrSubAprovarBtn.addEventListener('click', () => {
+      if (!atrFinalUrl) return;
+      atrSetStep(4);
+      atrShowPhase(atrPhaseDone);
+      const finalVid = document.getElementById('atr-final-video');
+      const dlBtn    = document.getElementById('atr-download-btn');
+      if (finalVid) finalVid.src = atrFinalUrl;
+      if (dlBtn) { dlBtn.href = atrFinalUrl; dlBtn.download = 'video-final.mp4'; }
+    });
+  }
+
+  // Restart
+  const atrRestartBtn = document.getElementById('atr-restart-btn');
+  if (atrRestartBtn) {
+    atrRestartBtn.addEventListener('click', () => {
+      atrFile=null; atrTempId=null; atrSegments=[];
+      atrTranslatedUrl=null; atrWmUrl=null; atrFinalUrl=null;
+      atrWmSelRect=null;
+      if (atrWmAnimFrame) { cancelAnimationFrame(atrWmAnimFrame); atrWmAnimFrame=null; }
+      atrWmVideoEl=null;
+      if (atrFileName) atrFileName.textContent='';
+      atrAnalyzeBtn.disabled=true; atrAnalyzeBtn.textContent='Selecione um vídeo';
+      atrAnalyzeErr.style.display='none';
+      document.getElementById('atr-wm-result').style.display='none';
+      document.getElementById('atr-sub-result').style.display='none';
+      atrSetStep(1);
+      atrShowPhase(atrPhaseConfig);
+    });
+  }
+
+  // ── Poll job helper ──
+  async function atrPollJob(jobId, onStatus) {
+    while (true) {
+      await new Promise(r => setTimeout(r, 2500));
+      const resp = await fetch(API + `/api/process-status/${jobId}`);
+      const job  = await resp.json();
+      if (job.status === 'done') return API + job.url;
+      if (job.status === 'error') throw new Error(job.error || 'Falhou');
+      if (onStatus) onStatus('Processando… ' + (job.progress || 0) + '%');
+    }
+  }
+
 })();
 
 function drawResizeCrop() {
