@@ -2127,6 +2127,44 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
   }
 });
 
+// Traduz um único bloco de texto (usado pelo botão re-traduzir por segmento)
+app.post('/api/translate/text', express.json({ limit: '20kb' }), async (req, res) => {
+  const { text, api_key: apiKey, api_base: apiBase = 'https://api.anthropic.com', api_model: apiModel = 'openai/gpt-4o-mini', to_lang: toLang = 'en', custom_instructions: customInstructions = '' } = req.body;
+  if (!text || !apiKey) return res.status(400).json({ error: 'text e api_key são obrigatórios' });
+  const toLangLabel = toLang === 'es-419' ? 'Español latinoamericano (variedade latino-americana, evitar expressões da Espanha)' : toLang;
+  const customBlock = customInstructions.trim() ? `\n\nInstruções adicionais que DEVEM ser seguidas:\n${customInstructions}` : '';
+  const prompt = `Traduza o seguinte texto para "${toLangLabel}". Retorne SOMENTE o texto traduzido, sem explicações.${customBlock}\n\n${text}`;
+  try {
+    const isOpenRouter = (apiBase || '').includes('openrouter');
+    const reqBody = isOpenRouter
+      ? JSON.stringify({ model: apiModel, messages: [{ role: 'user', content: prompt }], max_tokens: 1024 })
+      : JSON.stringify({ model: apiModel, max_tokens: 1024, messages: [{ role: 'user', content: prompt }] });
+    const url = new URL(isOpenRouter ? '/api/v1/chat/completions' : '/v1/messages', apiBase);
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+    if (!isOpenRouter) { headers['x-api-key'] = apiKey; headers['anthropic-version'] = '2023-06-01'; delete headers['Authorization']; }
+    const translated = await new Promise((resolve, reject) => {
+      const data = Buffer.from(reqBody);
+      const options = { hostname: url.hostname, port: 443, path: url.pathname, method: 'POST', headers: { ...headers, 'Content-Length': data.length } };
+      const r = https.request(options, r2 => {
+        let body = '';
+        r2.on('data', c => body += c);
+        r2.on('end', () => {
+          try {
+            const parsed = JSON.parse(body);
+            const t = isOpenRouter ? parsed.choices?.[0]?.message?.content : parsed.content?.[0]?.text;
+            if (!t) return reject(new Error('Resposta vazia: ' + body.slice(0, 200)));
+            resolve(t.trim());
+          } catch (e) { reject(e); }
+        });
+      });
+      r.on('error', reject); r.write(data); r.end();
+    });
+    return res.json({ translated });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // Serve o Remotion Editor (build de produção)
 const editorDist = path.join(__dirname, '..', 'remotion-editor', 'dist');
 if (fs.existsSync(editorDist)) {

@@ -2270,16 +2270,47 @@ function loadResizeFrame(file) {
       row.style.cssText = 'display:grid;grid-template-columns:90px 1fr 1fr;gap:6px;align-items:start';
       row.innerHTML = `
         <div style="font-size:11px;color:var(--text-muted);padding-top:6px">${seg.start.slice(0,8)}<br>${seg.end.slice(0,8)}</div>
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;color:var(--text-muted)">${escHtml(seg.original)}</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <textarea data-orig="${i}" style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;color:var(--text-muted);resize:vertical;min-height:52px;font-family:inherit">${escHtml(seg.original)}</textarea>
+          <button data-retranslate="${i}" style="font-size:11px;padding:3px 8px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--text-muted);cursor:pointer">🔄 Traduzir</button>
+        </div>
         <textarea data-idx="${i}" style="background:var(--bg-input,#1a1a2e);border:1px solid var(--accent);border-radius:6px;padding:6px;font-size:12px;color:var(--text);resize:vertical;min-height:52px;font-family:inherit">${escHtml(seg.translated || seg.original)}</textarea>
       `;
       trSegContainer.appendChild(row);
     });
-    // Sync textarea changes back to segments array
-    trSegContainer.querySelectorAll('textarea').forEach(ta => {
-      ta.addEventListener('input', () => {
-        const idx = parseInt(ta.dataset.idx);
-        trSegments[idx].translated = ta.value;
+    // Sync changes back to segments array
+    trSegContainer.querySelectorAll('textarea[data-idx]').forEach(ta => {
+      ta.addEventListener('input', () => { trSegments[parseInt(ta.dataset.idx)].translated = ta.value; });
+    });
+    trSegContainer.querySelectorAll('textarea[data-orig]').forEach(ta => {
+      ta.addEventListener('input', () => { trSegments[parseInt(ta.dataset.orig)].original = ta.value; });
+    });
+    // Re-translate single block
+    trSegContainer.querySelectorAll('button[data-retranslate]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = parseInt(btn.dataset.retranslate);
+        const apiKey = document.getElementById('tr-api-key').value.trim();
+        const apiModel = document.getElementById('tr-api-model').value;
+        const apiBase = apiKey.startsWith('sk-or') ? 'https://openrouter.ai' : 'https://api.anthropic.com';
+        const customInstr = document.getElementById('tr-custom-instructions').value.trim();
+        if (!apiKey) { alert('Informe a API key de tradução na etapa 1.'); return; }
+        btn.disabled = true; btn.textContent = '...';
+        try {
+          const resp = await fetch(API + '/api/translate/text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: trSegments[idx].original, api_key: apiKey, api_base: apiBase, api_model: apiModel, to_lang: trToLang.value, custom_instructions: customInstr })
+          });
+          const json = await resp.json();
+          if (!resp.ok) throw new Error(json.error || 'Erro');
+          trSegments[idx].translated = json.translated;
+          const ta = trSegContainer.querySelector(`textarea[data-idx="${idx}"]`);
+          if (ta) ta.value = json.translated;
+        } catch (e) {
+          alert('Erro ao re-traduzir: ' + e.message);
+        } finally {
+          btn.disabled = false; btn.textContent = '🔄 Traduzir';
+        }
       });
     });
   }
