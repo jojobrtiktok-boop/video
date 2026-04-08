@@ -1788,6 +1788,302 @@ app.post('/api/generate-scene-image', express.json(), async (req, res) => {
   }
 });
 
+// ── TRADUÇÃO DE VÍDEO ─────────────────────────────────────────────────────────
+// Paso 1: transcreve + traduz → retorna segmentos para revisão
+app.post('/api/translate/analyze', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no file' });
+
+  const input      = req.file.path;
+  const fromLang   = req.body.from_lang || 'auto';
+  const toLang     = req.body.to_lang   || 'en';
+  const apiKey     = req.body.api_key;   // Anthropic/OpenRouter key para tradução
+  const apiModel   = req.body.api_model || 'claude-3-5-haiku-20241022';
+  const apiBase    = req.body.api_base  || 'https://api.anthropic.com';
+
+  if (!apiKey) return res.status(400).json({ error: 'api_key obrigatória para tradução' });
+
+  // Guarda referência do arquivo original para o passo generate
+  const tempId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const tempMeta = path.join(UPLOAD_DIR, tempId + '.meta.json');
+  fs.writeFileSync(tempMeta, JSON.stringify({ input, originalname: req.file.originalname }));
+  scheduleDelete(input, 60 * 60 * 1000);      // 1h para expirar
+  scheduleDelete(tempMeta, 60 * 60 * 1000);
+
+  // Transcrição com Whisper
+  const whisperModel = req.body.whisper_model || 'small';
+  const detectLang   = fromLang === 'auto' ? 'auto' : fromLang;
+  const script = path.join(__dirname, 'transcribe.py');
+  const transcribeCmd = `"${PYTHON}" "${script}" "${input}" "${whisperModel}" "${detectLang}"`;
+
+  exec(transcribeCmd, { maxBuffer: 10 * 1024 * 1024, timeout: 10 * 60 * 1000 }, async (err, stdout, stderr) => {
+    if (err) return res.status(500).json({ error: 'Transcrição falhou: ' + (stderr || err.message) });
+    const srtContent = stdout.trim();
+    if (!srtContent) return res.status(500).json({ error: 'Nenhuma fala detectada.' });
+
+    // Parse SRT
+    const segments = [];
+    const blocks = srtContent.split(/\n\n+/);
+    for (const block of blocks) {
+      const lines = block.trim().split('\n');
+      if (lines.length < 3) continue;
+      const match = lines[1].match(/(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}[,\.]\d{3})/);
+      if (!match) continue;
+      const text = lines.slice(2).join(' ').trim();
+      if (!text) continue;
+      segments.push({ id: segments.length, start: match[1].replace(',','.'), end: match[2].replace(',','.'), original: text, translated: '' });
+    }
+    if (!segments.length) return res.status(500).json({ error: 'Nenhuma fala detectada.' });
+
+    // Tradução via Anthropic (ou OpenRouter com mesmo formato)
+    const allText = segments.map((s, i) => `[${i}] ${s.original}`).join('\n');
+    const prompt = `Você é um tradutor profissional. Traduza cada linha numerada do idioma de origem para "${toLang}". Mantenha EXATAMENTE o mesmo número de linhas e a mesma numeração. Retorne SOMENTE as linhas traduzidas com os mesmos índices, sem explicações.\n\n${allText}`;
+
+    try {
+      // Suporta Anthropic direto ou via OpenRouter
+      const isOpenRouter = apiBase.includes('openrouter');
+      const reqBody = isOpenRouter
+        ? JSON.stringify({ model: apiModel, messages: [{ role: 'user', content: prompt }], max_tokens: 4096 })
+        : JSON.stringify({ model: apiModel, max_tokens: 4096, messages: [{ role: 'user', content: prompt }] });
+
+      const url = new URL(isOpenRouter ? '/api/v1/chat/completions' : '/v1/messages', apiBase);
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      };
+      if (!isOpenRouter) {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+        delete headers['Authorization'];
+      }
+
+      const translationRaw = await new Promise((resolve, reject) => {
+        const data = Buffer.from(reqBody);
+        const options = { hostname: url.hostname, port: 443, path: url.pathname, method: 'POST', headers: { ...headers, 'Content-Length': data.length } };
+        const req2 = https.request(options, r => {
+          let body = '';
+          r.on('data', c => body += c);
+          r.on('end', () => {
+            try {
+              const parsed = JSON.parse(body);
+              const text = isOpenRouter
+                ? parsed.choices?.[0]?.message?.content
+                : parsed.content?.[0]?.text;
+              if (!text) return reject(new Error('Resposta vazia da API: ' + body.slice(0, 300)));
+              resolve(text);
+            } catch (e) { reject(e); }
+          });
+        });
+        req2.on('error', reject);
+        req2.write(data);
+        req2.end();
+      });
+
+      // Parse resposta: "[0] texto" ou "0. texto" ou só linhas na ordem
+      const lines = translationRaw.trim().split('\n').filter(l => l.trim());
+      lines.forEach(line => {
+        const m = line.match(/^\[?(\d+)\]?[.\s]+(.+)/);
+        if (m) {
+          const idx = parseInt(m[1]);
+          if (segments[idx]) segments[idx].translated = m[2].trim();
+        }
+      });
+      // Fallback: se não parsou nenhum, atribui em ordem
+      const unparsed = segments.filter(s => !s.translated);
+      if (unparsed.length === segments.length) {
+        lines.forEach((l, i) => { if (segments[i]) segments[i].translated = l.trim(); });
+      }
+
+      return res.json({ tempId, originalname: req.file.originalname, segments });
+    } catch (e) {
+      return res.status(500).json({ error: 'Tradução falhou: ' + e.message });
+    }
+  });
+});
+
+// Paso 2: gera vídeo traduzido com os segmentos aprovados (editados pelo usuário)
+app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req, res) => {
+  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync } = req.body;
+  if (!tempId || !segments || !elevenlabs_key || !voice_id)
+    return res.status(400).json({ error: 'tempId, segments, elevenlabs_key e voice_id são obrigatórios' });
+
+  const metaPath = path.join(UPLOAD_DIR, tempId + '.meta.json');
+  if (!fs.existsSync(metaPath)) return res.status(404).json({ error: 'Sessão expirada, faça o upload novamente.' });
+
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  const input = meta.input;
+  if (!fs.existsSync(input)) return res.status(404).json({ error: 'Arquivo original expirado.' });
+
+  function srtTimeToSecs(t) {
+    const p = t.replace(',','.').split(':').map(parseFloat);
+    return p[0]*3600 + p[1]*60 + p[2];
+  }
+
+  try {
+    // 1. Extrair áudio do vídeo
+    const audioRaw = input + '_raw.wav';
+    await new Promise((resolve, reject) => {
+      exec(`"${FFMPEG}" -y -i "${input}" -vn -ar 44100 -ac 2 "${audioRaw}"`, (e, _, se) => e ? reject(new Error(se||e.message)) : resolve());
+    });
+
+    // 2. Separar vocais do fundo com Demucs
+    const demucsOut = input + '_demucs';
+    const sepScript = path.join(__dirname, 'separate_vocals.py');
+    const sepOut = await new Promise((resolve, reject) => {
+      exec(`"${PYTHON}" "${sepScript}" "${audioRaw}" "${demucsOut}"`, { timeout: 10 * 60 * 1000 }, (e, out, se) => {
+        if (e) return reject(new Error('Demucs falhou: ' + (se || e.message)));
+        resolve(out.trim());
+      });
+    });
+
+    let noVocalsPath = null;
+    for (const line of sepOut.split('\n')) {
+      if (line.startsWith('no_vocals:')) noVocalsPath = line.slice(10).trim();
+    }
+    if (!noVocalsPath || !fs.existsSync(noVocalsPath)) {
+      // Fallback: sem separação, usa áudio original com volume reduzido
+      noVocalsPath = null;
+    }
+
+    // 3. Gerar TTS via ElevenLabs para cada segmento
+    const ttsDir = input + '_tts';
+    fs.mkdirSync(ttsDir, { recursive: true });
+
+    async function generateTTS(text, idx) {
+      const outPath = path.join(ttsDir, `seg_${idx}.mp3`);
+      const body = JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } });
+      const data = Buffer.from(body);
+      await new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'api.elevenlabs.io', port: 443,
+          path: `/v1/text-to-speech/${voice_id}`,
+          method: 'POST',
+          headers: { 'xi-api-key': elevenlabs_key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg', 'Content-Length': data.length }
+        };
+        const req3 = https.request(options, r => {
+          const chunks = [];
+          r.on('data', c => chunks.push(c));
+          r.on('end', () => {
+            fs.writeFileSync(outPath, Buffer.concat(chunks));
+            resolve();
+          });
+        });
+        req3.on('error', reject);
+        req3.write(data);
+        req3.end();
+      });
+      return outPath;
+    }
+
+    // Gerar todos os TTS (em paralelo, máx 3 por vez)
+    async function pLimit(tasks, concurrency) {
+      const results = [];
+      for (let i = 0; i < tasks.length; i += concurrency) {
+        const batch = tasks.slice(i, i + concurrency).map(t => t());
+        results.push(...(await Promise.all(batch)));
+      }
+      return results;
+    }
+    const ttsTasks = segments.map((seg, i) => () => generateTTS(seg.translated || seg.original, i));
+    const ttsPaths = await pLimit(ttsTasks, 3);
+
+    // 4. Ajustar duração de cada clipe TTS para caber no slot de tempo original
+    //    usando ffmpeg atempo (limitado a 0.5x–2.0x)
+    const ttsAdjDir = input + '_tts_adj';
+    fs.mkdirSync(ttsAdjDir, { recursive: true });
+
+    async function getAudioDuration(file) {
+      return new Promise(resolve => {
+        exec(`"${FFPROBE}" -v quiet -print_format json -show_entries format=duration "${file}"`, (e, out) => {
+          try { resolve(parseFloat(JSON.parse(out).format.duration) || 0); }
+          catch { resolve(0); }
+        });
+      });
+    }
+
+    const adjustedPaths = [];
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const slotDur = Math.max(0.2, srtTimeToSecs(seg.end) - srtTimeToSecs(seg.start));
+      const ttsDur  = await getAudioDuration(ttsPaths[i]);
+      const adjPath = path.join(ttsAdjDir, `seg_${i}.wav`);
+
+      if (ttsDur > 0 && Math.abs(ttsDur - slotDur) > 0.05) {
+        let rate = ttsDur / slotDur;
+        // Clamp: atempo aceita 0.5–2.0; para fora disso encadeamos filtros
+        let filterStr = '';
+        if (rate < 0.5) {
+          filterStr = `atempo=0.5,atempo=${(rate/0.5).toFixed(4)}`;
+        } else if (rate > 2.0) {
+          filterStr = `atempo=2.0,atempo=${(rate/2.0).toFixed(4)}`;
+        } else {
+          filterStr = `atempo=${rate.toFixed(4)}`;
+        }
+        await new Promise((resolve, reject) => {
+          exec(`"${FFMPEG}" -y -i "${ttsPaths[i]}" -af "${filterStr}" "${adjPath}"`, (e, _, se) => e ? reject(new Error(se)) : resolve());
+        });
+      } else {
+        // Apenas converte para wav sem ajuste
+        await new Promise((resolve, reject) => {
+          exec(`"${FFMPEG}" -y -i "${ttsPaths[i]}" "${adjPath}"`, (e, _, se) => e ? reject(new Error(se)) : resolve());
+        });
+      }
+      adjustedPaths.push(adjPath);
+    }
+
+    // 5. Montar trilha de áudio traduzido: silêncio base + sobrepor cada clipe no timestamp correto
+    //    Obtém duração total do vídeo
+    const vidDur = await getAudioDuration(audioRaw);
+    const silencePath = path.join(ttsDir, 'silence.wav');
+    await new Promise((resolve, reject) => {
+      exec(`"${FFMPEG}" -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${vidDur} "${silencePath}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
+    });
+
+    // Overlay iterativo: adiciona cada clipe no timestamp correto sobre a faixa base
+    let mixBase = silencePath;
+    for (let i = 0; i < segments.length; i++) {
+      const delay = Math.round(srtTimeToSecs(segments[i].start) * 1000); // ms
+      const mixOut = path.join(ttsDir, `mix_${i}.wav`);
+      await new Promise((resolve, reject) => {
+        const cmd = `"${FFMPEG}" -y -i "${mixBase}" -i "${adjustedPaths[i]}" -filter_complex "[1]adelay=${delay}|${delay}[a];[0][a]amix=inputs=2:normalize=0" "${mixOut}"`;
+        exec(cmd, { timeout: 60000 }, (e,_,se) => e ? reject(new Error(se)) : resolve());
+      });
+      mixBase = mixOut;
+    }
+    const translatedVoice = mixBase;
+
+    // 6. Mixar voz traduzida com fundo original
+    const finalAudio = input + '_final_audio.wav';
+    if (noVocalsPath) {
+      await new Promise((resolve, reject) => {
+        const cmd = `"${FFMPEG}" -y -i "${noVocalsPath}" -i "${translatedVoice}" -filter_complex "[0][1]amix=inputs=2:normalize=0" "${finalAudio}"`;
+        exec(cmd, (e,_,se) => e ? reject(new Error(se)) : resolve());
+      });
+    } else {
+      fs.copyFileSync(translatedVoice, finalAudio);
+    }
+
+    // 7. Substituir áudio no vídeo
+    const outputName = 'traducao-' + path.basename(input);
+    const output = path.join(UPLOAD_DIR, outputName);
+    await new Promise((resolve, reject) => {
+      exec(`"${FFMPEG}" -y -i "${input}" -i "${finalAudio}" -c:v copy -map 0:v:0 -map 1:a:0 -shortest "${output}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
+    });
+
+    // 8. Limpeza de temporários
+    [audioRaw, finalAudio].forEach(f => fs.unlink(f, () => {}));
+    [ttsDir, ttsAdjDir, demucsOut].forEach(d => { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
+
+    scheduleDelete(output, 30 * 60 * 1000);
+    const fn = friendlyFilename(meta.originalname, `traduzido ${toLang || ''}`);
+    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'translate', label: '🌐 Tradução', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000, friendlyName: fn };
+    addToLibrary(libEntry);
+    return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id, friendlyName: fn });
+
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // Serve o Remotion Editor (build de produção)
 const editorDist = path.join(__dirname, '..', 'remotion-editor', 'dist');
 if (fs.existsSync(editorDist)) {

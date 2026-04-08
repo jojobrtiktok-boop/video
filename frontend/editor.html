@@ -860,6 +860,14 @@
             <span class="nav-item-title">Combinador</span>
             <span class="nav-item-desc">Hooks × corpos em massa</span>
           </button>
+          <button class="nav-item" data-tool="lipsync">
+            <span class="nav-item-title">Lipsync</span>
+            <span class="nav-item-desc">Sincroniza lábios com áudio</span>
+          </button>
+          <button class="nav-item" data-tool="translate">
+            <span class="nav-item-title">Traduzir Vídeo</span>
+            <span class="nav-item-desc">Voz + fundo preservado</span>
+          </button>
           <a href="/editor/" class="nav-item" style="text-decoration:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;">
             <span class="nav-item-title" style="color:var(--accent);display:flex;align-items:center;gap:5px;">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
@@ -1347,6 +1355,113 @@
       </div>
     </div>
 
+
+    <!-- TRADUÇÃO DE VÍDEO -->
+    <div id="tool-translate" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">Tradução de Vídeo</h1>
+        <p class="tool-subtitle">Transcreve, traduz e regrava a voz mantendo o som de fundo original</p>
+      </div>
+
+      <!-- Passo 1: upload + configurações -->
+      <div id="tr-step1">
+        <div class="card">
+          <div class="section-label">📹 Vídeo</div>
+          <label for="tr-video-input" id="tr-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
+            <p><strong>Selecione o vídeo</strong></p>
+            <div id="tr-file-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="tr-video-input" accept="video/*" class="hidden-input" />
+        </div>
+
+        <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div class="section-label">🌍 Idioma de origem</div>
+            <select id="tr-from-lang" class="tool-select" style="width:100%">
+              <option value="auto">🔍 Auto-detectar</option>
+              <option value="pt">Português</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="fr">Francês</option>
+              <option value="de">Alemão</option>
+              <option value="it">Italiano</option>
+              <option value="ja">Japonês</option>
+              <option value="zh">Chinês</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label">🎯 Traduzir para</div>
+            <select id="tr-to-lang" class="tool-select" style="width:100%">
+              <option value="en">Inglês</option>
+              <option value="pt">Português</option>
+              <option value="es">Espanhol</option>
+              <option value="fr">Francês</option>
+              <option value="de">Alemão</option>
+              <option value="it">Italiano</option>
+              <option value="ja">Japonês</option>
+              <option value="zh">Chinês</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">🤖 API de Tradução (Anthropic ou OpenRouter)</div>
+          <input id="tr-api-key" type="password" class="tool-input" placeholder="sk-ant-... ou sk-or-..." style="width:100%;box-sizing:border-box" />
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+            <label style="font-size:12px;color:var(--text-muted)">Modelo:</label>
+            <select id="tr-api-model" class="tool-select" style="flex:1">
+              <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku (rápido)</option>
+              <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet (melhor)</option>
+              <option value="openai/gpt-4o-mini">GPT-4o Mini (OpenRouter)</option>
+            </select>
+          </div>
+          <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+            Anthropic: chave começa com <code>sk-ant</code> | OpenRouter: chave começa com <code>sk-or</code>
+          </div>
+        </div>
+
+        <button id="tr-analyze-btn" class="submit-btn" disabled>Selecione um vídeo</button>
+        <div id="tr-analyze-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="tr-analyze-status" class="status-text"></div>
+        <div id="tr-analyze-error" class="error-msg"></div>
+      </div>
+
+      <!-- Passo 2: revisão dos segmentos -->
+      <div id="tr-step2" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-label" style="margin:0">📝 Revise e edite a tradução</div>
+            <button id="tr-back-btn" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">← Voltar</button>
+          </div>
+          <div id="tr-segments-container" style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">🎙 Voz ElevenLabs</div>
+          <div style="display:flex;gap:8px">
+            <input id="tr-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+            <button id="tr-load-voices-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">Carregar vozes</button>
+          </div>
+          <select id="tr-voice-select" class="tool-select" style="width:100%;margin-top:8px;display:none">
+            <option value="">Selecione uma voz...</option>
+          </select>
+          <div id="tr-voices-error" class="error-msg"></div>
+        </div>
+
+        <button id="tr-generate-btn" class="submit-btn" disabled>Configure a voz para gerar</button>
+        <div id="tr-generate-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="tr-generate-status" class="status-text"></div>
+        <div id="tr-generate-error" class="error-msg"></div>
+      </div>
+
+      <!-- Resultado -->
+      <div id="tr-result-card" class="result-card" style="display:none">
+        <h3>✓ Vídeo traduzido!</h3>
+        <video id="tr-result-video" class="result-video" controls></video><br/>
+        <a id="tr-download-btn" class="download-btn" download>⬇ Baixar vídeo traduzido</a>
+      </div>
+    </div>
 
     <!-- BIBLIOTECA GERAL DE VÍDEOS -->
     <div id="tool-video-library" class="tool-panel" style="display:none">

@@ -14,6 +14,7 @@ const LIB_GROUPS = [
   { type: 'rembg',      icon: '🖼️',  title: 'Fundo Removido' },
   { type: 'video-gen',  icon: '🎬', title: 'Geração de Vídeo' },
   { type: 'lipsync',    icon: '💋', title: 'Lipsync' },
+  { type: 'translate',  icon: '🌐', title: 'Tradução de Vídeo' },
 ];
 
 function formatExpiry(expiresAt) {
@@ -2126,6 +2127,226 @@ function loadResizeFrame(file) {
     URL.revokeObjectURL(vid.src);
   });
 }
+
+// ════════════════════════════════════════════════════════════════════
+// TRADUÇÃO DE VÍDEO
+// ════════════════════════════════════════════════════════════════════
+(function () {
+  const trVideoInput    = document.getElementById('tr-video-input');
+  const trDropZone      = document.getElementById('tr-drop-zone');
+  const trFileName      = document.getElementById('tr-file-name');
+  const trFromLang      = document.getElementById('tr-from-lang');
+  const trToLang        = document.getElementById('tr-to-lang');
+  const trApiKey        = document.getElementById('tr-api-key');
+  const trApiModel      = document.getElementById('tr-api-model');
+  const trAnalyzeBtn    = document.getElementById('tr-analyze-btn');
+  const trAnalyzeProgress = document.getElementById('tr-analyze-progress');
+  const trAnalyzeStatus   = document.getElementById('tr-analyze-status');
+  const trAnalyzeError    = document.getElementById('tr-analyze-error');
+  const trStep1         = document.getElementById('tr-step1');
+  const trStep2         = document.getElementById('tr-step2');
+  const trBackBtn       = document.getElementById('tr-back-btn');
+  const trSegContainer  = document.getElementById('tr-segments-container');
+  const trElKey         = document.getElementById('tr-el-key');
+  const trLoadVoicesBtn = document.getElementById('tr-load-voices-btn');
+  const trVoiceSelect   = document.getElementById('tr-voice-select');
+  const trVoicesError   = document.getElementById('tr-voices-error');
+  const trGenerateBtn   = document.getElementById('tr-generate-btn');
+  const trGenerateProgress = document.getElementById('tr-generate-progress');
+  const trGenerateStatus   = document.getElementById('tr-generate-status');
+  const trGenerateError    = document.getElementById('tr-generate-error');
+  const trResultCard    = document.getElementById('tr-result-card');
+  const trResultVideo   = document.getElementById('tr-result-video');
+  const trDownloadBtn   = document.getElementById('tr-download-btn');
+
+  if (!trVideoInput) return;
+
+  // Restore saved keys
+  const savedApiKey = localStorage.getItem('tr_api_key');
+  const savedElKey  = localStorage.getItem('tr_el_key');
+  if (savedApiKey) trApiKey.value = savedApiKey;
+  if (savedElKey)  trElKey.value  = savedElKey;
+
+  let trFile = null;
+  let trTempId = null;
+  let trSegments = [];
+
+  // ── Drag & drop ──
+  trDropZone.addEventListener('click', () => trVideoInput.click());
+  trDropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') trVideoInput.click(); });
+  trDropZone.addEventListener('dragover', e => { e.preventDefault(); trDropZone.classList.add('dz-over'); });
+  trDropZone.addEventListener('dragleave', () => trDropZone.classList.remove('dz-over'));
+  trDropZone.addEventListener('drop', e => {
+    e.preventDefault(); trDropZone.classList.remove('dz-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('video/')) setTrFile(f);
+  });
+  trVideoInput.addEventListener('change', () => { if (trVideoInput.files[0]) setTrFile(trVideoInput.files[0]); });
+
+  function setTrFile(f) {
+    trFile = f;
+    trFileName.textContent = f.name;
+    trAnalyzeBtn.disabled = false;
+    trAnalyzeBtn.textContent = '🔍 Transcrever e Traduzir';
+  }
+
+  // ── Passo 1: Analisar ──
+  trAnalyzeBtn.addEventListener('click', async () => {
+    if (!trFile) return;
+    const apiKey = trApiKey.value.trim();
+    if (!apiKey) { trAnalyzeError.style.display = 'block'; trAnalyzeError.textContent = 'Informe a chave da API de tradução.'; return; }
+
+    // Salvar chaves
+    localStorage.setItem('tr_api_key', apiKey);
+
+    trAnalyzeBtn.disabled = true;
+    trAnalyzeError.style.display = 'none';
+    trAnalyzeProgress.style.display = '';
+    trAnalyzeStatus.textContent = 'Transcrevendo... pode levar alguns minutos.';
+
+    const fd = new FormData();
+    fd.append('video', trFile);
+    fd.append('from_lang', trFromLang.value);
+    fd.append('to_lang', trToLang.value);
+    fd.append('api_key', apiKey);
+    fd.append('api_model', trApiModel.value);
+    // Detectar se OpenRouter pela chave
+    if (apiKey.startsWith('sk-or')) fd.append('api_base', 'https://openrouter.ai');
+
+    try {
+      const resp = await fetch(API + '/api/translate/analyze', { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || 'Erro desconhecido');
+
+      trTempId   = json.tempId;
+      trSegments = json.segments;
+      renderSegments();
+      trStep1.style.display = 'none';
+      trStep2.style.display = '';
+      trResultCard.style.display = 'none';
+    } catch (e) {
+      trAnalyzeError.style.display = 'block';
+      trAnalyzeError.textContent = 'Erro: ' + e.message;
+    } finally {
+      trAnalyzeBtn.disabled = false;
+      trAnalyzeProgress.style.display = 'none';
+      trAnalyzeStatus.textContent = '';
+    }
+  });
+
+  // ── Renderizar segmentos editáveis ──
+  function renderSegments() {
+    trSegContainer.innerHTML = '';
+    trSegments.forEach((seg, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:90px 1fr 1fr;gap:6px;align-items:start';
+      row.innerHTML = `
+        <div style="font-size:11px;color:var(--text-muted);padding-top:6px">${seg.start.slice(0,8)}<br>${seg.end.slice(0,8)}</div>
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px;font-size:12px;color:var(--text-muted)">${escHtml(seg.original)}</div>
+        <textarea data-idx="${i}" style="background:var(--bg-input,#1a1a2e);border:1px solid var(--accent);border-radius:6px;padding:6px;font-size:12px;color:var(--text);resize:vertical;min-height:52px;font-family:inherit">${escHtml(seg.translated || seg.original)}</textarea>
+      `;
+      trSegContainer.appendChild(row);
+    });
+    // Sync textarea changes back to segments array
+    trSegContainer.querySelectorAll('textarea').forEach(ta => {
+      ta.addEventListener('input', () => {
+        const idx = parseInt(ta.dataset.idx);
+        trSegments[idx].translated = ta.value;
+      });
+    });
+  }
+
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // ── Voltar ──
+  trBackBtn.addEventListener('click', () => {
+    trStep2.style.display = 'none';
+    trStep1.style.display = '';
+  });
+
+  // ── Carregar vozes ElevenLabs ──
+  trLoadVoicesBtn.addEventListener('click', async () => {
+    const key = trElKey.value.trim();
+    if (!key) { trVoicesError.style.display = 'block'; trVoicesError.textContent = 'Informe a chave do ElevenLabs.'; return; }
+    localStorage.setItem('tr_el_key', key);
+    trVoicesError.style.display = 'none';
+    trLoadVoicesBtn.disabled = true;
+    trLoadVoicesBtn.textContent = 'Carregando...';
+    try {
+      const resp = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+      if (!resp.ok) throw new Error('Chave inválida ou erro na API');
+      const data = await resp.json();
+      trVoiceSelect.innerHTML = '<option value="">Selecione uma voz...</option>';
+      (data.voices || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.voice_id;
+        opt.textContent = v.name + (v.labels?.accent ? ` (${v.labels.accent})` : '');
+        trVoiceSelect.appendChild(opt);
+      });
+      trVoiceSelect.style.display = '';
+    } catch (e) {
+      trVoicesError.style.display = 'block';
+      trVoicesError.textContent = 'Erro: ' + e.message;
+    } finally {
+      trLoadVoicesBtn.disabled = false;
+      trLoadVoicesBtn.textContent = 'Carregar vozes';
+    }
+  });
+
+  trVoiceSelect.addEventListener('change', () => {
+    trGenerateBtn.disabled = !trVoiceSelect.value;
+    trGenerateBtn.textContent = trVoiceSelect.value ? '🌐 Gerar Vídeo Traduzido' : 'Configure a voz para gerar';
+  });
+
+  // ── Passo 2: Gerar ──
+  trGenerateBtn.addEventListener('click', async () => {
+    if (!trVoiceSelect.value || !trTempId) return;
+    const elKey = trElKey.value.trim();
+    if (!elKey) { trGenerateError.style.display = 'block'; trGenerateError.textContent = 'Informe a chave do ElevenLabs.'; return; }
+
+    trGenerateBtn.disabled = true;
+    trGenerateError.style.display = 'none';
+    trGenerateProgress.style.display = '';
+    trGenerateStatus.textContent = 'Separando vozes e gerando áudio... pode levar alguns minutos.';
+
+    try {
+      const resp = await fetch(API + '/api/translate/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tempId: trTempId,
+          segments: trSegments,
+          elevenlabs_key: elKey,
+          voice_id: trVoiceSelect.value,
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || 'Erro desconhecido');
+
+      trResultVideo.src = API + json.url;
+      trDownloadBtn.href = API + json.url;
+      trDownloadBtn.download = json.friendlyName || 'video-traduzido.mp4';
+      trResultCard.style.display = '';
+      trStep2.style.display = 'none';
+      addToLocalLibrary({ ...json, type: 'translate' });
+    } catch (e) {
+      trGenerateError.style.display = 'block';
+      trGenerateError.textContent = 'Erro: ' + e.message;
+    } finally {
+      trGenerateBtn.disabled = false;
+      trGenerateProgress.style.display = 'none';
+      trGenerateStatus.textContent = '';
+    }
+  });
+
+  function addToLocalLibrary(item) {
+    try {
+      const lib = JSON.parse(localStorage.getItem('video_library') || '[]');
+      lib.unshift(item);
+      localStorage.setItem('video_library', JSON.stringify(lib.slice(0, 50)));
+    } catch {}
+  }
+})();
 
 function drawResizeCrop() {
   const canvas = document.getElementById('resize-crop-canvas');
