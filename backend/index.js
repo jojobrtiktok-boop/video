@@ -2079,14 +2079,13 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
       const adjPath = path.join(ttsAdjDir, `seg_${i}.wav`);
       const segStart = srtTimeToSecs(seg.start);
 
-      if (ttsDur > 0 && Math.abs(ttsDur - slotDur) > 0.05) {
+      if (ttsDur > 0 && ttsDur > slotDur + 0.05) {
+        // TTS mais longo que o slot → acelera para caber
         let rate = ttsDur / slotDur;
         // Clamp: never exceed maxTempoRate; atempo aceita 0.5–2.0; para fora encadeamos filtros
         rate = Math.min(rate, maxTempoRate);
         let filterStr = '';
-        if (rate < 0.5) {
-          filterStr = `atempo=0.5,atempo=${(rate/0.5).toFixed(4)}`;
-        } else if (rate > 2.0) {
+        if (rate > 2.0) {
           filterStr = `atempo=2.0,atempo=${(rate/2.0).toFixed(4)}`;
         } else {
           filterStr = `atempo=${rate.toFixed(4)}`;
