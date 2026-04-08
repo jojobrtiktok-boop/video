@@ -402,6 +402,14 @@
     .size-row label { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; white-space: nowrap; }
     .size-row input[type=range] { flex: 1; accent-color: var(--accent); }
     .size-row .size-val { font-size: 0.81rem; color: var(--text); font-weight: 700; min-width: 32px; text-align: right; }
+    .uppercase-toggle {
+      padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 900;
+      font-family: inherit; cursor: pointer; letter-spacing: 1px;
+      background: var(--surface2); border: 1.5px solid var(--border); color: var(--text-muted);
+      transition: all .15s; white-space: nowrap;
+    }
+    .uppercase-toggle:hover { border-color: var(--border-strong); color: var(--text); }
+    .uppercase-toggle.uc-active { background: var(--accent-dim); border-color: rgba(124,113,255,0.5); color: #fff; }
     .anim-btns { display: flex; gap: 8px; }
     .anim-btn {
       flex: 1; padding: 11px 10px;
@@ -1092,12 +1100,19 @@
             <div class="preset-preview" style="color:#fff;font-weight:300;letter-spacing:2px;text-shadow:none">Abc</div>
             <div class="preset-name">Clean</div>
           </div>
+          <div class="preset-card" data-preset="karaoke">
+            <div class="preset-preview">
+              <span style="color:#fff;text-shadow:-1px -1px 0 #000,1px 1px 0 #000">ola </span><span style="color:#FFFF00;text-shadow:-1px -1px 0 #000,1px 1px 0 #000">mundo</span>
+            </div>
+            <div class="preset-name">Karaoke</div>
+          </div>
         </div>
 
         <div class="size-row">
           <label>Fonte</label>
           <input type="range" id="sub-fontsize" min="36" max="120" step="4" value="72">
           <span class="size-val" id="sub-fontsize-val">72</span>
+          <button id="sub-uppercase-btn" class="uppercase-toggle" title="Tudo maiúsculo">AA</button>
         </div>
 
         <div class="section-label" style="margin-top:18px">Animação de entrada</div>
@@ -1129,6 +1144,10 @@
           <button class="anim-btn" data-entry="slide_up">
             ⬆ Slide Up
             <span class="anim-desc">Sobe de baixo pra posição final</span>
+          </button>
+          <button class="anim-btn" data-entry="typewriter">
+            ⌨ Typewriter
+            <span class="anim-desc">Letras aparecem como se estivesse digitando</span>
           </button>
         </div>
       </div>

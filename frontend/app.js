@@ -27,12 +27,13 @@ function formatExpiry(expiresAt) {
 }
 
 function renderVideoCard(item) {
-  const filename = item.url ? item.url.split('/').pop() : 'processando…';
   const isReady  = !item.status || item.status === 'done';
   const isProc   = item.status === 'processing';
   const isErr    = item.status === 'error';
   const pct      = item.progress != null ? item.progress : (isReady ? 100 : 0);
   const expiry   = isReady ? formatExpiry(item.expiresAt) : '';
+  const filename = item.url ? item.url.split('/').pop() : 'processando…';
+  const displayName = item.friendlyName || filename;
   return `
     <div class="video-card" data-id="${item.id || ''}">
       ${isReady && item.url
@@ -43,14 +44,14 @@ function renderVideoCard(item) {
       }
       <div class="video-card-info">
         <div class="video-card-label">${item.label || ''}</div>
-        <div class="video-card-title">${filename}</div>
+        <div class="video-card-title">${displayName}</div>
         ${isProc ? `
           <div class="lib-progress-bar"><div class="lib-progress-fill" style="width:${pct}%"></div></div>
           <div class="video-card-meta">⏳ ${pct}% — processando…</div>` : ''}
         ${isReady ? `<div class="video-card-meta">${expiry}</div>` : ''}
         ${isErr   ? `<div class="video-card-meta" style="color:#f87171">❌ Erro no processamento</div>` : ''}
         <div class="video-card-actions">
-          ${isReady && item.url ? `<a href="${API + item.url}" download class="video-card-dl">⬇ Baixar</a>` : ''}
+          ${isReady && item.url ? `<a href="${API + item.url}" download="${displayName}" class="video-card-dl">⬇ Baixar</a>` : ''}
         </div>
       </div>
     </div>`;
@@ -485,7 +486,7 @@ submitBtn.addEventListener('click', async () => {
     if (json.status === 'processing' && json.id) {
       await pollProcessJob(json.id);
     } else {
-      showWmResult(json.url);
+      showWmResult(json.url, json.friendlyName);
     }
   } catch (err) { showError(err.message); }
   finally { setLoadingWm(false, 0); }
@@ -496,15 +497,15 @@ async function pollProcessJob(jobId) {
     await new Promise(r => setTimeout(r, 2500));
     const resp = await fetch(API + `/api/process-status/${jobId}`);
     const job  = await resp.json();
-    if (job.status === 'done')  { showWmResult(job.url); return; }
+    if (job.status === 'done')  { showWmResult(job.url, job.friendlyName); return; }
     if (job.status === 'error') throw new Error(job.error || 'Processamento falhou');
     setLoadingWm(true, job.progress || 0);
   }
 }
 
-function showWmResult(url) {
+function showWmResult(url, friendlyName) {
   resultVideo.src = API + url; downloadBtn.href = API + url;
-  downloadBtn.download = url.split('/').pop();
+  downloadBtn.download = friendlyName || url.split('/').pop();
   resultCard.style.display = 'block';
   resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -551,11 +552,12 @@ const subResultVideo  = document.getElementById('sub-result-video');
 const subDownloadBtn  = document.getElementById('sub-download-btn');
 const subFontSize     = document.getElementById('sub-fontsize');
 const subFontSizeVal  = document.getElementById('sub-fontsize-val');
+const subUppercaseBtn = document.getElementById('sub-uppercase-btn');
 const subAddBtn       = document.getElementById('sub-add-btn');
 const subEntriesEl    = document.getElementById('sub-entries');
 const subEmptyEl      = document.getElementById('sub-empty');
 
-let subFile = null, subEntries = [], subPreset = 'classico', subWordByWord = false, subEntryAnim = 'none';
+let subFile = null, subEntries = [], subPreset = 'classico', subWordByWord = false, subEntryAnim = 'none', subUppercase = false;
 let subSubMode = 'auto'; // 'auto' | 'manual'
 let subNextId = 1;
 
@@ -637,29 +639,72 @@ function drawSubFrame() {
   subCtx.clearRect(0, 0, subPreviewW, subPreviewH);
   subCtx.drawImage(subVideoEl, 0, 0, subPreviewW, subPreviewH);
 
-  // Draw subtitle block
+  // Compute font size scaled to preview (video is 1920px wide, fontsize is in that space)
+  const fsRaw = subFontSize ? parseInt(subFontSize.value) || 72 : 72;
+  // scale font proportionally to preview width (video reference = 1920px)
+  const scaleFactor = subPreviewW / 1920;
+  const fs = Math.max(8, Math.round(fsRaw * scaleFactor));
+
+  // Draw subtitle block — height adapts to font size
+  const lineH = fs * 1.5;
+  // karaoke shows 2 lines, others 1 line
+  const lines = subPreset === 'karaoke' ? 2 : 1;
+  const bPad = fs * 0.4;
   const bW = subPreviewW * SUB_BLOCK_W_FRAC;
-  const bH = SUB_BLOCK_H_PX * (subPreviewH / 400);
+  const bH = lineH * lines + bPad * 2;
   const bX = subBlockX * subPreviewW - bW / 2;
   const bY = subBlockY * subPreviewH - bH / 2;
 
-  subCtx.fillStyle = 'rgba(108,99,255,0.22)';
+  subCtx.fillStyle = 'rgba(108,99,255,0.18)';
   roundRect(subCtx, bX, bY, bW, bH, 8);
   subCtx.fill();
   subCtx.strokeStyle = subBlockDragging ? '#ffffff' : '#6c63ff';
   subCtx.lineWidth = 2; subCtx.setLineDash([5, 3]);
   roundRect(subCtx, bX, bY, bW, bH, 8); subCtx.stroke(); subCtx.setLineDash([]);
 
-  // Sample text
-  const fs = Math.max(10, Math.round(15 * subPreviewH / 360));
-  subCtx.font = `bold ${fs}px Arial, sans-serif`;
-  subCtx.fillStyle = '#ffffff';
-  subCtx.strokeStyle = '#000';
-  subCtx.lineWidth = 3;
   subCtx.textAlign = 'center';
   subCtx.textBaseline = 'middle';
-  subCtx.strokeText('Legenda Modelo', bX + bW / 2, bY + bH / 2);
-  subCtx.fillText('Legenda Modelo', bX + bW / 2, bY + bH / 2);
+
+  const sampleText = subUppercase ? 'LEGENDA MODELO' : 'Legenda Modelo';
+
+  if (subPreset === 'karaoke') {
+    // Show two rows — simulate karaoke: previous white, current yellow
+    const row1 = subUppercase ? 'TEXTO ANTERIOR' : 'texto anterior';
+    const row2Parts = [
+      { text: subUppercase ? 'PALAVRA ' : 'palavra ', color: '#fff' },
+      { text: subUppercase ? 'DESTAQUE' : 'destaque', color: '#FFFF00' }
+    ];
+    const y1 = bY + bPad + lineH * 0.5;
+    const y2 = bY + bPad + lineH * 1.5;
+
+    // Row 1 (white)
+    subCtx.font = `bold ${fs}px Arial Black, Arial, sans-serif`;
+    subCtx.lineWidth = Math.max(2, fs * 0.08);
+    subCtx.strokeStyle = '#000'; subCtx.fillStyle = '#fff';
+    subCtx.strokeText(row1, bX + bW / 2, y1);
+    subCtx.fillText(row1, bX + bW / 2, y1);
+
+    // Row 2 (word by word colored) — approximate positioning
+    const word1W = subCtx.measureText(row2Parts[0].text).width;
+    const word2W = subCtx.measureText(row2Parts[1].text).width;
+    const totalW = word1W + word2W;
+    let cx = bX + bW / 2 - totalW / 2;
+    row2Parts.forEach(part => {
+      const w = subCtx.measureText(part.text).width;
+      subCtx.strokeStyle = '#000'; subCtx.fillStyle = part.color;
+      subCtx.strokeText(part.text, cx + w / 2, y2);
+      subCtx.fillText(part.text, cx + w / 2, y2);
+      cx += w;
+    });
+  } else {
+    // Normal single-line preview
+    subCtx.font = `bold ${fs}px Arial, sans-serif`;
+    subCtx.lineWidth = Math.max(2, fs * 0.06);
+    subCtx.strokeStyle = '#000'; subCtx.fillStyle = '#fff';
+    const cy = bY + bH / 2;
+    subCtx.strokeText(sampleText, bX + bW / 2, cy);
+    subCtx.fillText(sampleText, bX + bW / 2, cy);
+  }
 
   // Drag hint
   subCtx.font = `${Math.max(9, Math.round(11 * subPreviewH / 360))}px Arial`;
@@ -675,8 +720,14 @@ function subCanvasPos(e) {
 }
 
 function isNearSubBlock(px, py) {
+  const fsRaw = subFontSize ? parseInt(subFontSize.value) || 72 : 72;
+  const scaleFactor = subPreviewW / 1920;
+  const fs = Math.max(8, Math.round(fsRaw * scaleFactor));
+  const lineH = fs * 1.5;
+  const lines = subPreset === 'karaoke' ? 2 : 1;
+  const bPad = fs * 0.4;
   const bW = subPreviewW * SUB_BLOCK_W_FRAC;
-  const bH = SUB_BLOCK_H_PX * (subPreviewH / 400);
+  const bH = lineH * lines + bPad * 2;
   const bX = subBlockX * subPreviewW - bW / 2;
   const bY = subBlockY * subPreviewH - bH / 2;
   return px >= bX - 8 && px <= bX + bW + 8 && py >= bY - 8 && py <= bY + bH + 8;
@@ -739,6 +790,7 @@ document.querySelectorAll('.preset-card').forEach(card => {
     document.querySelectorAll('.preset-card').forEach(c => c.classList.remove('sp-active'));
     card.classList.add('sp-active');
     subPreset = card.dataset.preset;
+    // karaoke forces word-by-word mode visually (handled in backend)
   });
 });
 
@@ -762,6 +814,14 @@ document.querySelectorAll('.anim-btn:not(#entry-anim-btns .anim-btn)').forEach(b
 
 // Font size
 if (subFontSize) subFontSize.addEventListener('input', () => { subFontSizeVal.textContent = subFontSize.value; });
+
+// Uppercase toggle
+if (subUppercaseBtn) {
+  subUppercaseBtn.addEventListener('click', () => {
+    subUppercase = !subUppercase;
+    subUppercaseBtn.classList.toggle('uc-active', subUppercase);
+  });
+}
 
 // Manual entries
 function advanceTime(t, secs) {
@@ -848,6 +908,7 @@ if (subSubmitBtn) {
     fd.append('fontsize', subFontSize ? subFontSize.value : '72');
     fd.append('wordbyword', subWordByWord ? '1' : '0');
     fd.append('animation', subEntryAnim);
+    fd.append('uppercase', subUppercase ? '1' : '0');
     fd.append('posX', posX);
     fd.append('posY', posY);
 
@@ -868,7 +929,7 @@ if (subSubmitBtn) {
       if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
       subResultVideo.src = API + json.url;
       subDownloadBtn.href = API + json.url;
-      subDownloadBtn.download = json.url.split('/').pop();
+      subDownloadBtn.download = json.friendlyName || json.url.split('/').pop();
       subResultCard.style.display = 'block';
       subResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (err) {
@@ -1191,7 +1252,7 @@ if (extrSubmitBtn) {
         const url = API + json.url;
         if (extrResultAudio) { extrResultAudio.src = url; extrResultAudio.style.display = 'block'; }
         extrResultVideo.style.display = 'none';
-        extrDownloadBtn.href = url; extrDownloadBtn.download = json.url.split('/').pop();
+        extrDownloadBtn.href = url; extrDownloadBtn.download = json.friendlyName || json.url.split('/').pop();
         extrDownloadBtn.textContent = '⬇ Baixar MP3';
         extrResultCard.style.display = 'block';
         extrResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1199,7 +1260,7 @@ if (extrSubmitBtn) {
         const url = API + json.url;
         if (extrResultAudio) { extrResultAudio.style.display = 'none'; extrResultAudio.src = ''; }
         extrResultVideo.style.display = ''; extrResultVideo.src = url;
-        extrDownloadBtn.href = url; extrDownloadBtn.download = json.url.split('/').pop();
+        extrDownloadBtn.href = url; extrDownloadBtn.download = json.friendlyName || json.url.split('/').pop();
         extrDownloadBtn.textContent = '⬇ Baixar Vídeo';
         extrResultCard.style.display = 'block';
         extrResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1308,7 +1369,7 @@ if (lipSubmitBtn) {
         lipProgressWrap.querySelector('.progress-bar').style.width = pct + '%';
         if (statusJson.status === 'done' && statusJson.url) {
           lipResultVideo.src = API + statusJson.url; lipDownloadBtn.href = API + statusJson.url;
-          lipDownloadBtn.download = statusJson.url.split('/').pop();
+          lipDownloadBtn.download = statusJson.friendlyName || statusJson.url.split('/').pop();
           lipResultCard.style.display = 'block';
           lipResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           done = true;
@@ -1763,7 +1824,7 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
 
   function applyResult(json) {
     if (rv) rv.src = API + json.url;
-    if (dl) { dl.href = API + json.url; dl.download = json.url.split('/').pop(); }
+    if (dl) { dl.href = API + json.url; dl.download = json.friendlyName || json.url.split('/').pop(); }
     if (onResult) onResult(json, file);
     if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
     sub.disabled = false; sub.textContent = '▶ Processar';
@@ -1984,7 +2045,7 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
     progressEl.style.display = 'block'; statusEl.textContent = '';
     errorEl.style.display = 'none'; resultCard.style.display = 'none';
     const bar = progressEl.querySelector('.progress-bar');
-    let lastUrl = null;
+    let lastUrl = null, lastFriendlyName = null;
     for (let i = 0; i < toProcess.length; i++) {
       const seg = toProcess[i];
       statusEl.textContent = 'Cortando ' + (i+1) + ' / ' + toProcess.length + '…';
@@ -1995,11 +2056,11 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
         const r = await fetch(API + '/api/trim', { method:'POST', body:fd });
         const j = await r.json();
         if (!r.ok || j.error) throw new Error(j.error || 'Erro ' + r.status);
-        lastUrl = j.url;
+        lastUrl = j.url; lastFriendlyName = j.friendlyName;
       } catch (e) { errorEl.style.display='block'; errorEl.textContent='Erro no corte '+(i+1)+': '+e.message; }
     }
     if (lastUrl) {
-      resultVid.src = API + lastUrl; dlBtn.href = API + lastUrl; dlBtn.download = lastUrl.split('/').pop();
+      resultVid.src = API + lastUrl; dlBtn.href = API + lastUrl; dlBtn.download = lastFriendlyName || lastUrl.split('/').pop();
       resultCard.style.display = 'block'; resultCard.scrollIntoView({behavior:'smooth',block:'nearest'});
     }
     submitBtn.disabled = false; submitBtn.textContent = '✂ Cortar';

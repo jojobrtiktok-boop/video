@@ -23,6 +23,14 @@ function scheduleDelete(filePath, delayMs) {
   }, delayMs);
 }
 
+// Gera nome amigável para download: "meu video sem marca d'agua.mp4"
+function friendlyFilename(originalname, suffix, forceExt) {
+  const origExt = path.extname(originalname);
+  const ext = forceExt || origExt || '.mp4';
+  const base = path.basename(originalname, origExt);
+  return suffix ? base + ' ' + suffix + ext : base + ext;
+}
+
 const app = express();
 
 const _p = process.platform === 'win32';
@@ -78,7 +86,7 @@ function spawnFfmpegWithProgress(jobId, ffmpegArgs, input, output, duration, exp
     simpleJobs[jobId].url = '/uploads/' + path.basename(output);
     simpleJobs[jobId].outputSize = outSize;
     scheduleDelete(output, expiry);
-    addToLibrary({ id: jobId, type: libType, label: libLabel, url: simpleJobs[jobId].url, createdAt: Date.now(), expiresAt: Date.now() + expiry });
+    addToLibrary({ id: jobId, type: libType, label: libLabel, url: simpleJobs[jobId].url, createdAt: Date.now(), expiresAt: Date.now() + expiry, friendlyName: simpleJobs[jobId].friendlyName });
   });
 }
 
@@ -148,14 +156,16 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   const input = req.file.path;
   const outputName = 'processed-' + path.basename(input);
   const output = path.join(UPLOAD_DIR, outputName);
+  const _origName = req.file.originalname;
 
   if (mode === 'sora') {
     const jobId  = Date.now().toString() + Math.random().toString(36).slice(2);
     const expiry = Date.now() + 60 * 60 * 1000;
-    processJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry };
-    const libEntry = { id: jobId, type: 'watermark', label: '🎵 Sora', url: null, status: 'processing', progress: 0, createdAt: Date.now(), expiresAt: expiry };
+    const _soraN = friendlyFilename(_origName, "sem marca d'agua (Sora)");
+    processJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry, friendlyName: _soraN };
+    const libEntry = { id: jobId, type: 'watermark', label: '🎵 Sora', url: null, status: 'processing', progress: 0, createdAt: Date.now(), expiresAt: expiry, friendlyName: _soraN };
     addToLibrary(libEntry);
-    res.json({ id: jobId, status: 'processing' });
+    res.json({ id: jobId, status: 'processing', friendlyName: _soraN });
     const soraScript = path.join(__dirname, 'remove_sora_watermark.py');
     spawnJob(jobId, [PYTHON, soraScript, input, output, FFMPEG], input, output, expiry, libEntry);
     return;
@@ -194,10 +204,11 @@ app.post('/api/process', upload.single('video'), (req, res) => {
           id: Date.now().toString() + Math.random().toString(36).slice(2),
           type: 'watermark', label: '🤖 HeyGen',
           url: `/uploads/${path.basename(output)}`,
-          createdAt: Date.now(), expiresAt: expiry
+          createdAt: Date.now(), expiresAt: expiry,
+          friendlyName: friendlyFilename(_origName, "sem marca d'agua (HeyGen)")
         };
         addToLibrary(libEntry);
-        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id, friendlyName: libEntry.friendlyName });
       });
     });
     return;
@@ -234,9 +245,9 @@ app.post('/api/process', upload.single('video'), (req, res) => {
       fs.unlink(filterFile, () => {});
       if (err) return res.status(500).json({ error: String(err), stderr });
       scheduleDelete(output, 30 * 60 * 1000);
-      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '🌫️ Blur', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '🌫️ Blur', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000, friendlyName: friendlyFilename(_origName, "sem marca d'agua") };
       addToLibrary(libEntry);
-      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+      return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id, friendlyName: libEntry.friendlyName });
     });
     return;
   }
@@ -259,9 +270,9 @@ app.post('/api/process', upload.single('video'), (req, res) => {
         fs.unlink(input, () => {});
         if (err) return res.status(500).json({ error: String(err), stderr });
         scheduleDelete(output, 30 * 60 * 1000);
-        const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '⚡ Remoção Simples', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+        const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '⚡ Remoção Simples', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000, friendlyName: friendlyFilename(_origName, "sem marca d'agua") };
         addToLibrary(libEntry);
-        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+        return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id, friendlyName: libEntry.friendlyName });
       });
     });
     return;
@@ -273,10 +284,11 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     const h = parseInt(req.body.h) || 60;
     const jobId  = Date.now().toString() + Math.random().toString(36).slice(2);
     const expiry = Date.now() + 30 * 60 * 1000;
-    processJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry };
-    const libEntry = { id: jobId, type: 'watermark', label: '✨ Remoção Limpa', url: null, status: 'processing', progress: 0, createdAt: Date.now(), expiresAt: expiry };
+    const _delogoN = friendlyFilename(_origName, "sem marca d'agua");
+    processJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry, friendlyName: _delogoN };
+    const libEntry = { id: jobId, type: 'watermark', label: '✨ Remoção Limpa', url: null, status: 'processing', progress: 0, createdAt: Date.now(), expiresAt: expiry, friendlyName: _delogoN };
     addToLibrary(libEntry);
-    res.json({ id: jobId, status: 'processing' });
+    res.json({ id: jobId, status: 'processing', friendlyName: _delogoN });
     const scriptPath = path.join(__dirname, 'inpaint_video.py');
     spawnJob(jobId, [PYTHON, scriptPath, input, output, String(x), String(y), String(w), String(h), FFMPEG], input, output, expiry, libEntry);
     return;
@@ -309,6 +321,7 @@ app.post('/api/lipsync', uploadFields, (req, res) => {
   const output     = path.join(UPLOAD_DIR, outputName);
   const python     = PYTHON;
   const runner     = path.join(__dirname, 'wav2lip_runner.py');
+  const _lipN      = friendlyFilename(videoFile.originalname, 'lipsync');
 
   // Inicializa progresso
   lipsyncProgress[lipsyncId] = {
@@ -316,7 +329,8 @@ app.post('/api/lipsync', uploadFields, (req, res) => {
     progress: 0,
     url: null,
     error: null,
-    expiresAt: null
+    expiresAt: null,
+    friendlyName: _lipN
   };
 
   // Simula progresso incremental (mock, pois wav2lip_runner.py não reporta progresso real)
@@ -357,9 +371,10 @@ app.post('/api/lipsync', uploadFields, (req, res) => {
       label: '💋 Lipsync',
       url: `/uploads/${outputName}`,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 60*60*1000
+      expiresAt: Date.now() + 60*60*1000,
+      friendlyName: _lipN
     });
-    return res.json({ url: `/uploads/${outputName}`, id: lipsyncId });
+    return res.json({ url: `/uploads/${outputName}`, id: lipsyncId, friendlyName: _lipN });
   });
 });
 
@@ -430,6 +445,7 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
   const align = posX !== null ? 5 : (req.body.position === 'top' ? 8 : 2);
 
   const animation  = req.body.animation || 'none';
+  const uppercase  = req.body.uppercase === '1';
 
   const STYLES = {
     classico:    `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,${align},10,10,50,1`,
@@ -442,6 +458,7 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
     fire:        `Style: Default,Arial,${fontSize},&H000045FF,&H000045FF,&H000000AA,&H00000000,-1,0,0,0,100,100,0,0,1,4,2,${align},10,10,50,1`,
     roxo:        `Style: Default,Arial,${fontSize},&H00FF71C2,&H00FF71C2,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
     branco_puro: `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0.5,0,1,2,0,${align},10,10,50,1`,
+    karaoke:     `Style: Default,Arial Black,${fontSize},&H0000FFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
   };
 
   function timeStrToSecs(t) {
@@ -466,6 +483,65 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
     return '';
   }
 
+  // Apply uppercase transformation to source subs
+  if (uppercase) subs = subs.map(s => ({ ...s, text: String(s.text).toUpperCase() }));
+
+  // Karaoke mode: pair words 2-at-a-time with \k timing tags
+  if (preset === 'karaoke') {
+    const styleStr = STYLES.karaoke;
+    const posTag = (posX !== null && posY !== null) ? `{\pos(${posX},${posY})}` : '';
+    const karaokeDialogues = [];
+    subs.forEach(sub => {
+      const words = String(sub.text).trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return;
+      const startS = timeStrToSecs(sub.start);
+      const endS   = timeStrToSecs(sub.end);
+      const dur    = Math.max(0.1, endS - startS);
+      const perW   = dur / words.length;
+      for (let i = 0; i < words.length; i += 2) {
+        const w1 = words[i];
+        const w2 = words[i + 1];
+        const pairStart = startS + i * perW;
+        const pairEnd   = startS + (Math.min(i + 2, words.length)) * perW;
+        const cs1 = Math.round(perW * 100);
+        const cs2 = w2 ? Math.round(perW * 100) : 0;
+        // First word active (yellow via \k), second word white (\c resets to secondary)
+        let text;
+        if (w2) {
+          text = `{\\k${cs1}}${w1} {\\c&H00FFFFFF&\\k${cs2}}${w2}`;
+        } else {
+          text = `{\\k${cs1}}${w1}`;
+        }
+        karaokeDialogues.push(`Dialogue: 0,${secsToAssTime(pairStart)},${secsToAssTime(pairEnd)},Default,,0,0,0,,${posTag}${text}`);
+      }
+    });
+    const assContent = [
+      '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1920', 'PlayResY: 1080', 'ScaledBorderAndShadow: yes', '',
+      '[V4+ Styles]',
+      'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+      styleStr, '', '[Events]',
+      'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+      karaokeDialogues.join('\n'), ''
+    ].join('\n');
+    const input2    = req.file.path;
+    const assPath2  = input2 + '.ass';
+    const outputName2 = 'sub-' + path.basename(input2);
+    const output2   = path.join(UPLOAD_DIR, outputName2);
+    fs.writeFileSync(assPath2, assContent, 'utf8');
+    const assEsc2 = assPath2.replace(/\\/g, '/').replace(':', '\\:');
+    const cmd2 = `"${FFMPEG}" -y -i "${input2}" -vf "ass='${assEsc2}'" -c:a copy "${output2}"`;
+    exec(cmd2, (err2, _s2, stderr2) => {
+      fs.unlink(input2, () => {});
+      fs.unlink(assPath2, () => {});
+      if (err2) return res.status(500).json({ error: String(err2), stderr: stderr2 });
+      scheduleDelete(output2, 30 * 60 * 1000);
+      const libEntry2 = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'subtitle', label: '💬 Legenda', url: `/uploads/${path.basename(output2)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000, friendlyName: friendlyFilename(req.file.originalname, 'com legenda') };
+      addToLibrary(libEntry2);
+      return res.json({ url: `/uploads/${path.basename(output2)}`, id: libEntry2.id, friendlyName: libEntry2.friendlyName });
+    });
+    return; // Early return — karaoke handled above
+  }
+
   let finalSubs = subs;
   if (wordByWord) {
     finalSubs = [];
@@ -487,22 +563,22 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
   }
 
   const styleStr = STYLES[preset] || STYLES.classico;
-  const posTag = (posX !== null && posY !== null) ? `{\\pos(${posX},${posY})}` : '';
+  const posTag = (posX !== null && posY !== null) ? `{\pos(${posX},${posY})}` : '';
 
   let animPrefix = '';
-  if (animation === 'fade')          animPrefix = '{\\fad(200,200)}';
-  else if (animation === 'pop')      animPrefix = '{\\fscx0\\fscy0\\t(0,200,\\fscx100\\fscy100)}';
+  if (animation === 'fade')          animPrefix = '{\fad(200,200)}';
+  else if (animation === 'pop')      animPrefix = '{\fscx0\fscy0\t(0,200,\fscx100\fscy100)}';
   else if (animation === 'slide_up') {
     const ay = posY !== null ? posY : 980;
     const ax = posX !== null ? posX : 960;
-    animPrefix = `{\\move(${ax},${ay + 60},${ax},${ay})}`;
+    animPrefix = `{\move(${ax},${ay + 60},${ax},${ay})}`;
   }
 
   function typewriterText(text, durationSecs) {
     const chars = String(text).split('');
     const centisecs = Math.round(durationSecs * 100);
     const perChar = Math.max(1, Math.round(centisecs / chars.length));
-    return chars.map(c => `{\\k${perChar}}${c === ',' ? '{\\,}' : c}`).join('');
+    return chars.map(c => `{\k${perChar}}${c === ',' ? '{\,}' : c}`).join('');
   }
 
   const dialogues = finalSubs.map(sub => {
@@ -510,7 +586,7 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
     const endS   = timeStrToSecs(sub.end);
     const text = animation === 'typewriter'
       ? typewriterText(sub.text, endS - startS)
-      : String(sub.text).replace(/\n/g, '\\N').replace(/,/g, '{\\,}');
+      : String(sub.text).replace(/\n/g, '\N').replace(/,/g, '{\,}');
     return `Dialogue: 0,${toAssTime(sub.start)},${toAssTime(sub.end)},Default,,0,0,0,,${posTag}${animPrefix}${text}`;
   }).join('\n');
 
@@ -545,9 +621,9 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
     fs.unlink(assPath, () => {});
     if (err) return res.status(500).json({ error: String(err), stderr });
     scheduleDelete(output, 30 * 60 * 1000);
-    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'subtitle', label: '💬 Legenda', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000 };
+    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'subtitle', label: '💬 Legenda', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000, friendlyName: friendlyFilename(req.file.originalname, 'com legenda') };
     addToLibrary(libEntry);
-    return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id });
+    return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id, friendlyName: libEntry.friendlyName });
   });
 });
 
@@ -565,6 +641,9 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
   const posY       = parseInt(req.body.posY) || null;
   const align      = posX !== null ? 5 : 2;
   const animation  = req.body.animation || 'none';
+  const uppercase  = req.body.uppercase === '1';
+  // Sync offset: medium model tends to lag slightly behind audio
+  const syncOffset = model === 'medium' ? -0.15 : (model === 'large' ? -0.2 : 0);
 
   const python = PYTHON;
   const script = path.join(__dirname, 'transcribe.py');
@@ -600,6 +679,19 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
       return res.status(500).json({ error: 'Nenhuma fala detectada.' });
     }
 
+    // Apply sync offset to all segment timestamps
+    if (syncOffset !== 0) {
+      segments.forEach(seg => {
+        const s0 = Math.max(0, timeStrToSecs(seg.start) + syncOffset);
+        const e0 = Math.max(s0 + 0.05, timeStrToSecs(seg.end) + syncOffset);
+        seg.start = secsToAssTime(s0);
+        seg.end   = secsToAssTime(e0);
+      });
+    }
+
+    // Apply uppercase transformation
+    if (uppercase) segments.forEach(seg => { seg.text = String(seg.text).toUpperCase(); });
+
     // Forward to /api/subtitle logic inline
     const STYLES = {
       classico:    `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,${align},10,10,50,1`,
@@ -612,6 +704,7 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
       fire:        `Style: Default,Arial,${fontSize},&H000045FF,&H000045FF,&H000000AA,&H00000000,-1,0,0,0,100,100,0,0,1,4,2,${align},10,10,50,1`,
       roxo:        `Style: Default,Arial,${fontSize},&H00FF71C2,&H00FF71C2,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
       branco_puro: `Style: Default,Arial,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0.5,0,1,2,0,${align},10,10,50,1`,
+      karaoke:     `Style: Default,Arial Black,${fontSize},&H0000FFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,${align},10,10,50,1`,
     };
 
     function timeStrToSecs(t) {
@@ -628,6 +721,65 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
       return `${h}:${String(m).padStart(2,'0')}:${String(Math.floor(s)).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
     }
     function toAssTime(t) { return secsToAssTime(timeStrToSecs(t)); }
+
+    // Karaoke mode: pair words 2-at-a-time with \k timing tags
+    if (preset === 'karaoke') {
+      const styleStr = STYLES.karaoke;
+      const posTag = (posX !== null && posY !== null) ? `{\\pos(${posX},${posY})}` : '';
+      const karaokeDialogues = [];
+      segments.forEach(sub => {
+        const words = String(sub.text).trim().split(/\s+/).filter(Boolean);
+        if (!words.length) return;
+        const startS = timeStrToSecs(sub.start);
+        const endS   = timeStrToSecs(sub.end);
+        const dur    = Math.max(0.1, endS - startS);
+        const perW   = dur / words.length;
+        for (let i = 0; i < words.length; i += 2) {
+          const w1 = words[i];
+          const w2 = words[i + 1];
+          const pairStart = startS + i * perW;
+          const pairEnd   = startS + (Math.min(i + 2, words.length)) * perW;
+          const cs1 = Math.round(perW * 100);
+          const cs2 = w2 ? Math.round(perW * 100) : 0;
+          let text;
+          if (w2) {
+            text = `{\\k${cs1}}${w1} {\\c&H00FFFFFF&\\k${cs2}}${w2}`;
+          } else {
+            text = `{\\k${cs1}}${w1}`;
+          }
+          karaokeDialogues.push(`Dialogue: 0,${secsToAssTime(pairStart)},${secsToAssTime(pairEnd)},Default,,0,0,0,,${posTag}${text}`);
+        }
+      });
+      const assContent = [
+        '[Script Info]', 'ScriptType: v4.00+', 'PlayResX: 1920', 'PlayResY: 1080', 'ScaledBorderAndShadow: yes', '',
+        '[V4+ Styles]',
+        'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+        styleStr, '', '[Events]',
+        'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+        karaokeDialogues.join('\n'), ''
+      ].join('\n');
+      const assPath2  = input + '.ass';
+      const outputName2 = 'autosub-' + path.basename(input);
+      const output2   = path.join(UPLOAD_DIR, outputName2);
+      fs.writeFileSync(assPath2, assContent, 'utf8');
+      const assEsc2 = assPath2.replace(/\\/g, '/').replace(':', '\\:');
+      const ffmpegProc2 = spawn(FFMPEG, ['-y', '-i', input, '-vf', `ass='${assEsc2}'`, '-c:a', 'copy', output2]);
+      let burnStderr2 = '';
+      ffmpegProc2.stderr.on('data', d => { burnStderr2 += d.toString(); });
+      ffmpegProc2.on('close', code => {
+        fs.unlink(input, () => {});
+        fs.unlink(assPath2, () => {});
+        if (code !== 0) return res.status(500).json({ error: 'ffmpeg falhou: ' + burnStderr2.slice(-500) });
+        scheduleDelete(output2, 30 * 60 * 1000);
+        return res.json({ url: `/uploads/${path.basename(output2)}`, friendlyName: friendlyFilename(req.file.originalname, 'com legenda auto') });
+      });
+      ffmpegProc2.on('error', err2 => {
+        fs.unlink(input, () => {});
+        fs.unlink(assPath2, () => {});
+        res.status(500).json({ error: 'ffmpeg não encontrado: ' + err2.message });
+      });
+      return; // Early return — karaoke handled above
+    }
 
     let finalSubs = segments;
     if (wordByWord) {
@@ -701,7 +853,7 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
       fs.unlink(assPath, () => {});
       if (code !== 0) return res.status(500).json({ error: 'ffmpeg falhou: ' + burnStderr.slice(-500) });
       scheduleDelete(output, 30 * 60 * 1000);
-      return res.json({ url: `/uploads/${path.basename(output)}` });
+      return res.json({ url: `/uploads/${path.basename(output)}`, friendlyName: friendlyFilename(req.file.originalname, 'com legenda auto') });
     });
     ffmpegProc.on('error', err => {
       fs.unlink(input, () => {});
@@ -771,7 +923,7 @@ app.post('/api/extract/video', upload.single('video'), (req, res) => {
     fs.unlink(input, () => {});
     if (err) return res.status(500).json({ error: String(err), stderr });
     scheduleDelete(output, 30 * 60 * 1000);
-    return res.json({ url: `/uploads/${outputName}` });
+    return res.json({ url: `/uploads/${outputName}`, friendlyName: friendlyFilename(req.file.originalname, '(somente video)') });
   });
 });
 
@@ -795,7 +947,7 @@ app.post('/api/extract/merge', extractMergeUpload, (req, res) => {
     fs.unlink(audioFile.path, () => {});
     if (err) return res.status(500).json({ error: String(err), stderr });
     scheduleDelete(output, 30 * 60 * 1000);
-    return res.json({ url: `/uploads/${outputName}` });
+    return res.json({ url: `/uploads/${outputName}`, friendlyName: friendlyFilename(videoFile.originalname, '(audio substituido)') });
   });
 });
 
@@ -834,7 +986,7 @@ app.post('/api/extract/audio', upload.single('video'), (req, res) => {
     fs.unlink(input, () => {});
     if (err) return res.status(500).json({ error: String(err), stderr });
     scheduleDelete(output, 30 * 60 * 1000);
-    return res.json({ url: `/uploads/${outputName}`, type: 'audio' });
+    return res.json({ url: `/uploads/${outputName}`, type: 'audio', friendlyName: friendlyFilename(req.file.originalname, '', '.mp3') });
   });
 });
 
@@ -1097,8 +1249,9 @@ app.post('/api/trim', upload.single('video'), async (req, res) => {
     if (err) return res.status(500).json({ error: se || err.message });
     scheduleDelete(output, EXPIRY);
     const url = '/uploads/' + path.basename(output);
-    addToLibrary({ id: Date.now().toString(36), type: 'trim', label: 'Cortado', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY });
-    res.json({ url });
+    const _trimN = friendlyFilename(req.file.originalname, 'cortado');
+    addToLibrary({ id: Date.now().toString(36), type: 'trim', label: 'Cortado', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY, friendlyName: _trimN });
+    res.json({ url, friendlyName: _trimN });
   });
 });
 
@@ -1142,8 +1295,9 @@ app.post('/api/resize', upload.single('video'), async (req, res) => {
     if (err) return res.status(500).json({ error: se || err.message });
     scheduleDelete(output, EXPIRY);
     const url = '/uploads/' + path.basename(output);
-    addToLibrary({ id: Date.now().toString(36), type: 'resize', label: 'Redimensionado', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY });
-    res.json({ url });
+    const _resizeN = friendlyFilename(req.file.originalname, 'redimensionado');
+    addToLibrary({ id: Date.now().toString(36), type: 'resize', label: 'Redimensionado', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY, friendlyName: _resizeN });
+    res.json({ url, friendlyName: _resizeN });
   });
 });
 
@@ -1154,7 +1308,7 @@ app.post('/api/compress', upload.single('video'), async (req, res) => {
   const crf = Math.min(51, Math.max(18, parseInt(req.body.crf) || 26));
   const output = path.join(UPLOAD_DIR, `compress_${Date.now()}.mp4`);
   const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0 };
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0, friendlyName: friendlyFilename(req.file.originalname, 'comprimido') };
   res.json({ id: jobId });
   const duration = await getVideoDuration(input);
   spawnFfmpegWithProgress(jobId,
@@ -1169,7 +1323,7 @@ app.post('/api/upscale', upload.single('video'), async (req, res) => {
   const h = parseInt(req.body.h) || 1080;
   const output = path.join(UPLOAD_DIR, `upscale_${Date.now()}.mp4`);
   const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0 };
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0, friendlyName: friendlyFilename(req.file.originalname, 'qualidade aumentada') };
   res.json({ id: jobId });
   const duration = await getVideoDuration(input);
   // scale=-2:h mantém proporção (aspect ratio)
@@ -1185,7 +1339,7 @@ app.post('/api/mirror', upload.single('video'), async (req, res) => {
   const flip = (req.body.flip || 'hflip').replace(/[^a-z,]/g, '');
   const output = path.join(UPLOAD_DIR, `mirror_${Date.now()}.mp4`);
   const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0 };
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, inputSize: req.file.size || 0, outputSize: 0, friendlyName: friendlyFilename(req.file.originalname, 'espelhado') };
   res.json({ id: jobId });
   const duration = await getVideoDuration(input);
   spawnFfmpegWithProgress(jobId,
@@ -1216,8 +1370,9 @@ print('done')
     if (err) return res.status(500).json({ error: (se || err.message) + '\n(pip install rembg pillow)' });
     scheduleDelete(output, EXPIRY);
     const url = '/uploads/' + path.basename(output);
-    addToLibrary({ id: Date.now().toString(36), type: 'rembg', label: 'Fundo Removido', mediaType: 'image', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY });
-    res.json({ url });
+    const _rembgN = path.basename(req.file.originalname, path.extname(req.file.originalname)) + ' sem fundo.png';
+    addToLibrary({ id: Date.now().toString(36), type: 'rembg', label: 'Fundo Removido', mediaType: 'image', url, createdAt: Date.now(), expiresAt: Date.now() + EXPIRY, friendlyName: _rembgN });
+    res.json({ url, friendlyName: _rembgN });
   });
 });
 
