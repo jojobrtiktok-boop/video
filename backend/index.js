@@ -224,6 +224,122 @@ app.post('/api/watermark/detect-gemini', upload.single('video'), async (req, res
   }
 });
 
+// ── Analisar marca d'água com IA (multi-frame, tight bbox + time ranges) ────
+app.post('/api/watermark/analyze', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const orKey = (req.body.orKey || '').trim();
+  if (!orKey) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'orKey obrigatório' }); }
+  const cropX = parseInt(req.body.x) || 0;
+  const cropY = parseInt(req.body.y) || 0;
+  const cropW = parseInt(req.body.w) || 0;
+  const cropH = parseInt(req.body.h) || 0;
+  if (cropW < 4 || cropH < 4) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'Região muito pequena — marque a área da marca d\'água no vídeo' }); }
+  const input = req.file.path;
+  const tmpFrames = [];
+  try {
+    // 1. Get duration and video size
+    const meta = await new Promise((resolve, reject) => {
+      const ff = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries',
+        'stream=width,height,duration', '-of', 'json', input]);
+      let out = ''; ff.stdout.on('data', d => out += d);
+      ff.on('close', () => {
+        try {
+          const info = JSON.parse(out);
+          const s = info.streams?.[0] || {};
+          resolve({ w: parseInt(s.width) || 1920, h: parseInt(s.height) || 1080, dur: parseFloat(s.duration) || 60 });
+        } catch(e) { reject(e); }
+      });
+      ff.on('error', reject);
+    });
+
+    const { w: videoW, h: videoH, dur } = meta;
+    // 2. Determine frame timestamps (every 5s, max 20 frames)
+    const INTERVAL = 5;
+    const MAX_FRAMES = 20;
+    const timestamps = [];
+    for (let t = 0; t < dur - 0.5; t += INTERVAL) {
+      timestamps.push(Math.min(t, dur - 0.5));
+      if (timestamps.length >= MAX_FRAMES) break;
+    }
+    if (timestamps.length === 0) timestamps.push(0);
+
+    // 3. Clamp crop to video bounds
+    const cx = Math.max(0, Math.min(cropX, videoW - 4));
+    const cy = Math.max(0, Math.min(cropY, videoH - 4));
+    const cw = Math.max(4, Math.min(cropW, videoW - cx));
+    const ch = Math.max(4, Math.min(cropH, videoH - cy));
+
+    // 4. Extract crops for each timestamp in parallel (batches of 4)
+    const prompt = `Analise esta imagem. Há texto de marca d'água (watermark/logo de rede social como TikTok, Sora, CapCut, etc) visível? Se sim, retorne APENAS JSON: {"present": true, "x": pixeis_da_esquerda, "y": pixeis_do_topo, "w": largura_px, "h": altura_px}. x,y,w,h devem envolver SOMENTE as letras com margem mínima. Se não houver marca d'água: {"present": false}. Não escreva mais nada, apenas JSON.`;
+
+    const frameResults = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const t = timestamps[i];
+      const framePath = path.join(UPLOAD_DIR, `analyze_${Date.now()}_${i}.jpg`);
+      tmpFrames.push(framePath);
+      // Extract crop frame at timestamp t
+      await new Promise((resolve, reject) => {
+        const ff = spawn('ffmpeg', [
+          '-ss', String(t), '-i', input, '-frames:v', '1',
+          '-vf', `crop=${cw}:${ch}:${cx}:${cy}`, '-q:v', '3', '-y', framePath
+        ]);
+        ff.on('close', c => c === 0 ? resolve() : reject(new Error(`ffmpeg crop failed at ${t}s`)));
+        ff.on('error', reject);
+      });
+      const frameData = fs.readFileSync(framePath).toString('base64');
+      let result = null;
+      try {
+        const raw = await orVisionDetect(orKey, frameData, 'image/jpeg', prompt);
+        const m = raw.match(/\{[\s\S]*?\}/);
+        if (m) result = JSON.parse(m[0]);
+      } catch(_) {}
+      frameResults.push({ t, result });
+    }
+
+    // 5. Compute tight_bbox (average of all bboxes where present=true)
+    const presentResults = frameResults.filter(r => r.result && r.result.present === true);
+    let tight_bbox = null;
+    if (presentResults.length > 0) {
+      const avgX = presentResults.reduce((s, r) => s + (r.result.x || 0), 0) / presentResults.length;
+      const avgY = presentResults.reduce((s, r) => s + (r.result.y || 0), 0) / presentResults.length;
+      const avgW = presentResults.reduce((s, r) => s + (r.result.w || 0), 0) / presentResults.length;
+      const avgH = presentResults.reduce((s, r) => s + (r.result.h || 0), 0) / presentResults.length;
+      // tight_bbox is relative to video dimensions (not crop), add crop offset
+      tight_bbox = {
+        x: Math.round(cx + avgX),
+        y: Math.round(cy + avgY),
+        w: Math.round(avgW),
+        h: Math.round(avgH)
+      };
+    }
+
+    // 6. Build detected time ranges (merge consecutive present frames)
+    const detected_ranges = [];
+    let rangeStart = null;
+    let prevT = null;
+    for (let i = 0; i < frameResults.length; i++) {
+      const { t, result } = frameResults[i];
+      const present = result && result.present === true;
+      if (present && rangeStart === null) { rangeStart = t; }
+      if (!present && rangeStart !== null) {
+        detected_ranges.push({ start: Math.max(0, Math.round(rangeStart - INTERVAL/2)), end: Math.round(prevT + INTERVAL/2) });
+        rangeStart = null;
+      }
+      prevT = t;
+    }
+    if (rangeStart !== null) {
+      detected_ranges.push({ start: Math.max(0, Math.round(rangeStart - INTERVAL/2)), end: Math.round(dur) });
+    }
+
+    res.json({ tight_bbox, detected_ranges, frame_count: timestamps.length, video_w: videoW, video_h: videoH });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.unlink(req.file.path, ()=>{});
+    tmpFrames.forEach(f => fs.unlink(f, ()=>{}));
+  }
+});
+
 // ── PROCESS: blur / delogo ────────────────────────────────────────────────────
 app.post('/api/process', upload.single('video'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'no file' });
@@ -232,6 +348,20 @@ app.post('/api/process', upload.single('video'), (req, res) => {
   const outputName = 'processed-' + path.basename(input);
   const output = path.join(UPLOAD_DIR, outputName);
   const _origName = req.file.originalname;
+
+  // Parse AI-detected time ranges for targeted removal
+  let timeRanges = null;
+  if (req.body.time_ranges) {
+    try {
+      const parsed = JSON.parse(req.body.time_ranges);
+      if (Array.isArray(parsed) && parsed.length > 0) timeRanges = parsed;
+    } catch(_) {}
+  }
+  // Build FFmpeg enable expression for time-range filtering
+  function buildEnableExpr(ranges) {
+    if (!ranges || ranges.length === 0) return null;
+    return ranges.map(r => `between(t\\,${r.start}\\,${r.end})`).join('+');
+  }
 
   if (mode === 'sora') {
     const jobId  = Date.now().toString() + Math.random().toString(36).slice(2);
@@ -297,11 +427,14 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     const cw = w > 0 ? w : 'iw';
     const cy = y >= 0 ? y : `ih-${h}`;
     const oy = y >= 0 ? y : `main_h-${h}`;
-    const cwNum = w > 0 ? w : null; // numeric for geq, null if full width
 
     // Feathered blur using filter_complex_script to avoid shell escaping issues
     // geq uses built-in W,H variables for the cropped region dimensions
     const FEATHER = 20;
+    const enableExpr = buildEnableExpr(timeRanges);
+    const overlayFilter = enableExpr
+      ? `[bg][faded]overlay=${x}:${oy}:enable='${enableExpr}'`
+      : `[bg][faded]overlay=${x}:${oy}`;
     const filterScript = [
       `[0:v]split[bg][tmp];`,
       `[tmp]crop=${cw}:${h}:${x}:${cy},gblur=sigma=25[blurred];`,
@@ -309,7 +442,7 @@ app.post('/api/process', upload.single('video'), (req, res) => {
       `geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':`,
       `a='255*min(min(min(X+1,W-X),${FEATHER})/${FEATHER},min(min(Y+1,H-Y),${FEATHER})/${FEATHER})'`,
       `[faded];`,
-      `[bg][faded]overlay=${x}:${oy}`
+      overlayFilter
     ].join('');
 
     const filterFile = input + '.filter';
@@ -340,7 +473,11 @@ app.post('/api/process', upload.single('video'), (req, res) => {
       if (x + w >= vw - M) w = vw - M - x;
       if (y + h >= vh - M) h = vh - M - y;
       w = Math.max(1, w); h = Math.max(1, h);
-      const cmd = `"${FFMPEG}" -y -i "${input}" -vf "delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0" -c:a copy "${output}"`;
+      const enableExpr = buildEnableExpr(timeRanges);
+      const vfFilter = enableExpr
+        ? `delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0:enable='${enableExpr}'`
+        : `delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0`;
+      const cmd = `"${FFMPEG}" -y -i "${input}" -vf "${vfFilter}" -c:a copy "${output}"`;
       exec(cmd, (err, stdout, stderr) => {
         fs.unlink(input, () => {});
         if (err) return res.status(500).json({ error: String(err), stderr });
@@ -365,7 +502,9 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     addToLibrary(libEntry);
     res.json({ id: jobId, status: 'processing', friendlyName: _delogoN });
     const scriptPath = path.join(__dirname, 'inpaint_video.py');
-    spawnJob(jobId, [PYTHON, scriptPath, input, output, String(x), String(y), String(w), String(h), FFMPEG], input, output, expiry, libEntry);
+    const delogoArgs = [PYTHON, scriptPath, input, output, String(x), String(y), String(w), String(h), FFMPEG];
+    if (timeRanges && timeRanges.length > 0) delogoArgs.push(JSON.stringify(timeRanges));
+    spawnJob(jobId, delogoArgs, input, output, expiry, libEntry);
     return;
   }
 

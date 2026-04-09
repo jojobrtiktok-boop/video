@@ -2,16 +2,16 @@
 """
 inpaint_video.py — remove watermark usando OpenCV Telea inpainting paralelo.
 Carrega todos os frames em RAM e processa em múltiplas threads simultaneamente.
-Usage: python3 inpaint_video.py <input> <output> <x> <y> <w> <h> [ffmpeg_bin]
+Usage: python3 inpaint_video.py <input> <output> <x> <y> <w> <h> [ffmpeg_bin] [time_ranges_json]
 """
-import sys, os, subprocess, tempfile
+import sys, os, subprocess, tempfile, json
 from threading import Thread
 from queue import Queue
 from multiprocessing import cpu_count
 import cv2
 import numpy as np
 
-def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg'):
+def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg', time_ranges=None):
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         print(f'ERROR: cannot open {input_path}', file=sys.stderr)
@@ -36,6 +36,16 @@ def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg'):
     mx1 = x - rx1
     my1 = y - ry1
     roi_mask[my1 : my1 + h, mx1 : mx1 + w] = 255
+
+    def frame_in_range(frame_idx):
+        """Return True if this frame (by index) falls within any time range."""
+        if not time_ranges:
+            return True
+        t = frame_idx / fps
+        for r in time_ranges:
+            if r['start'] <= t <= r['end']:
+                return True
+        return False
 
     # ── Fase 1: carregar todos os frames em RAM ────────────────────────────────
     print('PROGRESS:2', flush=True)
@@ -79,7 +89,10 @@ def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg'):
         t.start()
 
     for i, frame in enumerate(all_frames):
-        task_q.put((i, frame))
+        if frame_in_range(i):
+            task_q.put((i, frame))
+        else:
+            results[i] = frame  # keep original frame outside detected ranges
         submitted[0] = i + 1
         if i % 15 == 0 and total_frames > 0:
             pct = 5 + int(i / total_frames * 83)
@@ -132,9 +145,15 @@ def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg'):
 
 if __name__ == '__main__':
     if len(sys.argv) < 7:
-        print('Usage: inpaint_video.py <in> <out> <x> <y> <w> <h> [ffmpeg]')
+        print('Usage: inpaint_video.py <in> <out> <x> <y> <w> <h> [ffmpeg] [time_ranges_json]')
         sys.exit(1)
     inp, outp = sys.argv[1], sys.argv[2]
     rx, ry, rw, rh = int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6])
     ffmpeg_bin = sys.argv[7] if len(sys.argv) > 7 else os.environ.get('FFMPEG_BIN', 'ffmpeg')
-    inpaint_video(inp, outp, rx, ry, rw, rh, ffmpeg_bin)
+    time_ranges_arg = None
+    if len(sys.argv) > 8:
+        try:
+            time_ranges_arg = json.loads(sys.argv[8])
+        except Exception:
+            pass
+    inpaint_video(inp, outp, rx, ry, rw, rh, ffmpeg_bin, time_ranges_arg)

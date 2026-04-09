@@ -1,4 +1,4 @@
-// ════════════════════════════════════════════════════════════════════
+﻿// ════════════════════════════════════════════════════════════════════
 // BIBLIOTECA GERAL DE VÍDEOS
 // ════════════════════════════════════════════════════════════════════
 const videoLibrarySection = document.getElementById('tool-video-library');
@@ -111,8 +111,6 @@ const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
   translate: 'video', autotr: 'video', autohook: 'video', ferramentas: 'video', swapfala: 'video',
-  rembg: 'imagem',
-  imagegen: 'ia', videogen: 'ia',
   'video-library': null
 };
 
@@ -485,12 +483,15 @@ function endDragWm() {
 const ASYNC_MODES = new Set(['delogo', 'sora']);
 
 // ── OpenRouter watermark detect (main WM tool) ──
+let detectedTimeRanges = null; // set by AI analyze, used in submit
 (function() {
-  const orKeyInput  = document.getElementById('wm-or-key');
-  const orSaveBtn   = document.getElementById('wm-or-save-btn');
-  const orDetectBtn = document.getElementById('wm-or-detect-btn');
-  const orStatus    = document.getElementById('wm-or-status');
-  const orError     = document.getElementById('wm-or-error');
+  const orKeyInput   = document.getElementById('wm-or-key');
+  const orSaveBtn    = document.getElementById('wm-or-save-btn');
+  const orDetectBtn  = document.getElementById('wm-or-detect-btn');
+  const orStatus     = document.getElementById('wm-or-status');
+  const orError      = document.getElementById('wm-or-error');
+  const detectedInfo = document.getElementById('wm-detected-info');
+  const detectedRangesEl = document.getElementById('wm-detected-ranges');
   if (!orDetectBtn) return;
   const saved = localStorage.getItem('wm_or_key');
   if (saved && orKeyInput) orKeyInput.value = saved;
@@ -504,20 +505,52 @@ const ASYNC_MODES = new Set(['delogo', 'sora']);
     if (!selectedFile) { if (orError) { orError.textContent = 'Selecione um vídeo primeiro.'; orError.style.display = ''; } return; }
     const key = (orKeyInput && orKeyInput.value.trim()) || localStorage.getItem('wm_or_key') || '';
     if (!key) { if (orError) { orError.textContent = 'Informe a OpenRouter API Key.'; orError.style.display = ''; } return; }
+    if (!selRect || selRect.w < 5 || selRect.h < 5) {
+      if (orError) { orError.textContent = 'Marque a região aproximada da marca d\'água no vídeo primeiro.'; orError.style.display = ''; }
+      return;
+    }
     orDetectBtn.disabled = true;
     if (orError) { orError.textContent = ''; orError.style.display = 'none'; }
-    if (orStatus) orStatus.textContent = 'Analisando com IA…';
+    if (detectedInfo) detectedInfo.style.display = 'none';
+    detectedTimeRanges = null;
+    if (orStatus) orStatus.textContent = '🔍 Analisando frames com IA…';
     try {
       const fd = new FormData();
       fd.append('video', selectedFile);
       fd.append('orKey', key);
-      const r = await fetch(API + '/api/watermark/detect-gemini', { method: 'POST', body: fd });
+      fd.append('x', Math.round(selRect.x * videoW / previewW));
+      fd.append('y', Math.round(selRect.y * videoH / previewH));
+      fd.append('w', Math.round(selRect.w * videoW / previewW));
+      fd.append('h', Math.round(selRect.h * videoH / previewH));
+      const r = await fetch(API + '/api/watermark/analyze', { method: 'POST', body: fd });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Erro');
-      // j.x, j.y, j.w, j.h are pixel values in video dimensions
-      selRect = { x: j.x * previewW / videoW, y: j.y * previewH / videoH, w: j.w * previewW / videoW, h: j.h * previewH / videoH };
-      drawFrame();
-      if (orStatus) orStatus.textContent = `✓ Detectado: ${j.w}×${j.h}px em (${j.x}, ${j.y})`;
+      // Update canvas rect to tight bbox if returned
+      if (j.tight_bbox && j.tight_bbox.w > 0) {
+        selRect = {
+          x: j.tight_bbox.x * previewW / videoW,
+          y: j.tight_bbox.y * previewH / videoH,
+          w: j.tight_bbox.w * previewW / videoW,
+          h: j.tight_bbox.h * previewH / videoH
+        };
+        drawFrame();
+      }
+      // Display detected ranges
+      if (j.detected_ranges && j.detected_ranges.length > 0) {
+        detectedTimeRanges = j.detected_ranges;
+        const rangeText = j.detected_ranges.map(r => {
+          const fmt = s => { const m = Math.floor(s/60); return m > 0 ? `${m}m${Math.round(s%60)}s` : `${Math.round(s)}s`; };
+          return `${fmt(r.start)} – ${fmt(r.end)}`;
+        }).join(',  ');
+        if (detectedRangesEl) detectedRangesEl.textContent = rangeText;
+        if (detectedInfo) detectedInfo.style.display = '';
+        if (orStatus) orStatus.textContent = `✓ Detectado em ${j.detected_ranges.length} trecho(s) — ${j.frame_count || ''} frames analisados`;
+      } else {
+        if (orStatus) orStatus.textContent = '⚠️ Nenhuma marca d\'água detectada nos frames analisados.';
+        if (j.tight_bbox) {
+          if (orStatus) orStatus.textContent += ` Bbox ajustado: ${j.tight_bbox.w}×${j.tight_bbox.h}px`;
+        }
+      }
       submitBtn.disabled = false;
     } catch(e) {
       if (orError) { orError.textContent = e.message; orError.style.display = ''; }
@@ -540,6 +573,10 @@ submitBtn.addEventListener('click', async () => {
     fd.append('y', Math.round(selRect.y * videoH / previewH));
     fd.append('w', Math.round(selRect.w * videoW / previewW));
     fd.append('h', Math.round(selRect.h * videoH / previewH));
+  }
+  // Pass AI-detected time ranges if available
+  if (detectedTimeRanges && detectedTimeRanges.length > 0) {
+    fd.append('time_ranges', JSON.stringify(detectedTimeRanges));
   }
   setLoadingWm(true, 0); clearError(); resultCard.style.display = 'none';
   try {
@@ -1465,391 +1502,6 @@ if (lipSubmitBtn) {
     }
   });
 }
-
-// ════════════════════════════════════════════════════════════════════
-// GERAR VÍDEO COM HOOK
-// ════════════════════════════════════════════════════════════════════
-(function () {
-  const vgApiKey    = document.getElementById('vg-apikey');
-  const vgPrompt    = document.getElementById('vg-prompt');
-
-  // Restore saved key
-  const savedKey = localStorage.getItem('or_api_key');
-  if (savedKey && vgApiKey) vgApiKey.value = savedKey;
-
-  // Save key button
-  const vgSaveKey = document.getElementById('vg-save-key');
-  if (vgSaveKey) vgSaveKey.addEventListener('click', () => {
-    if (vgApiKey && vgApiKey.value.trim()) {
-      localStorage.setItem('or_api_key', vgApiKey.value.trim());
-      vgSaveKey.textContent = '✅ Salvo!';
-      setTimeout(() => { vgSaveKey.textContent = '💾 Salvar'; }, 1500);
-    } else {
-      localStorage.removeItem('or_api_key');
-    }
-  });
-  const vgDuration  = document.getElementById('vg-duration');
-  const vgDurVal    = document.getElementById('vg-duration-val');
-  const vgCostEst   = document.getElementById('vg-cost-est');
-  const vgSubmit    = document.getElementById('vg-submit-btn');
-  const vgProgress  = document.getElementById('vg-progress');
-  const vgStatus    = document.getElementById('vg-status');
-  const vgError     = document.getElementById('vg-error');
-  const vgRefined   = document.getElementById('vg-refined-prompt');
-  const vgRefinedTx = document.getElementById('vg-refined-text');
-  const vgResultCard= document.getElementById('vg-result-card');
-  const vgResultVid = document.getElementById('vg-result-video');
-  const vgDownBtn   = document.getElementById('vg-download-btn');
-  if (!vgSubmit) return;
-
-  let selectedVideoModel = 'google/veo-3.1';
-  let selectedModelCost  = 0.40;
-
-  // Model dropdown
-  const vgSelectTrigger  = document.getElementById('vg-select-trigger');
-  const vgSelectDropdown = document.getElementById('vg-select-dropdown');
-  const vgSelectName     = document.getElementById('vg-select-name');
-  const vgSelectDesc     = document.getElementById('vg-select-desc');
-  const vgSelectPrice    = document.getElementById('vg-select-price');
-
-  if (vgSelectTrigger && vgSelectDropdown) {
-    vgSelectTrigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isOpen = vgSelectDropdown.classList.contains('open');
-      vgSelectDropdown.classList.toggle('open', !isOpen);
-      vgSelectTrigger.classList.toggle('open', !isOpen);
-    });
-
-    vgSelectDropdown.querySelectorAll('.vg-option').forEach(opt => {
-      opt.addEventListener('click', () => {
-        vgSelectDropdown.querySelectorAll('.vg-option').forEach(o => o.classList.remove('active'));
-        opt.classList.add('active');
-        selectedVideoModel = opt.dataset.model;
-        selectedModelCost  = parseFloat(opt.dataset.cost) || 0.10;
-        if (vgSelectName)  vgSelectName.textContent  = opt.dataset.name;
-        if (vgSelectDesc)  vgSelectDesc.textContent  = opt.dataset.desc;
-        if (vgSelectPrice) vgSelectPrice.textContent = '$' + opt.dataset.cost + '/s';
-        vgSelectDropdown.classList.remove('open');
-        vgSelectTrigger.classList.remove('open');
-        updateCostEst();
-      });
-    });
-
-    document.addEventListener('click', () => {
-      vgSelectDropdown.classList.remove('open');
-      vgSelectTrigger.classList.remove('open');
-    });
-  }
-
-  function updateCostEst() {
-    if (!vgDuration || !vgCostEst) return;
-    const dur = parseInt(vgDuration.value) || 8;
-    if (vgDurVal) vgDurVal.textContent = dur + 's';
-    const cost = (dur * selectedModelCost).toFixed(2);
-    vgCostEst.textContent = '$' + cost;
-  }
-
-  if (vgDuration) {
-    vgDuration.addEventListener('input', updateCostEst);
-    updateCostEst();
-  }
-
-  vgSubmit.addEventListener('click', async () => {
-    const apiKey = vgApiKey ? vgApiKey.value.trim() : '';
-    const prompt = vgPrompt ? vgPrompt.value.trim() : '';
-    if (!apiKey) { alert('Informe sua API key da OpenRouter'); return; }
-    if (!prompt) { alert('Escreva sua ideia no campo de comando'); return; }
-
-    vgSubmit.disabled = true; vgSubmit.textContent = '⏳ Gerando...';
-    vgProgress.style.display = 'block'; vgStatus.textContent = '🎬 Enviando para ' + selectedVideoModel + '...';
-    vgError.style.display = 'none'; vgRefined.style.display = 'none'; vgResultCard.style.display = 'none';
-
-    try {
-      const resp = await fetch(API + '/api/generate-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt,
-          videoModel: selectedVideoModel,
-          duration: vgDuration ? parseInt(vgDuration.value) : 8,
-          apiKey
-        })
-      });
-
-      vgStatus.textContent = '🎬 Aguardando resposta de ' + selectedVideoModel + '...';
-      const json = await resp.json();
-      if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-
-      if (json.url) {
-        vgResultVid.src = json.url;
-        vgDownBtn.href = json.url;
-        vgResultCard.style.display = 'block';
-        vgResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    } catch (err) {
-      vgError.style.display = 'block'; vgError.textContent = 'Erro: ' + err.message;
-    } finally {
-      vgSubmit.disabled = false; vgSubmit.textContent = '🎬 Gerar Vídeo';
-      vgProgress.style.display = 'none'; vgStatus.textContent = '';
-    }
-  });
-
-  // ─── IMAGE GENERATION ─────────────────────────────────────────────────────
-  (function initImageGen() {
-    const igSubmit = document.getElementById('ig-submit-btn');
-    if (!igSubmit) return;
-
-    let currentProvider = localStorage.getItem('ig_provider') || 'vertex';
-    let selectedModel = 'imagen-3.0-generate-001';
-    let selectedModelName = 'Imagen 3';
-
-    // Restore saved key
-    const igApikeyGoogle = document.getElementById('ig-google-apikey');
-    const savedGoogle = localStorage.getItem('google_api_key');
-    if (igApikeyGoogle && savedGoogle) igApikeyGoogle.value = savedGoogle;
-
-    // Save key
-    const igGoogleSaveKey = document.getElementById('ig-google-save-key');
-    if (igGoogleSaveKey) igGoogleSaveKey.addEventListener('click', () => {
-      const val = igApikeyGoogle?.value.trim();
-      if (val) { localStorage.setItem('google_api_key', val); }
-      igGoogleSaveKey.textContent = '✅ Salvo!';
-      setTimeout(() => { igGoogleSaveKey.textContent = '💾 Salvar'; }, 1500);
-    });
-
-    // Model dropdown vars
-    const igTrigger  = document.getElementById('ig-select-trigger');
-    const igDropdown = document.getElementById('ig-select-dropdown');
-    const igSelName  = document.getElementById('ig-select-name');
-    const igSelDesc  = document.getElementById('ig-select-desc');
-
-    // Tabs
-    let currentMode = 'clone';
-    document.querySelectorAll('.ig-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.ig-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.ig-mode-panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        currentMode = tab.dataset.mode;
-        const panel = document.getElementById('ig-panel-' + currentMode);
-        if (panel) panel.classList.add('active');
-      });
-    });
-
-    // Esconde seletor de modelo e botão de gerar quando na aba de tradução
-    const igModelCard = document.getElementById('ig-model-card');
-    document.querySelectorAll('.ig-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        const isTranslate = tab.dataset.mode === 'translate';
-        if (igModelCard) igModelCard.style.display = isTranslate ? 'none' : '';
-        if (igSubmit)    igSubmit.style.display    = isTranslate ? 'none' : '';
-      });
-    });
-
-    // Traduzir Imagem
-    setupUpload('ig-tr-input', 'ig-tr-preview', 'ig-tr-box');
-    const igTrLang   = document.getElementById('ig-tr-lang');
-    const igTrResult = document.getElementById('ig-tr-result');
-    const igTrText   = document.getElementById('ig-tr-text');
-    const igTrCopy   = document.getElementById('ig-tr-copy');
-
-    // Botão de traduzir (criado dinamicamente dentro do painel)
-    const igTrBtn = document.createElement('button');
-    igTrBtn.className = 'submit-btn';
-    igTrBtn.textContent = '🌐 Traduzir Imagem';
-    igTrBtn.style.marginTop = '16px';
-    const igTrPanel = document.getElementById('ig-panel-translate');
-    if (igTrPanel) igTrPanel.appendChild(igTrBtn);
-
-    const igTrError = document.createElement('div');
-    igTrError.className = 'error-msg'; igTrError.style.display = 'none';
-    if (igTrPanel) igTrPanel.appendChild(igTrError);
-
-    if (igTrBtn) igTrBtn.addEventListener('click', async () => {
-      const apiKey = igApikeyGoogle?.value.trim() || localStorage.getItem('google_api_key') || '';
-      if (!apiKey) { alert('Informe sua API Key do Google AI Studio'); return; }
-      const trInput = document.getElementById('ig-tr-input');
-      if (!trInput?.files?.[0]) { alert('Selecione uma imagem primeiro'); return; }
-      igTrBtn.disabled = true; igTrBtn.textContent = '⏳ Traduzindo...';
-      igTrError.style.display = 'none'; if (igTrResult) igTrResult.style.display = 'none';
-      const fd = new FormData();
-      fd.append('image', trInput.files[0]);
-      fd.append('targetLang', igTrLang?.value || 'pt');
-      fd.append('apiKey', apiKey);
-      try {
-        const resp = await fetch(API + '/api/translate-image', { method: 'POST', body: fd });
-        const json = await resp.json();
-        if (!resp.ok || json.error) throw new Error(json.error);
-        if (igTrText)   igTrText.textContent = json.translation || '(sem resultado)';
-        if (igTrResult) { igTrResult.style.display = 'block'; igTrResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-      } catch (err) {
-        igTrError.style.display = 'block'; igTrError.textContent = 'Erro: ' + err.message;
-      } finally {
-        igTrBtn.disabled = false; igTrBtn.textContent = '🌐 Traduzir Imagem';
-      }
-    });
-    if (igTrCopy) igTrCopy.addEventListener('click', () => {
-      navigator.clipboard.writeText(igTrText?.textContent || '');
-      igTrCopy.textContent = '✓ Copiado!';
-      setTimeout(() => { igTrCopy.textContent = '📋 Copiar tradução'; }, 2000);
-    });
-
-    // Upload previews
-    function setupUpload(inputId, previewId, boxId) {
-      const input   = document.getElementById(inputId);
-      const preview = document.getElementById(previewId);
-      const box     = document.getElementById(boxId);
-      if (!input || !preview) return;
-      input.addEventListener('change', () => {
-        const file = input.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = e => {
-          preview.src = e.target.result;
-          preview.classList.add('visible');
-          if (box) box.classList.add('has-file');
-          box.querySelectorAll('.ig-upload-icon, .ig-upload-hint').forEach(el => el.style.display = 'none');
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-    setupUpload('ig-ref-input',  'ig-ref-preview',  'ig-ref-box');
-    setupUpload('ig-prod-input', 'ig-prod-preview', 'ig-prod-box');
-
-    // Model dropdown
-    if (igTrigger) igTrigger.addEventListener('click', e => {
-      e.stopPropagation();
-      igTrigger.classList.toggle('open');
-      igDropdown.classList.toggle('open');
-    });
-    document.addEventListener('click', () => {
-      if (igTrigger)  igTrigger.classList.remove('open');
-      if (igDropdown) igDropdown.classList.remove('open');
-    });
-    if (igDropdown) igDropdown.addEventListener('click', e => {
-      const opt = e.target.closest('.vg-option');
-      if (!opt) return;
-      igDropdown.querySelectorAll('.vg-option').forEach(o => o.classList.remove('active'));
-      opt.classList.add('active');
-      selectedModel     = opt.dataset.model;
-      selectedModelName = opt.dataset.name;
-      if (igSelName) igSelName.textContent = opt.dataset.name;
-      if (igSelDesc) igSelDesc.textContent = opt.dataset.desc;
-      igTrigger.classList.remove('open');
-      igDropdown.classList.remove('open');
-    });
-
-    // Submit
-    const igProgress = document.getElementById('ig-progress');
-    const igStatus   = document.getElementById('ig-status');
-    const igError    = document.getElementById('ig-error');
-    const igResult   = document.getElementById('ig-result-card');
-    const igImg      = document.getElementById('ig-result-img');
-    const igDown     = document.getElementById('ig-download-btn');
-
-    igSubmit.addEventListener('click', async () => {
-      const apiKey = igApikeyGoogle?.value.trim() || localStorage.getItem('google_api_key') || '';
-      if (!apiKey) { alert('Informe sua API Key do Google AI Studio'); return; }
-
-      const prompt = currentMode === 'clone'
-        ? (document.getElementById('ig-clone-prompt')?.value.trim() || '')
-        : (document.getElementById('ig-create-prompt')?.value.trim() || '');
-      if (!prompt) { alert('Escreva um prompt'); return; }
-
-      let referenceBase64 = null;
-      let productBase64   = null;
-      if (currentMode === 'clone') {
-        const refInput  = document.getElementById('ig-ref-input');
-        const prodInput = document.getElementById('ig-prod-input');
-        if (refInput?.files?.[0])  referenceBase64 = await fileToDataUrl(refInput.files[0]);
-        if (prodInput?.files?.[0]) productBase64   = await fileToDataUrl(prodInput.files[0]);
-      }
-
-      igSubmit.disabled = true; igSubmit.textContent = '⏳ Gerando...';
-      igProgress.style.display = 'block';
-      igStatus.textContent = '🖼️ Enviando para ' + selectedModelName + '...';
-      igError.style.display = 'none'; igResult.style.display = 'none';
-
-      try {
-        const resp = await fetch(API + '/api/generate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, imageModel: selectedModel, apiKey, mode: currentMode, referenceBase64, productBase64 })
-        });
-        const json = await resp.json();
-        if (!resp.ok || json.error) throw new Error(json.error || 'HTTP ' + resp.status);
-        if (json.url) {
-          igImg.src = json.url;
-          igDown.href = json.url;
-          igDown.download = 'imagem-gerada.png';
-          igResult.style.display = 'block';
-          igResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          // show resize tools
-          document.getElementById('ig-resize-btn').style.display = 'block';
-          document.querySelectorAll('.ig-sz-btn').forEach(b => b.classList.remove('active'));
-        }
-      } catch (err) {
-        igError.style.display = 'block';
-        igError.style.whiteSpace = 'pre-line';
-        igError.textContent = err.message;
-      } finally {
-        igSubmit.disabled = false; igSubmit.textContent = '🖼️ Gerar Imagem';
-        igProgress.style.display = 'none'; igStatus.textContent = '';
-      }
-    });
-
-    function fileToDataUrl(file) {
-      return new Promise(resolve => {
-        const r = new FileReader();
-        r.onload = e => resolve(e.target.result);
-        r.readAsDataURL(file);
-      });
-    }
-  })();
-
-  // ── Image resize presets ──
-  document.querySelectorAll('.ig-sz-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.ig-sz-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const isCustom = btn.dataset.w === '0';
-      const customEl = document.getElementById('ig-custom-size');
-      if (customEl) customEl.style.display = isCustom ? 'block' : 'none';
-    });
-  });
-
-  document.getElementById('ig-resize-btn')?.addEventListener('click', () => {
-    const img = document.getElementById('ig-result-img');
-    if (!img || !img.src) return;
-    const active = document.querySelector('.ig-sz-btn.active');
-    let w = active ? parseInt(active.dataset.w) : 0;
-    let h = active ? parseInt(active.dataset.h) : 0;
-    if (!w || !h) {
-      w = parseInt(document.getElementById('ig-custom-w')?.value) || 0;
-      h = parseInt(document.getElementById('ig-custom-h')?.value) || 0;
-    }
-    if (!w || !h) { alert('Escolha um tamanho ou informe largura e altura'); return; }
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,w,h);
-    const src = new Image();
-    src.crossOrigin = 'anonymous';
-    src.onload = () => {
-      const sc = Math.min(w/src.width, h/src.height);
-      const sw = src.width*sc, sh = src.height*sc;
-      ctx.drawImage(src, (w-sw)/2, (h-sh)/2, sw, sh);
-      canvas.toBlob(blob => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = 'image-' + w + 'x' + h + '.png';
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }, 'image/png');
-    };
-    src.src = img.src;
-  });
-})();
 
 // ════════════════════════════════════════════════════════════════════
 // NOVAS FERRAMENTAS — helpers genéricos
@@ -4318,54 +3970,6 @@ makeSimpleTool({
     const fd = new FormData(); fd.append('video', file); fd.append('flip', mirrorFlip); return fd;
   }
 });
-
-// ── REMOVER FUNDO ──
-(function() {
-  const fi  = document.getElementById('rembg-file-input');
-  const dz  = document.getElementById('rembg-dz');
-  const fn  = document.getElementById('rembg-file-name');
-  const sub = document.getElementById('rembg-submit-btn');
-  const prog = document.getElementById('rembg-progress');
-  const err = document.getElementById('rembg-error');
-  const rc  = document.getElementById('rembg-result-card');
-  const ri  = document.getElementById('rembg-result-img');
-  const dl  = document.getElementById('rembg-download-btn');
-  if (!fi || !sub) return;
-  let file = null;
-  function setFile(f) {
-    file = f;
-    if (fn) fn.textContent = '✓ ' + f.name;
-    if (dz) dz.classList.add('has-file');
-    sub.disabled = false; sub.textContent = '▶ Remover Fundo';
-  }
-  fi.addEventListener('change', () => { if (fi.files[0]) setFile(fi.files[0]); });
-  if (dz) {
-    dz.addEventListener('click', () => fi.click());
-    dz.addEventListener('dragover', e => e.preventDefault());
-    dz.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setFile(f); });
-  }
-  sub.addEventListener('click', async () => {
-    if (!file) return;
-    sub.disabled = true; sub.textContent = '⏳ Processando…';
-    if (prog) prog.style.display = 'block';
-    if (err) err.style.display = 'none';
-    if (rc) rc.style.display = 'none';
-    try {
-      const fd = new FormData(); fd.append('image', file);
-      const resp = await fetch(API + '/api/rembg', { method: 'POST', body: fd });
-      const json = await resp.json();
-      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ' + resp.status);
-      if (ri) ri.src = API + json.url;
-      if (dl) { dl.href = API + json.url; dl.download = 'sem-fundo.png'; }
-      if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-    } catch (e) {
-      if (err) { err.style.display = 'block'; err.textContent = 'Erro: ' + e.message; }
-    } finally {
-      sub.disabled = false; sub.textContent = '▶ Remover Fundo';
-      if (prog) prog.style.display = 'none';
-    }
-  });
-})();
 
 // ══════════════════════════════════════════════════════════════════
 // SUBSTITUIR FALA

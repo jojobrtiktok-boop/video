@@ -877,48 +877,6 @@
       </div>
     </div>
 
-    <!-- IMAGEM -->
-    <div class="nav-group" id="cat-imagem">
-      <div class="nav-group-header">
-        <div class="nav-group-header-left">
-          <span class="nav-group-name">Imagem</span>
-          <span class="nav-group-desc">Geração e edição</span>
-        </div>
-        <svg class="nav-group-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>
-      <div class="nav-group-items">
-        <div class="nav-group-items-inner">
-          <button class="nav-item" data-tool="rembg">
-            <span class="nav-item-title">Remover Fundo</span>
-            <span class="nav-item-desc">PNG transparente com IA</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- IA -->
-    <div class="nav-group" id="cat-ia">
-      <div class="nav-group-header">
-        <div class="nav-group-header-left">
-          <span class="nav-group-name">IA</span>
-          <span class="nav-group-desc">Geração com inteligência artificial</span>
-        </div>
-        <svg class="nav-group-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-      </div>
-      <div class="nav-group-items">
-        <div class="nav-group-items-inner">
-          <button class="nav-item" data-tool="imagegen">
-            <span class="nav-item-title">Gerar Imagem</span>
-            <span class="nav-item-desc">Clone e criação com IA</span>
-          </button>
-          <button class="nav-item" data-tool="videogen">
-            <span class="nav-item-title">Gerar Vídeo</span>
-            <span class="nav-item-desc">OpenRouter — Veo, Sora</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- BIBLIOTECA (direto) -->
     <button class="nav-direct" data-tool="video-library">
       <span class="nav-item-title">Biblioteca</span>
@@ -996,16 +954,22 @@
           <button class="mode-btn" data-mode="ai" disabled>🔬 IA Inpainting</button>
         </div>
         <div id="mode-desc" class="mode-desc">Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.</div>
-        <!-- Gemini Vision auto-detect -->
-        <div style="margin-top:12px;padding:10px;border:1px dashed var(--border);border-radius:8px">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🤖 Detectar marca d'água com IA (OpenRouter)</div>
-          <div style="display:flex;gap:6px;margin-bottom:6px">
+        <!-- Smart watermark analyze -->
+        <div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px">🤖 Analisar Marca d'Água com IA</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Marque a região aproximada no vídeo e clique em Analisar — a IA detecta as letras com precisão e os segundos onde aparece.</div>
+          <div style="display:flex;gap:6px;margin-bottom:8px">
             <input id="wm-or-key" type="password" class="tool-input" placeholder="OpenRouter API Key (sk-or-...)" style="flex:1;height:34px" />
             <button id="wm-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
-            <button id="wm-or-detect-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">🔍 Detectar</button>
           </div>
+          <button id="wm-or-detect-btn" class="submit-btn">🔍 Analisar Vídeo com IA</button>
           <div id="wm-or-status" class="status-text"></div>
           <div id="wm-or-error" class="error-msg"></div>
+          <!-- Detected ranges display -->
+          <div id="wm-detected-info" style="display:none;margin-top:10px">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">📍 Marca d'água detectada em:</div>
+            <div id="wm-detected-ranges" style="font-size:12px;background:var(--bg);padding:8px 10px;border-radius:6px;border:1px solid var(--border);color:var(--text)"></div>
+          </div>
         </div>
         <button id="submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
         <div id="progress-bar-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
@@ -2013,221 +1977,6 @@
     </div>
 
 
-    <!-- GERAR VÍDEO COM HOOK -->
-    <div id="tool-videogen" class="tool-panel" style="display:none">
-      <div class="tool-header">
-        <h1 class="tool-title">Gerar Vídeo</h1>
-        <p class="tool-subtitle">Envie seu prompt direto para o modelo de geração de vídeo via OpenRouter</p>
-      </div>
-
-      <div class="card">
-        <div class="section-label">API Key (OpenRouter)</div>
-        <div class="vg-api-row">
-          <input type="password" id="vg-apikey" placeholder="sk-or-v1-..." autocomplete="off">
-          <button id="vg-save-key" class="btn-secondary">💾 Salvar</button>
-        </div>
-        <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">Obtida em <strong>openrouter.ai/keys</strong> — salva só no seu navegador</p>
-      </div>
-
-      <div class="card">
-        <div class="section-label">Seu comando / prompt</div>
-        <textarea id="vg-prompt" class="vg-prompt-area" placeholder="Ex: Vídeo impactante de 8s sobre benefícios do café, estilo lifestyle moderno, câmera dinâmica..."></textarea>
-      </div>
-
-      <div class="card">
-        <div class="section-label">Modelo de Geração de Vídeo</div>
-        <div class="vg-model-select" id="vg-model-select">
-          <div class="vg-select-trigger" id="vg-select-trigger">
-            <div class="vg-select-left">
-              <span class="vg-select-name" id="vg-select-name">Veo 3.1</span>
-              <span class="vg-select-subdesc" id="vg-select-desc">Google — melhor qualidade disponível</span>
-            </div>
-            <div class="vg-select-right">
-              <span class="vg-select-price" id="vg-select-price">$0.40/s</span>
-              <svg class="vg-select-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M2.5 4.5L7 9.5L11.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-          </div>
-          <div class="vg-select-dropdown" id="vg-select-dropdown">
-            <div class="vg-option active" data-model="google/veo-3.1" data-cost="0.40" data-name="Veo 3.1" data-desc="Google — melhor qualidade disponível">
-              <div class="vg-opt-info"><span class="vg-opt-name">Veo 3.1</span><span class="vg-opt-desc">Google — melhor qualidade disponível</span></div>
-              <span class="vg-opt-price">$0.40/s</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="section-label">Duração do Vídeo</div>
-        <div class="vg-duration-row">
-          <label>Segundos:</label>
-          <input type="range" id="vg-duration" min="4" max="60" step="1" value="8">
-          <span class="vg-duration-val" id="vg-duration-val">8s</span>
-          <span class="vg-cost-badge">custo estimado: <span id="vg-cost-est">$0.80</span></span>
-        </div>
-      </div>
-
-      <button id="vg-submit-btn" class="submit-btn">🎬 Gerar Vídeo com Hook</button>
-      <div id="vg-progress" class="progress-wrap" style="margin-top:16px"><div class="progress-bar"></div></div>
-      <div id="vg-status" class="status-text"></div>
-      <div id="vg-error" class="error-msg"></div>
-
-      <div id="vg-refined-prompt" class="vg-refined-prompt">
-        <strong>🤖 Prompt refinado pela IA de Hook:</strong>
-        <span id="vg-refined-text"></span>
-      </div>
-
-      <div id="vg-result-card" class="result-card" style="display:none">
-        <h3>✓ Vídeo gerado!</h3>
-        <video id="vg-result-video" class="vg-result-video" controls></video><br/>
-        <a id="vg-download-btn" class="download-btn" download="video-gerado.mp4">⬇ Baixar Vídeo</a>
-      </div>
-    </div>
-
-    <!-- GERAR IMAGEM -->
-    <div id="tool-imagegen" class="tool-panel" style="display:none">
-      <div class="tool-header">
-        <h1 class="tool-title">Gerar Imagem</h1>
-        <p class="tool-subtitle">Crie ou clone imagens com IA — Vertex AI</p>
-      </div>
-
-      <div class="card">
-        <div class="section-label">API Key — Google AI Studio</div>
-        <div class="vg-api-row">
-          <input type="password" id="ig-google-apikey" placeholder="AIza..." autocomplete="off">
-          <button id="ig-google-save-key" class="btn-secondary">💾 Salvar</button>
-        </div>
-        <p style="font-size:0.74rem;color:var(--text-muted);margin-top:8px">
-          Obtenha sua API Key gratuita em <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">aistudio.google.com</a> — não expira.
-        </p>
-      </div>
-
-      <!-- TABS -->
-      <div class="ig-tabs">
-        <button class="ig-tab active" data-mode="clone">🖼️ Clonar Foto</button>
-        <button class="ig-tab" data-mode="create">✨ Criar do Zero</button>
-        <button class="ig-tab" data-mode="translate">🌐 Traduzir Imagem</button>
-      </div>
-
-      <!-- CLONE MODE -->
-      <div class="ig-mode-panel active" id="ig-panel-clone">
-        <div class="card">
-          <div class="section-label">Fotos de referência</div>
-          <div class="ig-upload-grid">
-            <div>
-              <div class="ig-upload-label">Foto Modelo / Pessoa</div>
-              <div class="ig-upload-box" id="ig-ref-box">
-                <input type="file" id="ig-ref-input" accept="image/*">
-                <span class="ig-upload-icon">👤</span>
-                <span class="ig-upload-hint">Clique ou arraste<br>a foto de referência</span>
-                <img class="ig-preview-img" id="ig-ref-preview" alt="">
-              </div>
-            </div>
-            <div>
-              <div class="ig-upload-label">Produto / Objeto</div>
-              <div class="ig-upload-box" id="ig-prod-box">
-                <input type="file" id="ig-prod-input" accept="image/*">
-                <span class="ig-upload-icon">📦</span>
-                <span class="ig-upload-hint">Clique ou arraste<br>o produto ou cena</span>
-                <img class="ig-preview-img" id="ig-prod-preview" alt="">
-              </div>
-            </div>
-          </div>
-          <div class="section-label">Instrução para a IA</div>
-          <textarea id="ig-clone-prompt" class="ig-prompt-area" placeholder="Ex: Coloque o produto na mão da modelo com fundo branco clean, iluminação profissional de estúdio..."></textarea>
-        </div>
-      </div>
-
-      <!-- CREATE MODE -->
-      <div class="ig-mode-panel" id="ig-panel-create">
-        <div class="card">
-          <div class="section-label">Descreva a imagem</div>
-          <textarea id="ig-create-prompt" class="ig-prompt-area" placeholder="Ex: Mulher jovem sorrindo segurando produto de skincare, fundo minimalista branco, foto profissional de estúdio, luz suave lateral..."></textarea>
-        </div>
-      </div>
-
-      <!-- TRANSLATE MODE -->
-      <div class="ig-mode-panel" id="ig-panel-translate">
-        <div class="card">
-          <div class="section-label">Imagem para traduzir</div>
-          <div class="ig-upload-box" id="ig-tr-box" style="max-width:100%">
-            <input type="file" id="ig-tr-input" accept="image/*">
-            <span class="ig-upload-icon">🌐</span>
-            <span class="ig-upload-hint">Clique ou arraste a imagem com texto</span>
-            <img class="ig-preview-img" id="ig-tr-preview" alt="">
-          </div>
-          <div class="section-label" style="margin-top:16px">Traduzir para</div>
-          <select id="ig-tr-lang" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:0.95rem;margin-top:4px">
-            <option value="pt">🇧🇷 Português</option>
-            <option value="en">🇺🇸 Inglês</option>
-            <option value="es">🇪🇸 Espanhol</option>
-            <option value="fr">🇫🇷 Francês</option>
-            <option value="de">🇩🇪 Alemão</option>
-            <option value="it">🇮🇹 Italiano</option>
-            <option value="ja">🇯🇵 Japonês</option>
-            <option value="ko">🇰🇷 Coreano</option>
-            <option value="zh">🇨🇳 Chinês</option>
-          </select>
-        </div>
-        <div id="ig-tr-result" class="card" style="display:none">
-          <div class="section-label">📄 Tradução</div>
-          <div id="ig-tr-text" style="white-space:pre-wrap;font-size:0.94rem;color:var(--text);line-height:1.7;padding:4px 0"></div>
-          <button id="ig-tr-copy" class="copy-btn" style="margin-top:12px">📋 Copiar tradução</button>
-        </div>
-      </div>
-
-      <!-- MODEL SELECTOR -->
-      <div class="card" id="ig-model-card">
-        <div class="section-label">Modelo de IA</div>
-        <div class="vg-model-select" id="ig-model-select">
-          <div class="vg-select-trigger" id="ig-select-trigger">
-            <div class="vg-select-left">
-              <span class="vg-select-name" id="ig-select-name">Imagen 3</span>
-              <span class="vg-select-subdesc" id="ig-select-desc">Google — máxima qualidade fotorrealista</span>
-            </div>
-            <div class="vg-select-right">
-              <svg class="vg-select-arrow" width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M2.5 4.5L7 9.5L11.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-          </div>
-          <div class="vg-select-dropdown" id="ig-select-dropdown">
-            <div class="vg-option active" data-provider="vertex" data-model="imagen-3.0-generate-001" data-name="Imagen 3" data-desc="Google — máxima qualidade fotorrealista">
-              <div class="vg-opt-info"><span class="vg-opt-name">Imagen 3</span><span class="vg-opt-desc">⭐ Melhor qualidade do Google, fotorrealismo avançado</span></div>
-            </div>
-            <div class="vg-option" data-provider="vertex" data-model="imagen-3.0-fast-generate-001" data-name="Imagen 3 Fast" data-desc="Google — rápido para iteração">
-              <div class="vg-opt-info"><span class="vg-opt-name">Imagen 3 Fast</span><span class="vg-opt-desc">⚡ Imagen 3 rápido, ótimo para testes e iterações</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <button id="ig-submit-btn" class="submit-btn">🖼️ Gerar Imagem</button>
-      <div id="ig-progress" class="progress-wrap" style="margin-top:16px"><div class="progress-bar"></div></div>
-      <div id="ig-status" class="status-text"></div>
-      <div id="ig-error" class="error-msg"></div>
-
-      <div id="ig-result-card" class="result-card" style="display:none">
-        <h3>✓ Imagem gerada!</h3>
-        <img id="ig-result-img" class="ig-result-img" alt="Imagem gerada">
-        <a id="ig-download-btn" class="download-btn" download="imagem-gerada.png" style="margin-top:10px;display:inline-block">⬇ Baixar Imagem</a>
-        <div class="section-label" style="margin-top:18px">Redimensionar para plataforma</div>
-        <div class="mode-toggle" id="ig-size-toggle" style="flex-wrap:wrap;gap:6px">
-          <button class="mode-btn ig-sz-btn" data-w="1080" data-h="1920">Stories 9:16</button>
-          <button class="mode-btn ig-sz-btn" data-w="1080" data-h="1080">Feed 1:1</button>
-          <button class="mode-btn ig-sz-btn" data-w="1080" data-h="1350">Feed 4:5</button>
-          <button class="mode-btn ig-sz-btn" data-w="0" data-h="0">Personalizado</button>
-        </div>
-        <div id="ig-custom-size" style="display:none;margin-top:10px;display:none">
-          <div style="display:flex;gap:10px;align-items:center">
-            <input type="number" id="ig-custom-w" class="time-input" placeholder="Largura px" style="width:110px">
-            <span style="color:var(--text-muted)">×</span>
-            <input type="number" id="ig-custom-h" class="time-input" placeholder="Altura px" style="width:110px">
-          </div>
-        </div>
-        <button id="ig-resize-btn" class="submit-btn" style="margin-top:12px;display:none">Redimensionar e Baixar</button>
-      </div>
-    </div>
-
     <!-- CORTAR VÍDEO -->
     <div id="tool-trim" class="tool-panel" style="display:none">
       <div class="tool-header">
@@ -2495,33 +2244,6 @@
         <h3>✓ Espelhado!</h3>
         <video id="mirror-result-video" class="result-video" controls></video><br/>
         <a id="mirror-download-btn" class="download-btn" download>⬇ Baixar vídeo</a>
-      </div>
-    </div>
-
-    <!-- REMOVER FUNDO -->
-    <div id="tool-rembg" class="tool-panel" style="display:none">
-      <div class="tool-header">
-        <h1 class="tool-title">Remover Fundo de Imagem</h1>
-        <p class="tool-subtitle">Remove o fundo automaticamente com IA — exporta PNG transparente</p>
-      </div>
-      <div class="card">
-        <label for="rembg-file-input" id="rembg-dz" class="drop-zone" tabindex="0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <p><strong>Clique ou arraste</strong> uma imagem aqui</p>
-          <p>JPG, PNG, WEBP</p>
-          <div id="rembg-file-name" class="dz-filename"></div>
-        </label>
-        <input type="file" id="rembg-file-input" accept="image/*" class="hidden-input">
-      </div>
-      <button id="rembg-submit-btn" class="submit-btn" disabled>Selecione uma imagem</button>
-      <div id="rembg-progress" class="progress-wrap"><div class="progress-bar"></div></div>
-      <div id="rembg-status" class="status-text"></div>
-      <div id="rembg-error" class="error-msg"></div>
-      <div id="rembg-result-card" class="result-card" style="display:none">
-        <h3>✓ Fundo removido!</h3>
-        <img id="rembg-result-img" class="rembg-result-img" alt="Resultado">
-        <br/>
-        <a id="rembg-download-btn" class="download-btn" download="sem-fundo.png" style="margin-top:12px;display:inline-block">⬇ Baixar PNG</a>
       </div>
     </div>
 
