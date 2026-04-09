@@ -2774,6 +2774,67 @@ app.post('/api/autohook/compose', upload.fields([
   }
 });
 
+// ── Localizar segmento de fala com Whisper + GPT-4o-mini ────────────────────
+app.post('/api/speech/find-segment', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const searchText = (req.body.search_text || '').trim();
+  const orKey      = (req.body.orKey || '').trim();
+  const lang       = req.body.lang || 'pt';
+  if (!searchText) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'search_text obrigatório' }); }
+  if (!orKey)      { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'orKey obrigatório' }); }
+  const input = req.file.path;
+  try {
+    // 1. Transcribe with faster-whisper (word timestamps JSON)
+    const transcriptRaw = await new Promise((resolve, reject) => {
+      const cmd = `"${PYTHON}" "${path.join(__dirname, 'transcribe.py')}" "${input}" "small" "${lang}" "1"`;
+      exec(cmd, { maxBuffer: 10 * 1024 * 1024, timeout: 180000 }, (err, stdout, stderr) => {
+        if (err) return reject(new Error((stderr || err.message).slice(0, 300)));
+        resolve(stdout.trim());
+      });
+    });
+    let segments;
+    try { segments = JSON.parse(transcriptRaw); } catch (_) { throw new Error('Erro ao transcrever — ' + transcriptRaw.slice(0, 120)); }
+    if (!Array.isArray(segments) || segments.length === 0) throw new Error('Nenhuma fala detectada no vídeo');
+
+    // 2. Send transcript + query to GPT-4o-mini via OpenRouter (text-only call)
+    const segSummary = segments.map(s => `[${s.start.toFixed(1)}s–${s.end.toFixed(1)}s]: "${s.text}"`).join('\n');
+    const prompt = `Você tem esta transcrição de um vídeo com timestamps:\n${segSummary}\n\nEncontre o segmento que melhor corresponde ao texto: "${searchText}"\nRetorne APENAS JSON (sem texto adicional): {"start": <segundos>, "end": <segundos>, "text": "<trecho encontrado>"}`;
+
+    const orBody = Buffer.from(JSON.stringify({
+      model: 'openai/gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 256
+    }));
+    const orRaw = await new Promise((resolve, reject) => {
+      const r2 = https.request({
+        hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, 'Content-Length': orBody.length }
+      }, r => {
+        let d = ''; r.on('data', c => d += c);
+        r.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            if (j.error) return reject(new Error(j.error.message || JSON.stringify(j.error)));
+            resolve((j.choices?.[0]?.message?.content || '').trim());
+          } catch(e) { reject(new Error('Parse error: ' + e.message)); }
+        });
+      });
+      r2.on('error', reject); r2.write(orBody); r2.end();
+    });
+
+    const match = orRaw.match(/\{[\s\S]*?\}/);
+    if (!match) throw new Error('IA não retornou resultado válido: ' + orRaw.slice(0, 100));
+    const result = JSON.parse(match[0]);
+    if (typeof result.start !== 'number' || typeof result.end !== 'number') throw new Error('Formato inválido da resposta IA');
+
+    res.json({ start: result.start, end: result.end, text: result.text || '', segments });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.unlink(req.file.path, ()=>{});
+  }
+});
+
 // ── Substituir segmento de fala com ElevenLabs TTS ──────────────────────────
 app.post('/api/replace-segment', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });

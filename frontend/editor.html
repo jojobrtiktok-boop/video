@@ -819,9 +819,8 @@
     background: var(--bg); border-bottom: 1px solid var(--border);
     padding: 10px 44px; margin: -36px -44px 24px;
   }
-  .ftools-tabs-inner { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; max-width: 860px; padding-bottom: 2px; }
-  .ftools-tabs-inner::-webkit-scrollbar { display: none; }
-  .ftab { padding: 5px 13px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all .15s; }
+  .ftools-tabs-inner { display: flex; gap: 6px; flex-wrap: wrap; max-width: 860px; padding-bottom: 2px; }
+  .ftab { padding: 6px 15px; border-radius: 20px; font-size: 13px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all .15s; }
   .ftab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .ftab:hover:not(.active) { background: var(--card-bg); color: var(--text); }
   @media (max-width: 680px) { #ftools-tab-strip { padding: 8px 16px; margin: -20px -16px 16px; } }
@@ -2262,6 +2261,20 @@
           <div id="sf-file-name" class="dz-filename"></div>
         </label>
         <input type="file" id="sf-file-input" accept="video/*" class="hidden-input" />
+      </div>
+
+      <!-- AI detect card -->
+      <div class="card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px">🤖 Detectar trecho com IA</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Descreva o que é dito no trecho que quer substituir — a IA localiza os segundos exatos via Whisper.</div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input id="sf-or-key" type="password" class="tool-input" placeholder="OpenRouter API Key (sk-or-...)" style="flex:1;height:34px" />
+          <button id="sf-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+        </div>
+        <textarea id="sf-search-text" class="tool-textarea" rows="2" placeholder="Ex: bom dia pessoal  /  clique no link abaixo  /  não esqueça de curtir" style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px"></textarea>
+        <button id="sf-detect-btn" class="submit-btn" style="margin-bottom:4px">🔍 Detectar trecho com IA</button>
+        <div id="sf-detect-status" class="status-text"></div>
+        <div id="sf-detect-error" class="error-msg"></div>
       </div>
 
       <div class="card">

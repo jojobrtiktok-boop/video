@@ -3993,7 +3993,166 @@ makeSimpleTool({
   const rc       = document.getElementById('sf-result-card');
   const rv       = document.getElementById('sf-result-video');
   const dl       = document.getElementById('sf-download-btn');
+  // AI detect elements
+  const orKeyEl    = document.getElementById('sf-or-key');
+  const orSaveEl   = document.getElementById('sf-or-save-btn');
+  const searchText = document.getElementById('sf-search-text');
+  const detectBtn  = document.getElementById('sf-detect-btn');
+  const detectStat = document.getElementById('sf-detect-status');
+  const detectErr  = document.getElementById('sf-detect-error');
   if (!sub) return;
+
+  // Restore keys
+  const savedKey = localStorage.getItem('sf_el_key');
+  if (savedKey && elKeyEl) elKeyEl.value = savedKey;
+  const savedOrKey = localStorage.getItem('wm_or_key');
+  if (savedOrKey && orKeyEl) orKeyEl.value = savedOrKey;
+
+  elSaveEl && elSaveEl.addEventListener('click', () => {
+    const v = elKeyEl.value.trim();
+    if (v) { localStorage.setItem('sf_el_key', v); elSaveEl.textContent = '✅'; setTimeout(() => elSaveEl.textContent = '💾', 2000); }
+  });
+
+  orSaveEl && orSaveEl.addEventListener('click', () => {
+    const v = orKeyEl.value.trim();
+    if (v) { localStorage.setItem('wm_or_key', v); orSaveEl.textContent = '✅'; setTimeout(() => orSaveEl.textContent = '💾', 2000); }
+  });
+
+  let sfFile = null;
+  function setFile(f) {
+    sfFile = f;
+    if (fnLabel) fnLabel.textContent = f.name;
+    checkReady();
+  }
+  fi && fi.addEventListener('change', () => { if (fi.files[0]) setFile(fi.files[0]); });
+  if (dz) {
+    dz.addEventListener('click', () => fi && fi.click());
+    dz.addEventListener('dragover', e => e.preventDefault());
+    dz.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+  }
+
+  function checkReady() {
+    if (!sub) return;
+    const ok = sfFile && startEl.value !== '' && endEl.value !== '' && textEl.value.trim() && voiceSel.value;
+    sub.disabled = !ok;
+    sub.textContent = ok ? '▶ Substituir Fala' : 'Selecione vídeo e configure';
+  }
+  [startEl, endEl, textEl].forEach(el => el && el.addEventListener('input', checkReady));
+  voiceSel && voiceSel.addEventListener('change', checkReady);
+
+  // ── AI segment detection ──────────────────────────────────────────────
+  detectBtn && detectBtn.addEventListener('click', async () => {
+    if (!sfFile) {
+      if (detectErr) { detectErr.style.display = 'block'; detectErr.textContent = 'Selecione o vídeo primeiro.'; } return;
+    }
+    const query = searchText && searchText.value.trim();
+    if (!query) {
+      if (detectErr) { detectErr.style.display = 'block'; detectErr.textContent = 'Descreva o trecho que quer encontrar.'; } return;
+    }
+    const key = (orKeyEl && orKeyEl.value.trim()) || localStorage.getItem('wm_or_key') || '';
+    if (!key) {
+      if (detectErr) { detectErr.style.display = 'block'; detectErr.textContent = 'Informe a OpenRouter API Key.'; } return;
+    }
+    detectBtn.disabled = true;
+    if (detectErr) detectErr.style.display = 'none';
+    if (detectStat) detectStat.textContent = '🎙 Transcrevendo com Whisper…';
+    try {
+      const fd = new FormData();
+      fd.append('video', sfFile);
+      fd.append('search_text', query);
+      fd.append('orKey', key);
+      const r = await fetch(API + '/api/speech/find-segment', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+      // Auto-fill start/end time
+      if (startEl) { startEl.value = j.start.toFixed(1); }
+      if (endEl)   { endEl.value   = j.end.toFixed(1);   }
+      checkReady();
+      if (detectStat) detectStat.textContent = `✓ Encontrado: ${j.start.toFixed(1)}s – ${j.end.toFixed(1)}s  "${j.text}"`;
+    } catch(e) {
+      if (detectErr) { detectErr.style.display = 'block'; detectErr.textContent = e.message; }
+      if (detectStat) detectStat.textContent = '';
+    } finally {
+      detectBtn.disabled = false;
+    }
+  });
+
+  // Load voices
+  loadVoEl && loadVoEl.addEventListener('click', async () => {
+    const key = (elKeyEl.value.trim()) || localStorage.getItem('sf_el_key') || '';
+    if (!key) { if (voiceErr) { voiceErr.style.display = 'block'; voiceErr.textContent = 'Informe a ElevenLabs API Key.'; } return; }
+    loadVoEl.disabled = true; loadVoEl.textContent = '⏳';
+    if (voiceErr) voiceErr.style.display = 'none';
+    try {
+      const resp = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.detail || 'Erro ao carregar vozes');
+      voiceSel.innerHTML = '<option value="">Selecione uma voz...</option>';
+      (json.voices || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.voice_id; opt.textContent = v.name;
+        voiceSel.appendChild(opt);
+      });
+      voiceSel.style.display = '';
+      localStorage.setItem('sf_el_key', key);
+    } catch(e) {
+      if (voiceErr) { voiceErr.style.display = 'block'; voiceErr.textContent = e.message; }
+    } finally {
+      loadVoEl.disabled = false; loadVoEl.textContent = 'Carregar vozes';
+    }
+  });
+
+  sub.addEventListener('click', async () => {
+    if (!sfFile) return;
+    const startSec = parseFloat(startEl.value);
+    const endSec   = parseFloat(endEl.value);
+    const newText  = textEl.value.trim();
+    const elKey    = (elKeyEl.value.trim()) || localStorage.getItem('sf_el_key') || '';
+    const voiceId  = voiceSel.value;
+    if (isNaN(startSec) || isNaN(endSec) || endSec <= startSec) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Tempos inválidos: fim deve ser maior que início.'; } return;
+    }
+    sub.disabled = true; sub.textContent = '⏳ Processando…';
+    if (prog) prog.style.display = 'block';
+    if (errEl) errEl.style.display = 'none';
+    if (rc) rc.style.display = 'none';
+    if (stat) stat.textContent = 'Gerando TTS e substituindo áudio…';
+    try {
+      const fd = new FormData();
+      fd.append('video', sfFile);
+      fd.append('start_time', startSec.toString());
+      fd.append('end_time', endSec.toString());
+      fd.append('new_text', newText);
+      fd.append('el_key', elKey);
+      fd.append('voice_id', voiceId);
+      const resp = await fetch(API + '/api/replace-segment', { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ' + resp.status);
+      // Poll job
+      const jobId = json.id;
+      let url;
+      while (true) {
+        await new Promise(r => setTimeout(r, 2000));
+        const jr = await fetch(API + '/api/job/' + jobId);
+        const jj = await jr.json();
+        if (jj.status === 'done') { url = API + jj.url; break; }
+        if (jj.status === 'error') throw new Error(jj.error || 'Erro no processamento');
+        if (stat) stat.textContent = `Processando… ${jj.progress || 0}%`;
+      }
+      if (rv) rv.src = url;
+      if (dl) { dl.href = url; dl.download = 'fala-substituida.mp4'; }
+      if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+      if (stat) stat.textContent = '';
+    } catch(e) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Erro: ' + e.message; }
+      if (stat) stat.textContent = '';
+    } finally {
+      sub.disabled = false; sub.textContent = '▶ Substituir Fala';
+      if (prog) prog.style.display = 'none';
+      checkReady();
+    }
+  });
+})();
 
   // Restore key
   const savedKey = localStorage.getItem('sf_el_key');
