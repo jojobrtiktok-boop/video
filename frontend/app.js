@@ -114,7 +114,7 @@ const CAT_MAP = {
   'video-library': null
 };
 
-const FERR_TOOLS = new Set(['watermark','trim','resize','compress','upscale','mirror','extrair','combine','translate','swapfala']);
+const FERR_TOOLS = new Set(['watermark','trim','resize','compress','upscale','mirror','extrair','combine','translate','swapfala','cutaudio','gencenas']);
 
 function showTool(name) {
   if (name === 'ferramentas') name = 'watermark';
@@ -4636,6 +4636,385 @@ makeSimpleTool({
       sub.disabled = false; sub.textContent = '▶ Substituir Fala';
       if (prog) prog.style.display = 'none';
       checkReady();
+    }
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// CORTAR ÁUDIO INTELIGENTE
+// ══════════════════════════════════════════════════════════════════
+(function() {
+  const fileInput  = document.getElementById('ca-file-input');
+  const dropZone   = document.getElementById('ca-drop-zone');
+  const fileNameEl = document.getElementById('ca-file-name');
+  const submitBtn  = document.getElementById('ca-submit-btn');
+  const orKeyEl    = document.getElementById('ca-or-key');
+  const orSaveBtn  = document.getElementById('ca-or-save-btn');
+  const minSilEl   = document.getElementById('ca-min-silence');
+  const bufferEl   = document.getElementById('ca-buffer');
+  const smartEl    = document.getElementById('ca-smart-mode');
+  const progWrap   = document.getElementById('ca-progress-wrap');
+  const progBar    = document.getElementById('ca-progress-bar');
+  const progLabel  = document.getElementById('ca-progress-label');
+  const errEl      = document.getElementById('ca-error');
+  const resultCard = document.getElementById('ca-result-card');
+  const statsEl    = document.getElementById('ca-stats');
+  const audioEl    = document.getElementById('ca-result-audio');
+  const dlBtn      = document.getElementById('ca-download-btn');
+  if (!submitBtn) return;
+
+  // Restore key
+  const saved = localStorage.getItem('ah_or_key');
+  if (saved && orKeyEl) orKeyEl.value = saved;
+
+  orSaveBtn && orSaveBtn.addEventListener('click', () => {
+    const v = orKeyEl.value.trim();
+    if (v) { localStorage.setItem('ah_or_key', v); orSaveBtn.textContent = '✅'; setTimeout(() => orSaveBtn.textContent = '💾', 2000); }
+  });
+
+  let caFile = null;
+  function setFile(f) {
+    caFile = f;
+    if (fileNameEl) fileNameEl.textContent = f.name;
+    submitBtn.disabled = false;
+    submitBtn.textContent = '✂️ Cortar silêncios';
+  }
+  fileInput && fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+  if (dropZone) {
+    dropZone.addEventListener('click', () => fileInput && fileInput.click());
+    dropZone.addEventListener('dragover', e => e.preventDefault());
+    dropZone.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+  }
+
+  submitBtn.addEventListener('click', async () => {
+    if (!caFile) return;
+    const orKey = (orKeyEl && orKeyEl.value.trim()) || localStorage.getItem('ah_or_key') || '';
+    submitBtn.disabled = true; submitBtn.textContent = '⏳ Processando…';
+    if (errEl) errEl.style.display = 'none';
+    if (resultCard) resultCard.style.display = 'none';
+    if (progWrap) progWrap.style.display = '';
+    if (progBar) progBar.style.width = '5%';
+    if (progLabel) progLabel.textContent = 'Enviando arquivo…';
+
+    try {
+      const fd = new FormData();
+      fd.append('audio', caFile);
+      fd.append('min_silence', minSilEl ? minSilEl.value : '0.4');
+      fd.append('buffer', bufferEl ? bufferEl.value : '0.05');
+      fd.append('smart', smartEl && smartEl.checked ? '1' : '0');
+      if (orKey) fd.append('orKey', orKey);
+
+      const r = await fetch(API + '/api/cutaudio', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      const jobId = j.id;
+      let url, job;
+      while (true) {
+        await new Promise(res => setTimeout(res, 2500));
+        const jr = await fetch(API + '/api/job/' + jobId);
+        const jj = await jr.json();
+        if (jj.status === 'done') { url = API + jj.url; job = jj; break; }
+        if (jj.status === 'error') throw new Error(jj.error || 'Erro no processamento');
+        const pct = jj.progress || 0;
+        if (progBar) progBar.style.width = pct + '%';
+        if (progLabel) progLabel.textContent = jj.status_label || `Processando… ${pct}%`;
+      }
+
+      if (progBar) progBar.style.width = '100%';
+      if (progLabel) progLabel.textContent = '✓ Concluído!';
+      if (audioEl) audioEl.src = url;
+      if (dlBtn) { dlBtn.href = url; dlBtn.download = 'audio-cortado.mp3'; }
+      if (statsEl && job.stats) {
+        const s = job.stats;
+        statsEl.innerHTML = `⏱ Original: <b>${s.original_s}s</b> → <b>${s.result_s}s</b> · `+
+          `${s.cuts} cortes · economizado: <b>${s.saved_s}s</b> (${Math.round(s.saved_s/s.original_s*100)}%)`;
+      }
+      if (resultCard) { resultCard.style.display = 'block'; resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    } catch(e) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Erro: ' + e.message; }
+    } finally {
+      submitBtn.disabled = false; submitBtn.textContent = '✂️ Cortar silêncios';
+      setTimeout(() => { if (progWrap) progWrap.style.display = 'none'; }, 1500);
+    }
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// GERADOR DE CENAS IA
+// ══════════════════════════════════════════════════════════════════
+(function() {
+  const orKeyEl    = document.getElementById('gc-or-key');
+  const orSaveBtn  = document.getElementById('gc-or-save-btn');
+  const modeBtns   = document.querySelectorAll('.gc-mode-btn');
+  // Text mode
+  const textPanel  = document.getElementById('gc-text-panel');
+  const promptEl   = document.getElementById('gc-text-prompt');
+  const formatSel  = document.getElementById('gc-format');
+  const numScenes  = document.getElementById('gc-num-scenes');
+  const genTextBtn = document.getElementById('gc-gen-text-btn');
+  // Video mode
+  const videoPanel   = document.getElementById('gc-video-panel');
+  const videoInput   = document.getElementById('gc-video-input');
+  const videoDropEl  = document.getElementById('gc-video-drop');
+  const videoNameEl  = document.getElementById('gc-video-name');
+  const analyzeBtn   = document.getElementById('gc-analyze-btn');
+  // Shared
+  const progWrap    = document.getElementById('gc-progress-wrap');
+  const progBar     = document.getElementById('gc-progress-bar');
+  const progStatus  = document.getElementById('gc-status');
+  const errEl       = document.getElementById('gc-error');
+  const scenesPanel = document.getElementById('gc-scenes-panel');
+  const scenesCount = document.getElementById('gc-scenes-count');
+  const scenesList  = document.getElementById('gc-scenes-list');
+  const addSceneBtn = document.getElementById('gc-add-scene-btn');
+  const placementPanel = document.getElementById('gc-placement-panel');
+  const placeBtns   = document.querySelectorAll('.gc-place-btn');
+  const renderBtn   = document.getElementById('gc-render-btn');
+  const resultCard  = document.getElementById('gc-result-card');
+  const resultVideo = document.getElementById('gc-result-video');
+  const dlBtn       = document.getElementById('gc-download-btn');
+  if (!orKeyEl) return;
+
+  // Restore key
+  const saved = localStorage.getItem('ah_or_key');
+  if (saved && orKeyEl) orKeyEl.value = saved;
+
+  orSaveBtn && orSaveBtn.addEventListener('click', () => {
+    const v = orKeyEl.value.trim();
+    if (v) { localStorage.setItem('ah_or_key', v); orSaveBtn.textContent = '✅'; setTimeout(() => orSaveBtn.textContent = '💾', 2000); }
+  });
+
+  let gcMode = 'text';
+  let gcVideoFile = null;
+  let gcVideoAnalysis = null;   // {ideas, transcript}
+  let gcPlacement = 'prepend';
+  let gcScenes = [];            // current scenes array
+
+  // ── Mode toggle ─────────────────────────────────────────────────
+  modeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      gcMode = btn.dataset.mode;
+      modeBtns.forEach(b => {
+        const on = b.dataset.mode === gcMode;
+        b.style.background = on ? '' : 'none';
+        b.style.border = on ? '' : '1px solid var(--border)';
+        b.style.color = on ? '' : 'var(--text-muted)';
+      });
+      textPanel.style.display = gcMode === 'text' ? '' : 'none';
+      videoPanel.style.display = gcMode === 'video' ? '' : 'none';
+      scenesPanel.style.display = 'none';
+    });
+  });
+
+  // ── Text mode: enable button when prompt filled ──────────────────
+  promptEl && promptEl.addEventListener('input', () => {
+    if (genTextBtn) genTextBtn.disabled = !promptEl.value.trim();
+  });
+  // init state
+  if (genTextBtn) genTextBtn.disabled = true;
+
+  // ── Video mode setup ─────────────────────────────────────────────
+  function setVideoFile(f) {
+    gcVideoFile = f;
+    if (videoNameEl) videoNameEl.textContent = f.name;
+    if (analyzeBtn) { analyzeBtn.disabled = false; analyzeBtn.textContent = '🔍 Analisar vídeo com IA'; }
+  }
+  videoInput && videoInput.addEventListener('change', () => { if (videoInput.files[0]) setVideoFile(videoInput.files[0]); });
+  if (videoDropEl) {
+    videoDropEl.addEventListener('click', () => videoInput && videoInput.click());
+    videoDropEl.addEventListener('dragover', e => e.preventDefault());
+    videoDropEl.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setVideoFile(f); });
+  }
+
+  // ── Render scenes list ───────────────────────────────────────────
+  const STAGE_COLORS = { hook:'#f59e0b', problem:'#ef4444', solution:'#22c55e', proof:'#3b82f6', cta:'#a855f7', result:'#06b6d4', outro:'#6b7280' };
+  function renderScenes() {
+    if (!scenesList) return;
+    scenesCount.textContent = `(${gcScenes.length})`;
+    scenesList.innerHTML = gcScenes.map((sc, i) => {
+      const col = STAGE_COLORS[sc.stage] || '#6b7280';
+      return `<div data-idx="${i}" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;position:relative">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span style="background:${col};color:#fff;font-size:11px;border-radius:4px;padding:2px 7px;font-weight:600">${sc.stage || 'scene'}</span>
+          <span style="font-size:11px;color:var(--text-muted)">${sc.duration_s || 3}s</span>
+          ${sc.emoji ? `<span>${sc.emoji}</span>` : ''}
+          <button data-del="${i}" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;line-height:1" title="Remover">×</button>
+        </div>
+        <textarea data-text="${i}" class="tool-input" rows="2" style="width:100%;font-size:13px;resize:vertical">${escHtml(sc.text || '')}</textarea>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">Duração (s)</div>
+            <input data-dur="${i}" type="number" class="tool-input" value="${sc.duration_s || 3}" min="1" max="30" step="0.5" style="font-size:12px"/>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">Stage</div>
+            <select data-stage="${i}" class="tool-select" style="font-size:12px">
+              ${['hook','problem','solution','proof','cta','result','outro'].map(s => `<option value="${s}"${s===sc.stage?' selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Events
+    scenesList.querySelectorAll('[data-del]').forEach(btn => {
+      btn.addEventListener('click', () => { gcScenes.splice(+btn.dataset.del, 1); renderScenes(); });
+    });
+    scenesList.querySelectorAll('[data-text]').forEach(ta => {
+      ta.addEventListener('input', () => { gcScenes[+ta.dataset.text].text = ta.value; });
+    });
+    scenesList.querySelectorAll('[data-dur]').forEach(inp => {
+      inp.addEventListener('change', () => { gcScenes[+inp.dataset.dur].duration_s = parseFloat(inp.value) || 3; });
+    });
+    scenesList.querySelectorAll('[data-stage]').forEach(sel => {
+      sel.addEventListener('change', () => { gcScenes[+sel.dataset.stage].stage = sel.value; renderScenes(); });
+    });
+  }
+
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function showScenes(scenes, showPlacement) {
+    gcScenes = scenes;
+    renderScenes();
+    if (scenesPanel) scenesPanel.style.display = '';
+    if (placementPanel) placementPanel.style.display = showPlacement ? '' : 'none';
+    if (renderBtn) renderBtn.textContent = showPlacement ? '🚀 Renderizar vídeo' : '🎨 Renderizar cenas';
+    scenesPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  addSceneBtn && addSceneBtn.addEventListener('click', () => {
+    gcScenes.push({ duration_s: 3, text: '', stage: 'hook', emoji: '', bg_color: '#1a1a2e', text_color: '#ffffff', font_size: 72, bg_color2: '#16213e', accent_color: '#7c71ff' });
+    renderScenes();
+  });
+
+  // ── Placement ────────────────────────────────────────────────────
+  placeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      gcPlacement = btn.dataset.place;
+      placeBtns.forEach(b => {
+        const on = b.dataset.place === gcPlacement;
+        b.style.background = on ? '' : 'none';
+        b.style.border = on ? '' : '1px solid var(--border)';
+        b.style.color = on ? '' : 'var(--text-muted)';
+      });
+    });
+  });
+
+  // ── Progress helpers ─────────────────────────────────────────────
+  function showProg(msg) { if (progWrap) progWrap.style.display = ''; if (progBar) progBar.style.width = '5%'; if (progStatus) progStatus.textContent = msg; if (errEl) errEl.style.display = 'none'; }
+  function updProg(pct, msg) { if (progBar) progBar.style.width = pct + '%'; if (progStatus) progStatus.textContent = msg; }
+  function hideProg() { setTimeout(() => { if (progWrap) progWrap.style.display = 'none'; }, 1500); }
+  function showErr(msg) { if (errEl) { errEl.style.display = 'block'; errEl.textContent = msg; } }
+
+  async function pollGcJob(jobId) {
+    while (true) {
+      await new Promise(res => setTimeout(res, 2500));
+      const jr = await fetch(API + '/api/job/' + jobId);
+      const jj = await jr.json();
+      if (jj.status === 'done') return API + jj.url;
+      if (jj.status === 'error') throw new Error(jj.error || 'Falhou');
+      updProg(jj.progress || 0, jj.status_label || `Renderizando… ${jj.progress || 0}%`);
+    }
+  }
+
+  // ── TEXT MODE Generate ───────────────────────────────────────────
+  genTextBtn && genTextBtn.addEventListener('click', async () => {
+    const orKey = (orKeyEl.value.trim()) || localStorage.getItem('ah_or_key') || '';
+    if (!orKey) { showErr('Informe a OpenRouter Key.'); return; }
+    const prompt = promptEl.value.trim();
+    if (!prompt) return;
+    genTextBtn.disabled = true; genTextBtn.textContent = '⏳ Aguarde…';
+    showProg('🤖 GPT-4o mini gerando roteiro de cenas…');
+    try {
+      const r = await fetch(API + '/api/gencenas/text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ or_key: orKey, description: prompt, num_scenes: +(numScenes && numScenes.value || 5), format: formatSel && formatSel.value || '9:16' })
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      updProg(15, '🎨 Renderizando cenas…');
+      const url = await pollGcJob(j.id);
+      updProg(100, '✓ Pronto!');
+
+      if (resultVideo) resultVideo.src = url;
+      if (dlBtn) { dlBtn.href = url; dlBtn.download = 'cenas-geradas.mp4'; }
+      if (resultCard) { resultCard.style.display = 'block'; resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+      hideProg();
+    } catch(e) {
+      showErr('Erro: ' + e.message);
+      updProg(0, '');
+    } finally {
+      genTextBtn.disabled = false; genTextBtn.textContent = '🤖 Gerar cenas';
+    }
+  });
+
+  // ── VIDEO MODE Analyze ───────────────────────────────────────────
+  analyzeBtn && analyzeBtn.addEventListener('click', async () => {
+    if (!gcVideoFile) return;
+    const orKey = (orKeyEl.value.trim()) || localStorage.getItem('ah_or_key') || '';
+    if (!orKey) { showErr('Informe a OpenRouter Key.'); return; }
+    analyzeBtn.disabled = true; analyzeBtn.textContent = '⏳ Analisando…';
+    showProg('🎙 Transcrevendo vídeo com Whisper…');
+    try {
+      const fd = new FormData();
+      fd.append('video', gcVideoFile);
+      fd.append('orKey', orKey);
+      const r = await fetch(API + '/api/gencenas/analyze-video', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+      gcVideoAnalysis = j;
+      updProg(100, '✓ Análise concluída!');
+      hideProg();
+      showScenes(j.ideas.map(idea => ({
+        duration_s: Math.round(idea.end - idea.start),
+        start: idea.start, end: idea.end,
+        text: idea.text, stage: idea.stage || 'hook',
+        emoji: '', bg_color: '#1a1a2e', text_color: '#ffffff', font_size: 64, bg_color2: '#16213e', accent_color: '#7c71ff'
+      })), true);
+    } catch(e) {
+      showErr('Erro: ' + e.message);
+    } finally {
+      analyzeBtn.disabled = false; analyzeBtn.textContent = '🔍 Analisar vídeo com IA';
+    }
+  });
+
+  // ── RENDER ───────────────────────────────────────────────────────
+  renderBtn && renderBtn.addEventListener('click', async () => {
+    if (!gcScenes.length) return;
+    const orKey = (orKeyEl.value.trim()) || localStorage.getItem('ah_or_key') || '';
+    if (!orKey) { showErr('Informe a OpenRouter Key.'); return; }
+    renderBtn.disabled = true; renderBtn.textContent = '⏳ Renderizando…';
+    showProg('🎨 Iniciando renderização…');
+    if (resultCard) resultCard.style.display = 'none';
+    try {
+      const fd = new FormData();
+      fd.append('scenes', JSON.stringify(gcScenes));
+      fd.append('format', formatSel ? formatSel.value : '9:16');
+      fd.append('mode', gcMode);
+      fd.append('placement', gcPlacement);
+      fd.append('orKey', orKey);
+      if (gcMode === 'video' && gcVideoFile) fd.append('video', gcVideoFile);
+
+      const r = await fetch(API + '/api/gencenas/render-video', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      updProg(10, '🎬 Renderizando…');
+      const url = await pollGcJob(j.id);
+      updProg(100, '✓ Pronto!');
+
+      if (resultVideo) resultVideo.src = url;
+      if (dlBtn) { dlBtn.href = url; dlBtn.download = 'video-cenas.mp4'; }
+      if (resultCard) { resultCard.style.display = 'block'; resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+      hideProg();
+    } catch(e) {
+      showErr('Erro: ' + e.message);
+      updProg(0, '');
+    } finally {
+      renderBtn.disabled = false; renderBtn.textContent = '🚀 Renderizar vídeo';
     }
   });
 })();

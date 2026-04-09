@@ -3315,6 +3315,495 @@ app.post('/api/replace-segment', upload.single('video'), async (req, res) => {
   })();
 });
 
+// ── Cortar Áudio Inteligente ─────────────────────────────────────────────────
+app.post('/api/cutaudio', upload.single('audio'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Arquivo de áudio obrigatório' });
+  const orKey      = (req.body.orKey || '').trim();
+  const minSilence = parseFloat(req.body.min_silence) || 0.4;
+  const buffer     = parseFloat(req.body.buffer) || 0.05;
+  const smart      = req.body.smart === '1';
+
+  const jobId = Date.now().toString() + Math.random().toString(36).slice(2);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, status_label: '🔉 Detectando silêncios…', stats: null };
+  res.json({ id: jobId });
+
+  (async () => {
+    const input = req.file.path;
+    const workDir = path.join(UPLOAD_DIR, 'ca_' + jobId);
+    fs.mkdirSync(workDir, { recursive: true });
+
+    try {
+      // ── Step 1: Extract audio to wav for processing ──────────────────
+      simpleJobs[jobId].status_label = '🔉 Extraindo áudio…';
+      simpleJobs[jobId].progress = 5;
+      const audioWav = path.join(workDir, 'audio.wav');
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${input}" -ar 16000 -ac 1 -f wav "${audioWav}"`, { timeout: 180000 }, (err, _so, se) => {
+          if (err) return reject(new Error((se || err.message).slice(0, 300)));
+          resolve();
+        });
+      });
+
+      // ── Step 2: Get total duration ───────────────────────────────────
+      const totalDur = await getVideoDuration(audioWav) || await getVideoDuration(input);
+
+      // ── Step 3: Silence detection via FFmpeg ─────────────────────────
+      simpleJobs[jobId].status_label = '🔇 Detectando silêncios com FFmpeg…';
+      simpleJobs[jobId].progress = 15;
+      const silenceLog = await new Promise((resolve) => {
+        exec(`"${FFMPEG}" -i "${audioWav}" -af "silencedetect=noise=-35dB:d=${minSilence}" -f null -`, { timeout: 120000 }, (_err, _so, stderr) => {
+          resolve(stderr || '');
+        });
+      });
+
+      const silenceRanges = [];
+      const silStart = [];
+      for (const line of silenceLog.split('\n')) {
+        const ms = line.match(/silence_start:\s*([\d.]+)/);
+        const me = line.match(/silence_end:\s*([\d.]+)/);
+        if (ms) silStart.push(parseFloat(ms[1]));
+        if (me && silStart.length) {
+          const s = silStart.pop();
+          const e = parseFloat(me[1]);
+          silenceRanges.push([s, e]);
+        }
+      }
+
+      // ── Step 4: (optional) Whisper + GPT smart analysis ─────────────
+      simpleJobs[jobId].progress = 25;
+      let extraCuts = [];
+      if (smart && orKey) {
+        simpleJobs[jobId].status_label = '🎙 Transcrevendo com Whisper…';
+        try {
+          const transcriptRaw = await new Promise((resolve, reject) => {
+            const cmd = `"${PYTHON}" "${path.join(__dirname, 'transcribe.py')}" "${audioWav}" "small" "pt" "1"`;
+            exec(cmd, { maxBuffer: 10*1024*1024, timeout: 300000 }, (err, stdout, stderr) => {
+              if (err) return reject(new Error((stderr||err.message).slice(0,300)));
+              resolve(stdout.trim());
+            });
+          });
+          let segments;
+          try { segments = JSON.parse(transcriptRaw); } catch { segments = []; }
+
+          if (segments.length) {
+            simpleJobs[jobId].status_label = '🤖 GPT-4o mini analisando trechos mortos…';
+            simpleJobs[jobId].progress = 45;
+            const segSummary = segments.map(s => `[${s.start.toFixed(2)}s-${s.end.toFixed(2)}s]: "${s.text}"`).join('\n');
+            const gptPrompt = `Você é um editor de áudio. Analise esta transcrição e identifique APENAS os trechos que contêm:\n- Palavras de preenchimento repetidas (né, então, tipo, hm, ah, é...)\n- Hesitações longas (mais de 1 segundo)\n- Frases incompletas ou que "ficam em aberto"\n- Trechos onde o locutor começa a falar e para sem concluir\n\nTranscrição:\n${segSummary}\n\nRetorne APENAS o JSON, sem comentários: [{"start": 1.2, "end": 2.4, "reason": "hesitacao"}, ...]`;
+            const gptBody = Buffer.from(JSON.stringify({
+              model: 'openai/gpt-4o-mini',
+              messages: [{ role: 'user', content: gptPrompt }],
+              max_tokens: 1500
+            }));
+            const gptRaw = await new Promise((resolve, reject) => {
+              const req2 = https.request({
+                hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, 'Content-Length': gptBody.length }
+              }, resp => {
+                let d = ''; resp.on('data', c => d += c);
+                resp.on('end', () => {
+                  try { resolve(JSON.parse(d).choices[0].message.content.trim()); } catch { resolve('[]'); }
+                });
+              });
+              req2.on('error', () => resolve('[]'));
+              req2.write(gptBody); req2.end();
+            });
+            try {
+              const m = gptRaw.match(/\[[\s\S]*\]/);
+              if (m) extraCuts = JSON.parse(m[0]);
+            } catch {}
+          }
+        } catch {}
+      }
+
+      // ── Step 5: Merge silence ranges + extra cuts into keep-segments ─
+      simpleJobs[jobId].status_label = '✂️ Calculando cortes…';
+      simpleJobs[jobId].progress = 60;
+
+      const allCuts = [...silenceRanges, ...extraCuts.map(c => [c.start, c.end])];
+      // Sort + merge overlapping
+      allCuts.sort((a, b) => a[0] - b[0]);
+      const mergedCuts = [];
+      for (const [s, e] of allCuts) {
+        if (mergedCuts.length && s <= mergedCuts[mergedCuts.length-1][1] + 0.1) {
+          mergedCuts[mergedCuts.length-1][1] = Math.max(mergedCuts[mergedCuts.length-1][1], e);
+        } else {
+          mergedCuts.push([s, e]);
+        }
+      }
+      // Apply buffer: expand cuts outward slightly
+      const bufferedCuts = mergedCuts.map(([s, e]) => [Math.max(0, s + buffer), Math.min(totalDur, e - buffer)]).filter(([s,e]) => e > s + 0.05);
+
+      // Build keep-segments
+      const keepSegs = [];
+      let cursor = 0;
+      for (const [cs, ce] of bufferedCuts) {
+        if (cursor < cs - 0.05) keepSegs.push([cursor, cs]);
+        cursor = ce;
+      }
+      if (cursor < totalDur - 0.05) keepSegs.push([cursor, totalDur]);
+
+      if (!keepSegs.length) {
+        // Nothing to cut - just convert
+        keepSegs.push([0, totalDur]);
+      }
+
+      // ── Step 6: Extract and concatenate kept segments ─────────────────
+      simpleJobs[jobId].status_label = '🔊 Montando áudio final…';
+      simpleJobs[jobId].progress = 70;
+
+      const segPaths = [];
+      const concatFile = path.join(workDir, 'concat.txt');
+      for (let i = 0; i < keepSegs.length; i++) {
+        const [ss, se] = keepSegs[i];
+        const segPath = path.join(workDir, `seg_${i}.mp3`);
+        await new Promise((resolve) => {
+          exec(`"${FFMPEG}" -y -i "${audioWav}" -ss ${ss.toFixed(3)} -to ${se.toFixed(3)} -c:a libmp3lame -q:a 2 "${segPath}"`,
+            { timeout: 60000 }, () => resolve());
+        });
+        if (fs.existsSync(segPath)) { segPaths.push(segPath); }
+        simpleJobs[jobId].progress = 70 + Math.round(i / keepSegs.length * 20);
+      }
+
+      const outName = 'cutaudio-' + jobId + '.mp3';
+      const outPath = path.join(UPLOAD_DIR, outName);
+
+      if (segPaths.length === 1) {
+        fs.renameSync(segPaths[0], outPath);
+      } else {
+        fs.writeFileSync(concatFile, segPaths.map(p => `file '${p.replace(/\\/g,'/')}'`).join('\n'));
+        await new Promise((resolve, reject) => {
+          exec(`"${FFMPEG}" -y -f concat -safe 0 -i "${concatFile}" -c:a libmp3lame -q:a 2 "${outPath}"`,
+            { timeout: 120000 }, (err, _so, se) => {
+              if (err) return reject(new Error((se||err.message).slice(0,300)));
+              resolve();
+            });
+        });
+      }
+
+      const resultDur = await getVideoDuration(outPath);
+      const savedSec = Math.round((totalDur - resultDur) * 10) / 10;
+
+      simpleJobs[jobId].status = 'done';
+      simpleJobs[jobId].progress = 100;
+      simpleJobs[jobId].url = '/uploads/' + outName;
+      simpleJobs[jobId].stats = {
+        original_s: Math.round(totalDur * 10) / 10,
+        result_s: Math.round(resultDur * 10) / 10,
+        cuts: bufferedCuts.length,
+        saved_s: savedSec
+      };
+      scheduleDelete(outPath, 3600000);
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error = e.message;
+    } finally {
+      fs.unlink(input, () => {});
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    }
+  })();
+});
+
+// ── Gerador de Cenas: Modo Texto ─────────────────────────────────────────────
+app.post('/api/gencenas/text', express.json({ limit: '20kb' }), async (req, res) => {
+  const { or_key, description, num_scenes = 5, format = '9:16' } = req.body;
+  if (!or_key) return res.status(400).json({ error: 'or_key obrigatório' });
+  if (!description) return res.status(400).json({ error: 'description obrigatório' });
+
+  const jobId = Date.now().toString() + Math.random().toString(36).slice(2);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, status_label: '🤖 GPT gerando roteiro…' };
+  res.json({ id: jobId });
+
+  (async () => {
+    const workDir = path.join(UPLOAD_DIR, 'gc_' + jobId);
+    fs.mkdirSync(workDir, { recursive: true });
+
+    try {
+      // ── Step 1: GPT generates scenes JSON ──────────────────────────
+      const dimMap = { '9:16': [1080, 1920], '1:1': [1080, 1080], '16:9': [1920, 1080] };
+      const [W, H] = dimMap[format] || [1080, 1920];
+
+      const gptPrompt = `Você é um especialista em criação de vídeos curtos para redes sociais (TikTok, Reels, Shorts). Gere exatamente ${num_scenes} cenas para um vídeo vertical no estilo mais adequado ao briefing abaixo.
+
+Briefing: ${description}
+
+Regras:
+- Textos diretos, impactantes, sem floreios desnecessários
+- Cada cena tem 2-5 segundos
+- Stages disponíveis: hook, problem, solution, proof, cta, result, outro
+- Use emojis estrategicamente
+- Cores atraentes e contrastantes
+- bg_color2 deve ser uma variação do bg_color para criar gradiente
+
+Retorne APENAS um JSON array, sem nenhum texto adicional:
+[
+  {
+    "duration_s": 3,
+    "text": "Texto da cena",
+    "bg_color": "#hex",
+    "bg_color2": "#hex",
+    "text_color": "#hex",
+    "accent_color": "#hex",
+    "font_size": 72,
+    "stage": "hook",
+    "emoji": "🚀"
+  }
+]`;
+
+      const gptBody = Buffer.from(JSON.stringify({
+        model: 'openai/gpt-4o-mini',
+        messages: [{ role: 'user', content: gptPrompt }],
+        max_tokens: 2000
+      }));
+
+      const gptRaw = await new Promise((resolve, reject) => {
+        const req2 = https.request({
+          hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${or_key}`, 'Content-Length': gptBody.length }
+        }, resp => {
+          let d = ''; resp.on('data', c => d += c);
+          resp.on('end', () => {
+            try { resolve(JSON.parse(d).choices[0].message.content.trim()); }
+            catch { reject(new Error('Erro na resposta do GPT: ' + d.slice(0,200))); }
+          });
+        });
+        req2.on('error', reject);
+        req2.write(gptBody); req2.end();
+      });
+
+      let scenes;
+      try {
+        const m = gptRaw.match(/\[[\s\S]*\]/);
+        if (!m) throw new Error('JSON não encontrado na resposta');
+        scenes = JSON.parse(m[0]);
+      } catch(e) {
+        throw new Error('GPT não retornou JSON válido: ' + gptRaw.slice(0,200));
+      }
+
+      simpleJobs[jobId].progress = 20;
+      simpleJobs[jobId].status_label = '🎨 Renderizando cenas com Python…';
+
+      // ── Step 2: Write scenes JSON and spawn gencenas.py ────────────
+      const scenesPath = path.join(workDir, 'scenes.json');
+      const outName = 'gencenas-' + jobId + '.mp4';
+      const outPath = path.join(UPLOAD_DIR, outName);
+      fs.writeFileSync(scenesPath, JSON.stringify(scenes));
+
+      await new Promise((resolve, reject) => {
+        const args = [`"${PYTHON}"`, `"${path.join(__dirname, 'gencenas.py')}"`, `"${scenesPath}"`, `"${outPath}"`, '30', String(W), String(H)];
+        const proc = exec(args.join(' '), { maxBuffer: 10*1024*1024, timeout: 600000 }, (err, _so, se) => {
+          if (err) return reject(new Error((se || err.message).slice(0, 300)));
+          resolve();
+        });
+        proc.stdout && proc.stdout.on('data', chunk => {
+          const m = String(chunk).match(/PROGRESS:(\d+)/g);
+          if (m) {
+            const pct = parseInt(m[m.length-1].split(':')[1]);
+            simpleJobs[jobId].progress = 20 + Math.round(pct * 0.75);
+            simpleJobs[jobId].status_label = `🎬 Renderizando… ${simpleJobs[jobId].progress}%`;
+          }
+        });
+      });
+
+      simpleJobs[jobId].status = 'done';
+      simpleJobs[jobId].progress = 100;
+      simpleJobs[jobId].url = '/uploads/' + outName;
+      scheduleDelete(outPath, 3600000);
+      addToLibrary({ id: jobId, type: 'gencenas', label: '🎨 Gerador de Cenas', url: `/uploads/${outName}`, createdAt: Date.now(), expiresAt: Date.now() + 3600000, friendlyName: 'cenas.mp4' });
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error = e.message;
+    } finally {
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    }
+  })();
+});
+
+// ── Gerador de Cenas: Analisar Vídeo ────────────────────────────────────────
+app.post('/api/gencenas/analyze-video', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Vídeo obrigatório' });
+  const orKey = (req.body.orKey || '').trim();
+  if (!orKey) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'orKey obrigatório' }); }
+
+  const input = req.file.path;
+  const workDir = path.join(UPLOAD_DIR, 'gca_' + Date.now());
+  fs.mkdirSync(workDir, { recursive: true });
+
+  try {
+    // Transcribe
+    const transcriptRaw = await new Promise((resolve, reject) => {
+      const cmd = `"${PYTHON}" "${path.join(__dirname, 'transcribe.py')}" "${input}" "small" "pt" "1"`;
+      exec(cmd, { maxBuffer: 10*1024*1024, timeout: 300000 }, (err, stdout, stderr) => {
+        if (err) return reject(new Error((stderr||err.message).slice(0,300)));
+        resolve(stdout.trim());
+      });
+    });
+    let segments;
+    try { segments = JSON.parse(transcriptRaw); } catch { segments = []; }
+
+    const totalDur = await getVideoDuration(input);
+    const segSummary = segments.map(s => `[${s.start.toFixed(1)}s-${s.end.toFixed(1)}s]: "${s.text}"`).join('\n');
+
+    const gptPrompt = `Você é um editor de vídeo. Analise a transcrição abaixo e sugira os MELHORES trechos para adicionar textos de destaque sobrepostos ao vídeo.
+
+Transcrição (duração: ${totalDur.toFixed(1)}s):
+${segSummary}
+
+Para cada ideia de texto, retorne o intervalo de tempo, o texto sugerido (curto e impactante) e o stage.
+Stages: hook, problem, solution, proof, cta, result, outro
+
+Retorne APENAS JSON: [{"start": 0.0, "end": 3.0, "text": "Texto aqui", "stage": "hook", "reason": "momento mais importante"}]`;
+
+    const gptBody = Buffer.from(JSON.stringify({
+      model: 'openai/gpt-4o-mini',
+      messages: [{ role: 'user', content: gptPrompt }],
+      max_tokens: 1500
+    }));
+    const gptRaw = await new Promise((resolve, reject) => {
+      const req2 = https.request({
+        hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, 'Content-Length': gptBody.length }
+      }, resp => {
+        let d = ''; resp.on('data', c => d += c);
+        resp.on('end', () => {
+          try { resolve(JSON.parse(d).choices[0].message.content.trim()); }
+          catch { reject(new Error('Erro GPT: ' + d.slice(0,200))); }
+        });
+      });
+      req2.on('error', reject);
+      req2.write(gptBody); req2.end();
+    });
+
+    let ideas = [];
+    try {
+      const m = gptRaw.match(/\[[\s\S]*\]/);
+      if (m) ideas = JSON.parse(m[0]);
+    } catch {}
+
+    res.json({ ideas, transcript: segments, duration: totalDur });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.unlink(input, ()=>{});
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+  }
+});
+
+// ── Gerador de Cenas: Renderizar Vídeo ──────────────────────────────────────
+app.post('/api/gencenas/render-video', upload.single('video'), async (req, res) => {
+  const scenesRaw = req.body.scenes || '[]';
+  const formatStr = req.body.format || '9:16';
+  const mode      = req.body.mode || 'text';      // 'text' or 'video'
+  const placement = req.body.placement || 'prepend'; // 'prepend' or 'overlay'
+
+  let scenes;
+  try { scenes = JSON.parse(scenesRaw); } catch { return res.status(400).json({ error: 'scenes JSON inválido' }); }
+  if (!scenes.length) return res.status(400).json({ error: 'Nenhuma cena para renderizar' });
+
+  const jobId = Date.now().toString() + Math.random().toString(36).slice(2);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, status_label: '🎬 Preparando renderização…' };
+  res.json({ id: jobId });
+
+  const videoFile = req.file ? req.file.path : null;
+
+  (async () => {
+    const workDir = path.join(UPLOAD_DIR, 'gcr_' + jobId);
+    fs.mkdirSync(workDir, { recursive: true });
+
+    try {
+      const dimMap = { '9:16': [1080, 1920], '1:1': [1080, 1080], '16:9': [1920, 1080] };
+      const [W, H] = dimMap[formatStr] || [1080, 1920];
+      const outName = 'genvideo-' + jobId + '.mp4';
+      const outPath = path.join(UPLOAD_DIR, outName);
+
+      if (mode === 'video' && videoFile && placement === 'overlay') {
+        // Overlay mode: FFmpeg drawtext over original video
+        simpleJobs[jobId].status_label = '✍️ Aplicando textos sobre o vídeo…';
+        simpleJobs[jobId].progress = 10;
+
+        const escText = t => t.replace(/[':]/g, ' ').replace(/\\/g,'').replace(/"/g,'').trim();
+        const filters = scenes.map(sc => {
+          const t = escText(sc.text || '');
+          const s = parseFloat(sc.start) || 0;
+          const e = parseFloat(sc.end) || s + 3;
+          const color = (sc.text_color || '#ffffff').replace('#','');
+          return `drawtext=text='${t}':fontsize=${sc.font_size||64}:fontcolor=${color}:x=(w-text_w)/2:y=h*0.15:enable='between(t\\,${s.toFixed(2)}\\,${e.toFixed(2)})'`;
+        }).join(',');
+
+        await new Promise((resolve, reject) => {
+          const args = `"${FFMPEG}" -y -i "${videoFile}" -vf "${filters}" -c:a copy "${outPath}"`;
+          exec(args, { timeout: 600000, maxBuffer: 10*1024*1024 }, (err, _so, se) => {
+            if (err) return reject(new Error((se||err.message).slice(0,300)));
+            resolve();
+          });
+        });
+
+      } else {
+        // Render scenes with gencenas.py
+        simpleJobs[jobId].status_label = '🎨 Renderizando cenas com Python…';
+        simpleJobs[jobId].progress = 5;
+
+        const scenesPath = path.join(workDir, 'scenes.json');
+        const scenesOut = path.join(workDir, 'scenes.mp4');
+        fs.writeFileSync(scenesPath, JSON.stringify(scenes));
+
+        await new Promise((resolve, reject) => {
+          const cmd = `"${PYTHON}" "${path.join(__dirname, 'gencenas.py')}" "${scenesPath}" "${scenesOut}" 30 ${W} ${H}`;
+          const proc = exec(cmd, { maxBuffer: 10*1024*1024, timeout: 600000 }, (err, _so, se) => {
+            if (err) return reject(new Error((se||err.message).slice(0,300)));
+            resolve();
+          });
+          proc.stdout && proc.stdout.on('data', chunk => {
+            const m = String(chunk).match(/PROGRESS:(\d+)/g);
+            if (m) {
+              const pct = parseInt(m[m.length-1].split(':')[1]);
+              simpleJobs[jobId].progress = 5 + Math.round(pct * 0.7);
+              simpleJobs[jobId].status_label = `🎬 Cenas… ${simpleJobs[jobId].progress}%`;
+            }
+          });
+        });
+
+        if (mode === 'video' && videoFile && placement === 'prepend') {
+          // Concat scenes + original video
+          simpleJobs[jobId].status_label = '🔗 Concatenando com vídeo original…';
+          simpleJobs[jobId].progress = 80;
+
+          // Normalize original video to same codec/size
+          const normVid = path.join(workDir, 'original_norm.mp4');
+          await new Promise((resolve) => {
+            exec(`"${FFMPEG}" -y -i "${videoFile}" -vf "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1" -r 30 -c:v libx264 -crf 23 -c:a aac "${normVid}"`,
+              { timeout: 300000 }, () => resolve());
+          });
+
+          const concatTxt = path.join(workDir, 'concat.txt');
+          fs.writeFileSync(concatTxt, `file '${scenesOut.replace(/\\/g,'/')}'\nfile '${normVid.replace(/\\/g,'/')}'`);
+          await new Promise((resolve, reject) => {
+            exec(`"${FFMPEG}" -y -f concat -safe 0 -i "${concatTxt}" -c copy "${outPath}"`,
+              { timeout: 300000 }, (err, _so, se) => {
+                if (err) return reject(new Error((se||err.message).slice(0,300)));
+                resolve();
+              });
+          });
+        } else {
+          fs.renameSync(scenesOut, outPath);
+        }
+      }
+
+      simpleJobs[jobId].status = 'done';
+      simpleJobs[jobId].progress = 100;
+      simpleJobs[jobId].url = '/uploads/' + outName;
+      scheduleDelete(outPath, 3600000);
+      addToLibrary({ id: jobId, type: 'genvideo', label: '🎨 Vídeo Gerado', url: `/uploads/${outName}`, createdAt: Date.now(), expiresAt: Date.now() + 3600000, friendlyName: 'video-cenas.mp4' });
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error = e.message;
+    } finally {
+      if (videoFile) fs.unlink(videoFile, () => {});
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    }
+  })();
+});
+
 // Serve o Remotion Editor (build de produção)
 const editorDist = path.join(__dirname, '..', 'remotion-editor', 'dist');
 if (fs.existsSync(editorDist)) {
