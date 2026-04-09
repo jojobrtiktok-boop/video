@@ -857,6 +857,10 @@
             <span class="nav-item-title">Ferramentas</span>
             <span class="nav-item-desc">Marca d'água, cortar, resize…</span>
           </button>
+          <button class="nav-item" data-tool="autocorpo">
+            <span class="nav-item-title" style="color:var(--accent)">Auto Corpo</span>
+            <span class="nav-item-desc">Corpos IA + voz ElevenLabs</span>
+          </button>
           <button class="nav-item" data-tool="autotr">
             <span class="nav-item-title" style="color:var(--accent)">Auto Tradutor</span>
             <span class="nav-item-desc">Tradução → Marca d'Água → Legendas</span>
@@ -1480,6 +1484,108 @@
         <video id="tr-result-video" class="result-video" controls></video><br/>
         <a id="tr-download-btn" class="download-btn" download>⬇ Baixar vídeo traduzido</a>
         <button id="tr-new-btn" class="submit-btn" style="margin-top:10px;background:none;border:1px solid var(--border);color:var(--text)">🔄 Traduzir novo vídeo</button>
+      </div>
+    </div>
+
+    <!-- AUTO CORPO -->
+    <div id="tool-autocorpo" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">📝 Auto Corpo</h1>
+        <p class="tool-subtitle">Gere variações de copy com GPT-4o mini e produza com voz ElevenLabs</p>
+      </div>
+
+      <!-- Setup -->
+      <div class="card">
+        <div class="section-label">⚙️ Configuração</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔑 OpenRouter Key <span style="font-size:10px">(GPT-4o mini)</span></div>
+            <div style="display:flex;gap:6px">
+              <input id="ac-or-key" type="password" class="tool-input" placeholder="sk-or-..." style="flex:1" />
+              <button id="ac-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔊 ElevenLabs Key</div>
+            <div style="display:flex;gap:6px">
+              <input id="ac-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+              <button id="ac-el-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+              <button id="ac-load-voices-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">Vozes</button>
+            </div>
+            <select id="ac-voice-select" class="tool-select" style="width:100%;margin-top:6px;display:none">
+              <option value="">Selecione uma voz...</option>
+            </select>
+            <div id="ac-voices-error" class="error-msg"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Corpos Validados -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="section-label" style="margin-bottom:0">📚 Corpos Validados <span id="ac-examples-count" style="font-size:12px;color:var(--text-muted);font-weight:400">(0)</span></div>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Cole seus corpos validados aqui. A IA usará como base para criar novas variações.</p>
+        <div id="ac-examples-list"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <textarea id="ac-example-input" class="tool-input" rows="3" placeholder="Cole aqui um corpo validado..." style="flex:1;resize:vertical"></textarea>
+          <button id="ac-add-example-btn" class="submit-btn" style="width:auto;padding:0 16px;align-self:stretch">+ Adicionar</button>
+        </div>
+      </div>
+
+      <!-- Gerador -->
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px">🤖 Gerador de Variações com GPT-4o mini</div>
+        <textarea id="ac-gen-prompt" class="tool-input" rows="2" placeholder="Comando opcional: ex — mais energético, adicione CTA no final, foque em benefício X..." style="width:100%;resize:vertical;margin-bottom:10px"></textarea>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="font-size:13px;color:var(--text-muted);white-space:nowrap">Variações:</label>
+          <select id="ac-gen-count" class="tool-select" style="width:90px">
+            <option value="3">3</option>
+            <option value="5" selected>5</option>
+            <option value="10">10</option>
+          </select>
+          <button id="ac-gen-btn" class="submit-btn" style="flex:1">🤖 Gerar variações</button>
+        </div>
+        <div id="ac-gen-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="ac-gen-error" class="error-msg"></div>
+      </div>
+
+      <!-- Lista de corpos gerados -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="section-label" style="margin-bottom:0">📋 Corpos Gerados <span id="ac-bodies-count" style="font-size:12px;color:var(--text-muted);font-weight:400">(0)</span></div>
+        </div>
+        <div id="ac-bodies-list"></div>
+        <div id="ac-bodies-empty" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Nenhum corpo gerado ainda.<br>Use o GPT-4o mini acima ou adicione manualmente.</div>
+        <button id="ac-add-manual-btn" style="width:100%;padding:10px;border:2px dashed var(--border);background:none;color:var(--text-muted);border-radius:8px;cursor:pointer;font-size:13px;margin-top:8px">+ Adicionar corpo manualmente</button>
+      </div>
+
+      <!-- Produção -->
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px">🎙 Produzir com ElevenLabs</div>
+        <div style="display:flex;gap:10px;margin-bottom:14px">
+          <button class="ac-mode-btn submit-btn" data-mode="audio" style="flex:1;border:1px solid var(--accent);color:var(--accent);background:none">📻 Só áudio</button>
+          <button class="ac-mode-btn submit-btn" data-mode="video" style="flex:1;border:1px solid var(--border);color:var(--text-muted);background:none">🎬 Com vídeo base</button>
+        </div>
+        <div id="ac-video-upload-wrap" style="display:none;margin-bottom:12px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">📹 Vídeos de base (cicla entre eles para cada corpo)</div>
+          <label id="ac-body-drop" class="drop-zone" style="min-height:70px" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:24px;height:24px;margin-bottom:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
+            <p style="font-size:12px;margin:0"><strong>Clique ou arraste</strong> vídeos de base</p>
+            <div id="ac-body-names" class="dz-filename" style="font-size:11px"></div>
+          </label>
+          <input type="file" id="ac-body-input" accept="video/*" multiple class="hidden-input" />
+        </div>
+        <div id="ac-produce-status" class="status-text"></div>
+        <div id="ac-produce-error" class="error-msg"></div>
+        <button id="ac-produce-btn" class="submit-btn" disabled>Aprove pelo menos um corpo para produzir</button>
+        <div id="ac-produce-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+      </div>
+
+      <!-- Resultados -->
+      <div id="ac-results" style="display:none">
+        <div class="section-label" style="margin-bottom:10px">✅ Resultados</div>
+        <div id="ac-results-list"></div>
       </div>
     </div>
 

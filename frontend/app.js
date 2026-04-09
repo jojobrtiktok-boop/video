@@ -110,7 +110,7 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
-  translate: 'video', autotr: 'video', autohook: 'video', ferramentas: 'video', swapfala: 'video',
+  translate: 'video', autotr: 'video', autohook: 'video', autocorpo: 'video', ferramentas: 'video', swapfala: 'video',
   'video-library': null
 };
 
@@ -3363,6 +3363,269 @@ function loadResizeFrame(file) {
     }
   }
 
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// AUTO CORPO
+// ════════════════════════════════════════════════════════════════════
+;(function() {
+  const acPanel = document.getElementById('tool-autocorpo');
+  if (!acPanel) return;
+
+  // ── State ──
+  let acExamples  = []; // { id, text }
+  let acBodies    = []; // { id, text, approved, resultUrl, _removed }
+  let acBodyFiles = []; // base video files for "com vídeo" mode
+  let acMode      = 'audio';
+  let acNextId    = 1;
+
+  // ── Elements ──
+  const acOrKey         = document.getElementById('ac-or-key');
+  const acOrSave        = document.getElementById('ac-or-save-btn');
+  const acElKey         = document.getElementById('ac-el-key');
+  const acElSave        = document.getElementById('ac-el-save-btn');
+  const acLoadVoices    = document.getElementById('ac-load-voices-btn');
+  const acVoiceSel      = document.getElementById('ac-voice-select');
+  const acVoicesErr     = document.getElementById('ac-voices-error');
+  const acExamplesList  = document.getElementById('ac-examples-list');
+  const acExamplesCount = document.getElementById('ac-examples-count');
+  const acExampleInput  = document.getElementById('ac-example-input');
+  const acAddExampleBtn = document.getElementById('ac-add-example-btn');
+  const acGenPrompt     = document.getElementById('ac-gen-prompt');
+  const acGenCount      = document.getElementById('ac-gen-count');
+  const acGenBtn        = document.getElementById('ac-gen-btn');
+  const acGenProgress   = document.getElementById('ac-gen-progress');
+  const acGenError      = document.getElementById('ac-gen-error');
+  const acBodiesList    = document.getElementById('ac-bodies-list');
+  const acBodiesEmpty   = document.getElementById('ac-bodies-empty');
+  const acBodiesCount   = document.getElementById('ac-bodies-count');
+  const acAddManualBtn  = document.getElementById('ac-add-manual-btn');
+  const acModeBtns      = document.querySelectorAll('.ac-mode-btn');
+  const acVideoWrap     = document.getElementById('ac-video-upload-wrap');
+  const acBodyDrop      = document.getElementById('ac-body-drop');
+  const acBodyInput     = document.getElementById('ac-body-input');
+  const acBodyNames     = document.getElementById('ac-body-names');
+  const acProduceStat   = document.getElementById('ac-produce-status');
+  const acProduceErr    = document.getElementById('ac-produce-error');
+  const acProduceBtn    = document.getElementById('ac-produce-btn');
+  const acProduceProg   = document.getElementById('ac-produce-progress');
+  const acResults       = document.getElementById('ac-results');
+  const acResultsList   = document.getElementById('ac-results-list');
+
+  function acEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // ── Saved keys (share storage with Auto Hook) ──
+  function makeSaveBtnAc(btn, input, storageKey) {
+    if (!btn || !input) return;
+    const saved = localStorage.getItem(storageKey);
+    if (saved) { input.value = saved; btn.textContent = '✅'; }
+    btn.addEventListener('click', () => {
+      const v = input.value.trim();
+      if (v) { localStorage.setItem(storageKey, v); btn.textContent = '✅'; setTimeout(() => btn.textContent = '💾', 2000); }
+      else { localStorage.removeItem(storageKey); }
+    });
+    input.addEventListener('input', () => { if (btn.textContent === '✅') btn.textContent = '💾'; });
+  }
+  makeSaveBtnAc(acOrSave, acOrKey, 'ah_or_key');
+  makeSaveBtnAc(acElSave, acElKey, 'tr_el_key');
+
+  // ── Load voices ──
+  acLoadVoices && acLoadVoices.addEventListener('click', async () => {
+    const key = acElKey && acElKey.value.trim();
+    if (!key) { acVoicesErr.style.display = 'block'; acVoicesErr.textContent = 'Informe a chave ElevenLabs.'; return; }
+    acVoicesErr.style.display = 'none'; acLoadVoices.disabled = true; acLoadVoices.textContent = '⏳';
+    try {
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.detail?.message || 'Erro ElevenLabs');
+      acVoiceSel.innerHTML = '<option value="">Selecione uma voz...</option>' +
+        j.voices.map(v => `<option value="${v.voice_id}">${acEsc(v.name)}</option>`).join('');
+      acVoiceSel.style.display = '';
+      acUpdateProduce();
+    } catch(e) { acVoicesErr.style.display = 'block'; acVoicesErr.textContent = e.message; }
+    finally { acLoadVoices.disabled = false; acLoadVoices.textContent = 'Vozes'; }
+  });
+  acVoiceSel && acVoiceSel.addEventListener('change', acUpdateProduce);
+
+  // ── Mode buttons ──
+  acModeBtns.forEach(btn => btn.addEventListener('click', () => {
+    acMode = btn.dataset.mode;
+    acModeBtns.forEach(b => {
+      const active = b.dataset.mode === acMode;
+      b.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
+      b.style.color = active ? 'var(--accent)' : 'var(--text-muted)';
+    });
+    if (acVideoWrap) acVideoWrap.style.display = acMode === 'video' ? '' : 'none';
+    acUpdateProduce();
+  }));
+
+  // ── Body video upload ──
+  acBodyDrop && acBodyDrop.addEventListener('click', () => acBodyInput && acBodyInput.click());
+  acBodyDrop && acBodyDrop.addEventListener('dragover', e => e.preventDefault());
+  acBodyDrop && acBodyDrop.addEventListener('drop', e => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(f => { if (f.type.startsWith('video/')) addAcBodyFile(f); }); });
+  acBodyInput && acBodyInput.addEventListener('change', () => { Array.from(acBodyInput.files).forEach(f => addAcBodyFile(f)); acBodyInput.value = ''; });
+
+  function addAcBodyFile(f) {
+    acBodyFiles.push(f);
+    if (acBodyNames) acBodyNames.textContent = acBodyFiles.map(f => f.name).join(', ');
+    if (acBodyDrop) acBodyDrop.classList.add('has-file');
+    acUpdateProduce();
+  }
+
+  // ── Examples ──
+  acAddExampleBtn && acAddExampleBtn.addEventListener('click', () => {
+    const txt = acExampleInput && acExampleInput.value.trim();
+    if (!txt) return;
+    acExamples.push({ id: acNextId++, text: txt });
+    acExampleInput.value = '';
+    renderAcExamples();
+  });
+
+  function renderAcExamples() {
+    if (!acExamplesList) return;
+    acExamplesList.innerHTML = '';
+    acExamples.forEach(ex => {
+      const d = document.createElement('div');
+      d.style.cssText = 'display:flex;gap:8px;padding:8px;background:var(--bg-secondary);border-radius:6px;margin-bottom:6px;align-items:flex-start';
+      d.innerHTML = `<div style="flex:1;font-size:13px;white-space:pre-wrap;word-break:break-word">${acEsc(ex.text)}</div><button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;padding:0;flex-shrink:0">&times;</button>`;
+      d.querySelector('button').addEventListener('click', () => { acExamples = acExamples.filter(e => e.id !== ex.id); renderAcExamples(); });
+      acExamplesList.appendChild(d);
+    });
+    if (acExamplesCount) acExamplesCount.textContent = '(' + acExamples.length + ')';
+  }
+
+  // ── Generate ──
+  acGenBtn && acGenBtn.addEventListener('click', async () => {
+    const orKey = acOrKey && acOrKey.value.trim();
+    if (!orKey) { acGenError.style.display = 'block'; acGenError.textContent = 'Informe a OpenRouter API Key.'; return; }
+    if (!acExamples.length) { acGenError.style.display = 'block'; acGenError.textContent = 'Adicione pelo menos 1 corpo validado.'; return; }
+    acGenError.style.display = 'none'; acGenBtn.disabled = true; acGenProgress.style.display = '';
+    try {
+      const count = parseInt(acGenCount && acGenCount.value) || 5;
+      const r = await fetch(API + '/api/autocorpo/generate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ or_key: orKey, examples: acExamples.map(e => e.text), prompt: acGenPrompt && acGenPrompt.value.trim(), count })
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+      j.bodies.forEach(text => addAcBody(text));
+    } catch(e) { acGenError.style.display = 'block'; acGenError.textContent = e.message; }
+    finally { acGenBtn.disabled = false; acGenProgress.style.display = 'none'; }
+  });
+
+  // ── Bodies list ──
+  function addAcBody(text, approved) {
+    acBodies.push({ id: acNextId++, text: text || '', approved: !!approved, resultUrl: null });
+    renderAcBodies();
+    acUpdateProduce();
+  }
+
+  function renderAcBodies() {
+    if (!acBodiesList) return;
+    const active = acBodies.filter(b => !b._removed);
+    if (acBodiesEmpty) acBodiesEmpty.style.display = active.length ? 'none' : '';
+    if (acBodiesCount) acBodiesCount.textContent = '(' + active.length + ')';
+    acBodiesList.innerHTML = '';
+    active.forEach(body => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.style.cssText = 'margin-bottom:10px';
+      div.innerHTML = `
+        <textarea class="tool-input ac-body-text" rows="3" style="width:100%;resize:vertical;margin-bottom:8px">${acEsc(body.text)}</textarea>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="ac-approve-btn submit-btn" style="width:auto;padding:6px 14px;font-size:12px;${body.approved ? '' : 'background:none;border:1px solid var(--accent);color:var(--accent)'}">
+            ${body.approved ? '✅ Aprovado' : '☐ Aprovar'}
+          </button>
+          <button class="ac-remove-btn" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;padding:0 4px;line-height:1">&times;</button>
+        </div>
+        ${body.resultUrl ? `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          ${body.resultUrl.endsWith('.mp3')
+            ? `<audio controls style="width:100%;margin-bottom:6px" src="${API}${body.resultUrl}"></audio>`
+            : `<video class="result-video" controls style="max-height:180px;margin-bottom:6px" src="${API}${body.resultUrl}"></video>`}
+          <a class="download-btn" href="${API}${body.resultUrl}" download style="width:auto;display:inline-block;padding:8px 16px;font-size:12px">⬇ Baixar</a>
+        </div>` : ''}
+      `;
+      div.querySelector('.ac-body-text').addEventListener('input', e => { body.text = e.target.value; });
+      div.querySelector('.ac-approve-btn').addEventListener('click', () => { body.approved = !body.approved; renderAcBodies(); acUpdateProduce(); });
+      div.querySelector('.ac-remove-btn').addEventListener('click', () => { body._removed = true; renderAcBodies(); acUpdateProduce(); });
+      acBodiesList.appendChild(div);
+    });
+  }
+
+  acAddManualBtn && acAddManualBtn.addEventListener('click', () => {
+    addAcBody('');
+    setTimeout(() => { const txts = acBodiesList.querySelectorAll('.ac-body-text'); if (txts.length) txts[txts.length-1].focus(); }, 50);
+  });
+
+  // ── Produce state ──
+  function acUpdateProduce() {
+    if (!acProduceBtn) return;
+    const approved = acBodies.filter(b => !b._removed && b.approved);
+    const hasVoice = acVoiceSel && acVoiceSel.value;
+    const hasElKey = acElKey && acElKey.value.trim();
+    const videoOk  = acMode !== 'video' || acBodyFiles.length > 0;
+    const ok = approved.length > 0 && hasVoice && hasElKey && videoOk;
+    acProduceBtn.disabled = !ok;
+    acProduceBtn.textContent = ok
+      ? `🎙 Produzir ${approved.length} corpo(s) aprovado(s)`
+      : (acMode === 'video' && !acBodyFiles.length ? 'Adicione vídeos de base' : 'Aprove pelo menos um corpo para produzir');
+  }
+
+  // ── Produce ──
+  acProduceBtn && acProduceBtn.addEventListener('click', async () => {
+    const approved = acBodies.filter(b => !b._removed && b.approved);
+    if (!approved.length) return;
+    const elKey   = acElKey.value.trim();
+    const voiceId = acVoiceSel.value;
+    acProduceBtn.disabled = true;
+    acProduceErr.style.display = 'none';
+    acProduceProg.style.display = '';
+    if (acResults) acResults.style.display = 'none';
+    let anyError = null;
+
+    for (let i = 0; i < approved.length; i++) {
+      const body = approved[i];
+      if (acProduceStat) acProduceStat.textContent = `Produzindo ${i+1}/${approved.length}…`;
+      try {
+        const fd = new FormData();
+        fd.append('corpo_text', body.text);
+        fd.append('el_key', elKey);
+        fd.append('voice_id', voiceId);
+        if (acMode === 'video' && acBodyFiles.length) {
+          fd.append('body_video', acBodyFiles[i % acBodyFiles.length]);
+        }
+        const r = await fetch(API + '/api/autocorpo/produce', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+        body.resultUrl = j.url;
+        renderAcBodies();
+      } catch(e) { anyError = e.message; }
+    }
+
+    if (acProduceStat) acProduceStat.textContent = anyError ? '' : '✓ Concluído!';
+    if (anyError) { acProduceErr.style.display = 'block'; acProduceErr.textContent = anyError; }
+    acProduceProg.style.display = 'none';
+    acProduceBtn.disabled = false;
+    acUpdateProduce();
+
+    const withResults = acBodies.filter(b => b.resultUrl);
+    if (withResults.length && acResults && acResultsList) {
+      acResults.style.display = '';
+      acResultsList.innerHTML = '';
+      withResults.forEach((body, i) => {
+        const isAudio = body.resultUrl.endsWith('.mp3');
+        const d = document.createElement('div');
+        d.className = 'card'; d.style.marginBottom = '12px';
+        d.innerHTML = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Corpo ${i+1}</div>
+          <div style="font-size:13px;margin-bottom:10px;white-space:pre-wrap">${acEsc(body.text)}</div>
+          ${isAudio
+            ? `<audio controls style="width:100%;margin-bottom:8px" src="${API}${body.resultUrl}"></audio>`
+            : `<video class="result-video" controls style="max-height:200px;margin-bottom:8px" src="${API}${body.resultUrl}"></video>`}
+          <a class="download-btn" href="${API}${body.resultUrl}" download style="width:auto;display:inline-block;padding:8px 16px">⬇ Baixar</a>`;
+        acResultsList.appendChild(d);
+      });
+    }
+  });
 })();
 
 // ════════════════════════════════════════════════════════════════════

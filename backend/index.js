@@ -2866,6 +2866,120 @@ app.post('/api/speech/clone-voice', upload.single('video'), async (req, res) => 
   }
 });
 
+// ── Auto Corpo: gerar variações de copy com GPT-4o-mini ─────────────────────
+app.post('/api/autocorpo/generate', express.json({ limit: '100kb' }), async (req, res) => {
+  const { or_key, examples = [], prompt = '', count = 5 } = req.body;
+  if (!or_key) return res.status(400).json({ error: 'or_key obrigatório' });
+  if (!examples.length) return res.status(400).json({ error: 'Adicione pelo menos 1 corpo validado' });
+
+  const examplesText = examples.map((e, i) => `[Corpo ${i+1}]:\n${e}`).join('\n\n');
+  const fullPrompt = `Você é especialista em copy para vídeos curtos de marketing. Aqui estão ${examples.length} corpo(s) validado(s) que performam bem:\n\n${examplesText}\n\n${prompt ? `Instrução extra: ${prompt}\n\n` : ''}Com base nesses exemplos, crie ${count} novas variações únicas. Mantenha o estilo, tom e estrutura dos exemplos mas varie o conteúdo. Retorne APENAS um array JSON com as variações, sem comentários: ["variation1", "variation2", ...]`;
+
+  const body = Buffer.from(JSON.stringify({
+    model: 'openai/gpt-4o-mini',
+    messages: [{ role: 'user', content: fullPrompt }],
+    max_tokens: 2000
+  }));
+
+  try {
+    const raw = await new Promise((resolve, reject) => {
+      const r = https.request({
+        hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${or_key}`, 'Content-Length': body.length }
+      }, resp => {
+        let d = ''; resp.on('data', c => d += c);
+        resp.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            if (j.error) return reject(new Error(j.error.message || JSON.stringify(j.error)));
+            resolve((j.choices?.[0]?.message?.content || '').trim());
+          } catch(e) { reject(new Error('Parse error: ' + d.slice(0,100))); }
+        });
+      });
+      r.on('error', reject); r.write(body); r.end();
+    });
+
+    const arrMatch = raw.match(/\[[\s\S]*\]/);
+    if (!arrMatch) throw new Error('IA não retornou array válido: ' + raw.slice(0,150));
+    const bodies = JSON.parse(arrMatch[0]);
+    if (!Array.isArray(bodies)) throw new Error('Formato inválido da resposta IA');
+    res.json({ bodies });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Auto Corpo: produzir TTS (só áudio ou com vídeo base) ───────────────────
+app.post('/api/autocorpo/produce', upload.single('body_video'), async (req, res) => {
+  const { corpo_text, el_key, voice_id } = req.body;
+  if (!corpo_text || !el_key || !voice_id) {
+    if (req.file) fs.unlink(req.file.path, ()=>{});
+    return res.status(400).json({ error: 'corpo_text, el_key e voice_id obrigatórios' });
+  }
+  const bodyFile = req.file; // optional
+  const workDir  = path.join(UPLOAD_DIR, 'ac_' + Date.now());
+  fs.mkdirSync(workDir, { recursive: true });
+
+  try {
+    // Step 1: ElevenLabs TTS
+    const ttsPath = path.join(workDir, 'tts.mp3');
+    const ttsBody = Buffer.from(JSON.stringify({
+      text: corpo_text, model_id: 'eleven_multilingual_v2',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+    }));
+    await new Promise((resolve, reject) => {
+      const r = https.request({
+        hostname: 'api.elevenlabs.io', port: 443,
+        path: `/v1/text-to-speech/${voice_id}`, method: 'POST',
+        headers: { 'xi-api-key': el_key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg', 'Content-Length': ttsBody.length }
+      }, resp => {
+        const chunks = []; resp.on('data', c => chunks.push(c));
+        resp.on('end', () => { fs.writeFileSync(ttsPath, Buffer.concat(chunks)); resolve(); });
+      });
+      r.on('error', reject); r.write(ttsBody); r.end();
+    });
+
+    if (!bodyFile) {
+      // Audio only
+      const outName = 'autocorpo-' + Date.now() + '.mp3';
+      const outPath = path.join(UPLOAD_DIR, outName);
+      fs.copyFileSync(ttsPath, outPath);
+      scheduleDelete(outPath, 3600000);
+      const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'autocorpo', label: '📝 Auto Corpo', url: `/uploads/${outName}`, createdAt: Date.now(), expiresAt: Date.now() + 3600000, friendlyName: 'corpo.mp3' };
+      addToLibrary(libEntry);
+      return res.json({ type: 'audio', url: `/uploads/${outName}`, id: libEntry.id });
+    }
+
+    // With video: get TTS duration, loop/trim body video to match
+    const ttsDur = await new Promise(resolve => {
+      exec(`"${FFPROBE}" -v quiet -print_format json -show_entries format=duration "${ttsPath}"`, (e, out) => {
+        try { resolve(parseFloat(JSON.parse(out).format.duration) || 5); } catch { resolve(5); }
+      });
+    });
+
+    const outName = 'autocorpo-' + Date.now() + '.mp4';
+    const outPath = path.join(UPLOAD_DIR, outName);
+    const normFilter = 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30';
+    await new Promise((resolve, reject) => {
+      exec(
+        `"${FFMPEG}" -y -stream_loop -1 -i "${bodyFile.path}" -i "${ttsPath}" -vf "${normFilter}" -map 0:v -map 1:a -c:v libx264 -preset fast -c:a aac -t ${ttsDur.toFixed(3)} "${outPath}"`,
+        { timeout: 180000 }, (e,_,se) => e ? reject(new Error(se||e.message)) : resolve()
+      );
+    });
+
+    scheduleDelete(outPath, 3600000);
+    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'autocorpo', label: '📝 Auto Corpo', url: `/uploads/${outName}`, createdAt: Date.now(), expiresAt: Date.now() + 3600000, friendlyName: 'corpo.mp4' };
+    addToLibrary(libEntry);
+    res.json({ type: 'video', url: `/uploads/${outName}`, id: libEntry.id });
+
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    if (bodyFile) fs.unlink(bodyFile.path, ()=>{});
+  }
+});
+
 // ── Localizar segmento de fala com Whisper + GPT-4o-mini ────────────────────
 app.post('/api/speech/find-segment', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
@@ -2919,7 +3033,8 @@ app.post('/api/speech/find-segment', upload.single('video'), async (req, res) =>
     const result = JSON.parse(match[0]);
     if (typeof result.start !== 'number' || typeof result.end !== 'number') throw new Error('Formato inválido da resposta IA');
 
-    res.json({ start: result.start, end: result.end, text: result.text || '', segments });
+    // Add small padding so the segment is not cut too tight
+    res.json({ start: Math.max(0, result.start - 0.2), end: result.end + 0.2, text: result.text || '', segments });
   } catch(e) {
     res.status(500).json({ error: e.message });
   } finally {
