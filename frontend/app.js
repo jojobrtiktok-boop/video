@@ -4218,6 +4218,16 @@ makeSimpleTool({
       if (dl) { dl.href = url; dl.download = 'fala-substituida.mp4'; }
       if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
       if (stat) stat.textContent = '';
+      // Auto-delete cloned voice after use to avoid accumulating in ElevenLabs
+      const selOpt = voiceSel.selectedOptions && voiceSel.selectedOptions[0];
+      if (selOpt && selOpt.dataset.cloned === 'true' && elKey) {
+        fetch('https://api.elevenlabs.io/v1/voices/' + voiceId, {
+          method: 'DELETE', headers: { 'xi-api-key': elKey }
+        }).catch(()=>{});
+        selOpt.remove();
+        voiceSel.value = '';
+        checkReady();
+      }
     } catch(e) {
       if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Erro: ' + e.message; }
       if (stat) stat.textContent = '';
