@@ -1000,6 +1000,17 @@
           <button class="mode-btn" data-mode="ai" disabled>🔬 IA Inpainting</button>
         </div>
         <div id="mode-desc" class="mode-desc">Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.</div>
+        <!-- Gemini Vision auto-detect -->
+        <div style="margin-top:12px;padding:10px;border:1px dashed var(--border);border-radius:8px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🤖 Detectar marca d'água com Gemini Mini</div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="wm-gemini-key" type="password" class="tool-input" placeholder="Gemini API Key (AIza...)" style="flex:1;height:34px" />
+            <button id="wm-gemini-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+            <button id="wm-gemini-detect-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">🔍 Detectar</button>
+          </div>
+          <div id="wm-gemini-status" class="status-text"></div>
+          <div id="wm-gemini-error" class="error-msg"></div>
+        </div>
         <button id="submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
         <div id="progress-bar-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
         <div id="status-text" class="status-text"></div>
@@ -1528,7 +1539,9 @@
         <div class="atr-step-line" id="atr-line2"></div>
         <div class="atr-step" id="atr-s3"><span class="atr-step-dot">3</span><span class="atr-step-lbl">Legendas</span></div>
         <div class="atr-step-line" id="atr-line3"></div>
-        <div class="atr-step" id="atr-s4"><span class="atr-step-dot">✓</span><span class="atr-step-lbl">Pronto</span></div>
+        <div class="atr-step" id="atr-s4"><span class="atr-step-dot">4</span><span class="atr-step-lbl">Qualidade</span></div>
+        <div class="atr-step-line" id="atr-line4"></div>
+        <div class="atr-step" id="atr-s5"><span class="atr-step-dot">✓</span><span class="atr-step-lbl">Pronto</span></div>
       </div>
 
       <!-- ═══ FASE 1a: Configurar ═══ -->
@@ -1704,6 +1717,17 @@
           </div>
           <div id="atr-mode-desc" class="mode-desc">Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.</div>
         </div>
+        <!-- Gemini Vision auto-detect -->
+        <div style="margin-top:12px;padding:10px;border:1px dashed var(--border);border-radius:8px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🤖 Detectar marca d'água com Gemini Mini</div>
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <input id="atr-wm-gemini-key" type="password" class="tool-input" placeholder="Gemini API Key (AIza...)" style="flex:1;height:34px" />
+            <button id="atr-wm-gemini-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+            <button id="atr-wm-gemini-detect-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">🔍 Detectar</button>
+          </div>
+          <div id="atr-wm-gemini-status" class="status-text"></div>
+          <div id="atr-wm-gemini-error" class="error-msg"></div>
+        </div>
         <button id="atr-wm-process-btn" class="submit-btn">▶ Remover Marca d'Água</button>
         <div id="atr-wm-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
         <div id="atr-wm-status" class="status-text"></div>
@@ -1712,7 +1736,7 @@
           <h3>✓ Marca d'água removida!</h3>
           <video id="atr-wm-result-video" class="result-video" controls></video>
           <div class="atr-approve-row">
-            <button id="atr-wm-regerar-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text)">🔄 Regerar</button>
+                      <button id="atr-wm-regerar-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text)">🔄 Regerar</button>
             <button id="atr-wm-aprovar-btn" class="submit-btn">✅ Aprovar → Legendas</button>
           </div>
         </div>
@@ -1851,7 +1875,34 @@
         </div>
       </div>
 
-      <!-- ═══ FASE 4: Pronto ═══ -->
+      <!-- ═══ FASE 4: Qualidade ═══ -->
+      <div id="atr-phase-upscale" style="display:none">
+        <div class="card">
+          <div class="section-label">🎬 Aumentar Qualidade (opcional)</div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Escolha a resolução para exportar o vídeo final traduzido.</p>
+          <div class="res-presets" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <div class="res-btn atr-rb-active" data-atr-res="720" style="cursor:pointer;padding:12px 8px;border:2px solid var(--accent);border-radius:8px;text-align:center;font-size:13px">HD 720p<br/><span style="font-size:11px;color:var(--text-muted)">1280×720</span></div>
+            <div class="res-btn" data-atr-res="1080" style="cursor:pointer;padding:12px 8px;border:2px solid var(--border);border-radius:8px;text-align:center;font-size:13px">Full HD 1080p<br/><span style="font-size:11px;color:var(--text-muted)">1920×1080</span></div>
+            <div class="res-btn" data-atr-res="4k" style="cursor:pointer;padding:12px 8px;border:2px solid var(--border);border-radius:8px;text-align:center;font-size:13px">4K UHD<br/><span style="font-size:11px;color:var(--text-muted)">3840×2160</span></div>
+          </div>
+        </div>
+        <button id="atr-upscale-btn" class="submit-btn">⬆ Aumentar Qualidade</button>
+        <button id="atr-upscale-skip-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text);margin-top:8px">⏭ Pular → Finalizar como está</button>
+        <div id="atr-upscale-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="atr-upscale-status" class="status-text"></div>
+        <div id="atr-upscale-error" class="error-msg"></div>
+        <div id="atr-upscale-result" style="display:none">
+          <div class="result-card" style="display:block">
+            <h3>✓ Qualidade aumentada!</h3>
+            <video id="atr-upscale-video" class="result-video" controls></video>
+            <div class="atr-approve-row" style="margin-top:10px;display:flex;gap:8px">
+              <button id="atr-upscale-aprovar-btn" class="submit-btn">✅ Aprovar → Pronto</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ FASE 5: Pronto ═══ -->
       <div id="atr-phase-done" style="display:none">
         <div class="result-card" style="display:block;text-align:center">
           <h3 style="font-size:1.2rem;margin-bottom:16px">🎉 Vídeo pronto!</h3>
@@ -2354,15 +2405,15 @@
     <div id="tool-upscale" class="tool-panel" style="display:none">
       <div class="tool-header">
         <h1 class="tool-title">Aumentar Qualidade</h1>
-        <p class="tool-subtitle">Escala o vídeo para Full HD ou 4K com filtro Lanczos</p>
+        <p class="tool-subtitle">Escala vídeos para Full HD ou 4K com filtro Lanczos — suporta múltiplos vídeos</p>
       </div>
       <div class="card">
         <label for="upscale-file-input" id="upscale-dz" class="drop-zone" tabindex="0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-          <p><strong>Clique ou arraste</strong> um vídeo aqui</p>
+          <p><strong>Clique ou arraste</strong> um ou mais vídeos aqui</p>
           <div id="upscale-file-name" class="dz-filename"></div>
         </label>
-        <input type="file" id="upscale-file-input" accept="video/*" class="hidden-input">
+        <input type="file" id="upscale-file-input" accept="video/*" class="hidden-input" multiple>
         <div class="section-label" style="margin-top:20px">Resolução de saída</div>
         <div class="res-presets">
           <div class="res-btn rb-active" data-res="720" data-w="1280" data-h="720">
@@ -2379,16 +2430,12 @@
           </div>
         </div>
       </div>
+      <div id="upscale-queue-list" style="display:none;margin-bottom:12px"></div>
       <button id="upscale-submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
       <div id="upscale-progress" class="progress-wrap"><div class="progress-bar"></div></div>
       <div id="upscale-status" class="status-text"></div>
       <div id="upscale-error" class="error-msg"></div>
-      <div id="upscale-result-card" class="result-card" style="display:none">
-        <h3>✓ Qualidade Aumentada!</h3>
-        <div id="upscale-sizes" class="size-comparison"></div>
-        <video id="upscale-result-video" class="result-video" controls></video><br/>
-        <a id="upscale-download-btn" class="download-btn" download>⬇ Baixar vídeo</a>
-      </div>
+      <div id="upscale-results-container"></div>
     </div>
 
     <!-- ESPELHAR -->

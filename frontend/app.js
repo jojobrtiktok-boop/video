@@ -467,6 +467,50 @@ function endDragWm() {
 
 const ASYNC_MODES = new Set(['delogo', 'sora']);
 
+// ── Gemini watermark detect (main WM tool) ──
+(function() {
+  const geminiKeyInput = document.getElementById('wm-gemini-key');
+  const geminiSaveBtn  = document.getElementById('wm-gemini-save-btn');
+  const geminiDetectBtn= document.getElementById('wm-gemini-detect-btn');
+  const geminiStatus   = document.getElementById('wm-gemini-status');
+  const geminiError    = document.getElementById('wm-gemini-error');
+  if (!geminiDetectBtn) return;
+  const saved = localStorage.getItem('wm_gemini_key');
+  if (saved && geminiKeyInput) geminiKeyInput.value = saved;
+  if (geminiSaveBtn && geminiKeyInput) {
+    geminiSaveBtn.addEventListener('click', () => {
+      const v = geminiKeyInput.value.trim();
+      if (v) { localStorage.setItem('wm_gemini_key', v); geminiSaveBtn.textContent = '✅'; setTimeout(() => geminiSaveBtn.textContent = '💾', 2000); }
+    });
+  }
+  geminiDetectBtn.addEventListener('click', async () => {
+    if (!selectedFile) { if (geminiError) { geminiError.textContent = 'Selecione um vídeo primeiro.'; geminiError.style.display = ''; } return; }
+    const key = (geminiKeyInput && geminiKeyInput.value.trim()) || localStorage.getItem('wm_gemini_key') || '';
+    if (!key) { if (geminiError) { geminiError.textContent = 'Informe a Gemini API Key.'; geminiError.style.display = ''; } return; }
+    geminiDetectBtn.disabled = true;
+    if (geminiError) { geminiError.textContent = ''; geminiError.style.display = 'none'; }
+    if (geminiStatus) geminiStatus.textContent = 'Analisando com Gemini…';
+    try {
+      const fd = new FormData();
+      fd.append('video', selectedFile);
+      fd.append('geminiKey', key);
+      const r = await fetch(API + '/api/watermark/detect-gemini', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro');
+      // j.x, j.y, j.w, j.h are pixel values in video dimensions
+      selRect = { x: j.x * previewW / videoW, y: j.y * previewH / videoH, w: j.w * previewW / videoW, h: j.h * previewH / videoH };
+      drawFrame();
+      if (geminiStatus) geminiStatus.textContent = `✓ Detectado: ${j.w}×${j.h}px em (${j.x}, ${j.y})`;
+      submitBtn.disabled = false;
+    } catch(e) {
+      if (geminiError) { geminiError.textContent = e.message; geminiError.style.display = ''; }
+      if (geminiStatus) geminiStatus.textContent = '';
+    } finally {
+      geminiDetectBtn.disabled = false;
+    }
+  });
+})();
+
 submitBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
   if (!autoModes.has(selectedMode) && (!selRect || selRect.w < 5 || selRect.h < 5)) {
@@ -2481,6 +2525,7 @@ function loadResizeFrame(file) {
   const atrPhaseSegments = document.getElementById('atr-phase-segments');
   const atrPhaseWm       = document.getElementById('atr-phase-watermark');
   const atrPhaseSub      = document.getElementById('atr-phase-subtitle');
+  const atrPhaseUpscale  = document.getElementById('atr-phase-upscale');
   const atrPhaseDone     = document.getElementById('atr-phase-done');
   if (!atrPhaseConfig) return;
 
@@ -2506,14 +2551,14 @@ function loadResizeFrame(file) {
 
   // ── Stepper ──
   function atrSetStep(n) {
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 5; i++) {
       const s = document.getElementById('atr-s' + i);
       if (!s) continue;
       s.classList.remove('atr-s-active', 'atr-s-done');
       if (i < n) s.classList.add('atr-s-done');
       else if (i === n) s.classList.add('atr-s-active');
     }
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= 4; i++) {
       const l = document.getElementById('atr-line' + i);
       if (l) l.classList.toggle('atr-line-done', i < n);
     }
@@ -2521,7 +2566,7 @@ function loadResizeFrame(file) {
 
   // ── Phase visibility ──
   function atrShowPhase(phase) {
-    [atrPhaseConfig, atrPhaseSegments, atrPhaseWm, atrPhaseSub, atrPhaseDone].forEach(p => { p.style.display = 'none'; });
+    [atrPhaseConfig, atrPhaseSegments, atrPhaseWm, atrPhaseSub, atrPhaseUpscale, atrPhaseDone].forEach(p => { if (p) p.style.display = 'none'; });
     phase.style.display = '';
     phase.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -2988,6 +3033,49 @@ function loadResizeFrame(file) {
     atrWmSeekEl.addEventListener('mouseup', () => { atrWmIsSeeking=false; });
   }
 
+  // ── Gemini detect for ATR watermark ──
+  (function() {
+    const keyInput  = document.getElementById('atr-wm-gemini-key');
+    const saveBtn   = document.getElementById('atr-wm-gemini-save-btn');
+    const detectBtn = document.getElementById('atr-wm-gemini-detect-btn');
+    const status    = document.getElementById('atr-wm-gemini-status');
+    const error     = document.getElementById('atr-wm-gemini-error');
+    if (!detectBtn) return;
+    const saved = localStorage.getItem('wm_gemini_key');
+    if (saved && keyInput) keyInput.value = saved;
+    if (saveBtn && keyInput) {
+      saveBtn.addEventListener('click', () => {
+        const v = keyInput.value.trim();
+        if (v) { localStorage.setItem('wm_gemini_key', v); saveBtn.textContent = '✅'; setTimeout(() => saveBtn.textContent = '💾', 2000); }
+      });
+    }
+    detectBtn.addEventListener('click', async () => {
+      if (!atrTranslatedUrl) { if (error) { error.textContent = 'Processe a tradução primeiro para ter um vídeo.'; error.style.display = ''; } return; }
+      const key = (keyInput && keyInput.value.trim()) || localStorage.getItem('wm_gemini_key') || '';
+      if (!key) { if (error) { error.textContent = 'Informe a Gemini API Key.'; error.style.display = ''; } return; }
+      detectBtn.disabled = true;
+      if (error) { error.textContent = ''; error.style.display = 'none'; }
+      if (status) status.textContent = 'Analisando com Gemini…';
+      try {
+        const blob = await fetch(atrTranslatedUrl).then(r => r.blob());
+        const fd = new FormData();
+        fd.append('video', blob, 'video.mp4');
+        fd.append('geminiKey', key);
+        const r = await fetch(API + '/api/watermark/detect-gemini', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Erro');
+        atrWmSelRect = { x: j.x * atrWmPreviewW / atrWmVideoW, y: j.y * atrWmPreviewH / atrWmVideoH, w: j.w * atrWmPreviewW / atrWmVideoW, h: j.h * atrWmPreviewH / atrWmVideoH };
+        atrWmDrawFrame();
+        if (status) status.textContent = `✓ Detectado: ${j.w}×${j.h}px em (${j.x}, ${j.y})`;
+      } catch(e) {
+        if (error) { error.textContent = e.message; error.style.display = ''; }
+        if (status) status.textContent = '';
+      } finally {
+        detectBtn.disabled = false;
+      }
+    });
+  })();
+
   // ── Process watermark ──
   const atrWmProcessBtn = document.getElementById('atr-wm-process-btn');
   if (atrWmProcessBtn) {
@@ -3313,17 +3401,95 @@ function loadResizeFrame(file) {
     atrSubRegerarBtn.addEventListener('click', () => { document.getElementById('atr-sub-result').style.display = 'none'; });
   }
 
-  // Aprovar subtitles → done
+  // Aprovar subtitles → upscale phase
   const atrSubAprovarBtn = document.getElementById('atr-sub-aprovar-btn');
   if (atrSubAprovarBtn) {
     atrSubAprovarBtn.addEventListener('click', () => {
       if (!atrFinalUrl) return;
       atrSetStep(4);
-      atrShowPhase(atrPhaseDone);
-      const finalVid = document.getElementById('atr-final-video');
-      const dlBtn    = document.getElementById('atr-download-btn');
-      if (finalVid) finalVid.src = atrFinalUrl;
-      if (dlBtn) { dlBtn.href = atrFinalUrl; dlBtn.download = 'video-final.mp4'; }
+      atrShowPhase(atrPhaseUpscale);
+      // Pre-select 1080 by default for upscale phase
+      document.querySelectorAll('[data-atr-res]').forEach(b => {
+        b.style.border = b.dataset.atrRes === '1080' ? '2px solid var(--accent)' : '2px solid var(--border)';
+      });
+      atrUpscaleTargetH = 1080;
+    });
+  }
+
+  // ── ATR Upscale phase vars ──
+  let atrUpscaleTargetH = 1080;
+  document.querySelectorAll('[data-atr-res]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-atr-res]').forEach(b => b.style.border = '2px solid var(--border)');
+      btn.style.border = '2px solid var(--accent)';
+      const r = btn.dataset.atrRes;
+      atrUpscaleTargetH = r === '4k' ? 2160 : r === '1080' ? 1080 : 720;
+    });
+  });
+
+  const atrUpscaleBtn       = document.getElementById('atr-upscale-btn');
+  const atrUpscaleSkipBtn   = document.getElementById('atr-upscale-skip-btn');
+  const atrUpscaleAprovarBtn= document.getElementById('atr-upscale-aprovar-btn');
+  const atrUpscaleProgress  = document.getElementById('atr-upscale-progress');
+  const atrUpscaleStatus    = document.getElementById('atr-upscale-status');
+  const atrUpscaleError     = document.getElementById('atr-upscale-error');
+  const atrUpscaleResult    = document.getElementById('atr-upscale-result');
+  const atrUpscaleVideo     = document.getElementById('atr-upscale-video');
+  let   atrUpscaledUrl      = null;
+
+  function atrFinishDone(url) {
+    atrSetStep(5);
+    atrShowPhase(atrPhaseDone);
+    const finalVid = document.getElementById('atr-final-video');
+    const dlBtn    = document.getElementById('atr-download-btn');
+    if (finalVid) finalVid.src = url;
+    if (dlBtn) { dlBtn.href = url; dlBtn.download = 'video-final.mp4'; }
+  }
+
+  if (atrUpscaleBtn) {
+    atrUpscaleBtn.addEventListener('click', async () => {
+      if (!atrFinalUrl) return;
+      atrUpscaleBtn.disabled = true;
+      if (atrUpscaleError) { atrUpscaleError.textContent = ''; atrUpscaleError.style.display = 'none'; }
+      if (atrUpscaleResult) atrUpscaleResult.style.display = 'none';
+      if (atrUpscaleProgress) atrUpscaleProgress.style.display = '';
+      if (atrUpscaleStatus) atrUpscaleStatus.textContent = 'Upscalando vídeo…';
+      try {
+        // Fetch the video blob from atrFinalUrl and upload to /api/upscale
+        const videoResp = await fetch(atrFinalUrl);
+        const blob = await videoResp.blob();
+        const fd = new FormData();
+        fd.append('video', blob, 'video.mp4');
+        fd.append('h', String(atrUpscaleTargetH));
+        const r = await fetch(API + '/api/upscale', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Erro upscale');
+        const url = await atrPollJob(j.id, s => { if (atrUpscaleStatus) atrUpscaleStatus.textContent = s; });
+        atrUpscaledUrl = url;
+        if (atrUpscaleProgress) atrUpscaleProgress.style.display = 'none';
+        if (atrUpscaleStatus) atrUpscaleStatus.textContent = '✓ Pronto!';
+        if (atrUpscaleVideo) atrUpscaleVideo.src = url;
+        if (atrUpscaleResult) atrUpscaleResult.style.display = '';
+      } catch(e) {
+        if (atrUpscaleProgress) atrUpscaleProgress.style.display = 'none';
+        if (atrUpscaleError) { atrUpscaleError.textContent = e.message; atrUpscaleError.style.display = ''; }
+      } finally {
+        atrUpscaleBtn.disabled = false;
+      }
+    });
+  }
+
+  if (atrUpscaleSkipBtn) {
+    atrUpscaleSkipBtn.addEventListener('click', () => {
+      if (!atrFinalUrl) return;
+      atrFinishDone(atrFinalUrl);
+    });
+  }
+
+  if (atrUpscaleAprovarBtn) {
+    atrUpscaleAprovarBtn.addEventListener('click', () => {
+      if (!atrUpscaledUrl) return;
+      atrFinishDone(atrUpscaledUrl);
     });
   }
 
@@ -3332,7 +3498,7 @@ function loadResizeFrame(file) {
   if (atrRestartBtn) {
     atrRestartBtn.addEventListener('click', () => {
       atrFile=null; atrTempId=null; atrSegments=[];
-      atrTranslatedUrl=null; atrWmUrl=null; atrFinalUrl=null;
+      atrTranslatedUrl=null; atrWmUrl=null; atrFinalUrl=null; atrUpscaledUrl=null;
       atrWmSelRect=null;
       if (atrWmAnimFrame) { cancelAnimationFrame(atrWmAnimFrame); atrWmAnimFrame=null; }
       atrWmVideoEl=null;
@@ -3831,35 +3997,130 @@ makeSimpleTool({
   }
 });
 
-// ── AUMENTAR QUALIDADE ──
-let upscaleW = 1280, upscaleH = 720;
-document.querySelectorAll('.res-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.res-btn').forEach(b => b.classList.remove('rb-active'));
-    btn.classList.add('rb-active');
-    upscaleW = parseInt(btn.dataset.w); upscaleH = parseInt(btn.dataset.h);
+// ── AUMENTAR QUALIDADE (multi-file queue) ──
+;(function() {
+  const fileInput   = document.getElementById('upscale-file-input');
+  const dropZone    = document.getElementById('upscale-dz');
+  const fileNameEl  = document.getElementById('upscale-file-name');
+  const submitBtn   = document.getElementById('upscale-submit-btn');
+  const progressEl  = document.getElementById('upscale-progress');
+  const statusEl    = document.getElementById('upscale-status');
+  const errorEl     = document.getElementById('upscale-error');
+  const queueList   = document.getElementById('upscale-queue-list');
+  const resultsContainer = document.getElementById('upscale-results-container');
+  if (!fileInput) return;
+
+  let upscaleH = 720;
+  let upscaleFiles = [];
+
+  // res-btn clicks (standalone tool uses data-res/data-h)
+  document.querySelectorAll('#tool-upscale .res-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#tool-upscale .res-btn').forEach(b => b.classList.remove('rb-active'));
+      btn.classList.add('rb-active');
+      upscaleH = parseInt(btn.dataset.h) || 720;
+    });
   });
-});
-makeSimpleTool({
-  fileInputId: 'upscale-file-input', dropZoneId: 'upscale-dz', fileNameId: 'upscale-file-name',
-  submitBtnId: 'upscale-submit-btn', progressId: 'upscale-progress', statusId: 'upscale-status',
-  errorId: 'upscale-error', resultCardId: 'upscale-result-card', resultVideoId: 'upscale-result-video',
-  downloadBtnId: 'upscale-download-btn', endpoint: '/api/upscale',
-  buildFormData: (file) => {
-    const fd = new FormData();
-    fd.append('video', file); fd.append('h', upscaleH);
-    return fd;
-  },
-  onResult: (job, file) => {
-    const el = document.getElementById('upscale-sizes');
-    if (!el) return;
-    const orig = job.inputSize || file.size || 0;
-    const out  = job.outputSize || 0;
-    el.innerHTML = `<span class="size-orig">Original: ${fmtBytes(orig)}</span>` +
-      `<span class="size-arrow">→</span>` +
-      `<span class="size-new">Saída: ${fmtBytes(out)}</span>`;
+
+  function setFiles(files) {
+    upscaleFiles = Array.from(files);
+    if (upscaleFiles.length === 0) {
+      fileNameEl.textContent = '';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Selecione um vídeo';
+      queueList.style.display = 'none';
+      return;
+    }
+    fileNameEl.textContent = upscaleFiles.length === 1 ? upscaleFiles[0].name : `${upscaleFiles.length} vídeos selecionados`;
+    submitBtn.disabled = false;
+    submitBtn.textContent = upscaleFiles.length === 1 ? '⬆ Aumentar Qualidade' : `⬆ Processar ${upscaleFiles.length} vídeos`;
+    // Show queue list
+    queueList.style.display = '';
+    queueList.innerHTML = upscaleFiles.map((f, i) =>
+      `<div id="upscale-qi-${i}" style="padding:6px 10px;margin-bottom:4px;border:1px solid var(--border);border-radius:6px;font-size:13px;display:flex;align-items:center;gap:8px">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</span>
+        <span id="upscale-qs-${i}" style="color:var(--text-muted);font-size:12px">aguardando…</span>
+      </div>`
+    ).join('');
   }
-});
+
+  fileInput.addEventListener('change', () => setFiles(fileInput.files));
+  if (dropZone) {
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', e => e.preventDefault());
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+      if (files.length) setFiles(files);
+    });
+  }
+
+  async function pollJob(jobId, onStatus) {
+    while (true) {
+      await new Promise(r => setTimeout(r, 2500));
+      const resp = await fetch(API + `/api/process-status/${jobId}`);
+      const job  = await resp.json();
+      if (job.status === 'done') return { url: API + job.url, job };
+      if (job.status === 'error') throw new Error(job.error || 'Falhou');
+      if (onStatus) onStatus('Processando… ' + (job.progress || 0) + '%');
+    }
+  }
+
+  if (submitBtn) {
+    submitBtn.addEventListener('click', async () => {
+      if (!upscaleFiles.length) return;
+      submitBtn.disabled = true;
+      errorEl.textContent = ''; errorEl.style.display = 'none';
+      resultsContainer.innerHTML = '';
+
+      for (let i = 0; i < upscaleFiles.length; i++) {
+        const file = upscaleFiles[i];
+        const qStatus = document.getElementById(`upscale-qs-${i}`);
+        const qItem   = document.getElementById(`upscale-qi-${i}`);
+        if (qStatus) qStatus.textContent = '⏳ processando…';
+        if (qItem) qItem.style.borderColor = 'var(--accent)';
+
+        progressEl.style.display = '';
+        statusEl.textContent = `[${i+1}/${upscaleFiles.length}] ${file.name}…`;
+
+        try {
+          const fd = new FormData();
+          fd.append('video', file); fd.append('h', upscaleH);
+          const r = await fetch(API + '/api/upscale', { method: 'POST', body: fd });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error || 'Erro');
+          const { url, job } = await pollJob(j.id, s => {
+            statusEl.textContent = `[${i+1}/${upscaleFiles.length}] ${file.name}: ${s}`;
+            if (qStatus) qStatus.textContent = s;
+          });
+
+          if (qStatus) qStatus.textContent = '✓ pronto';
+          if (qItem) qItem.style.borderColor = '#22c55e';
+
+          const card = document.createElement('div');
+          card.className = 'result-card';
+          card.style.display = 'block';
+          card.style.marginBottom = '12px';
+          card.innerHTML = `<h3 style="font-size:14px;margin-bottom:8px">✓ ${file.name}</h3>
+            <video class="result-video" controls src="${url}" style="margin-bottom:8px"></video>
+            <a class="download-btn" href="${url}" download="${file.name.replace(/\.[^.]+$/, '')}_upscale.mp4">⬇ Baixar</a>`;
+          resultsContainer.appendChild(card);
+        } catch(e) {
+          if (qStatus) qStatus.textContent = '✗ erro';
+          if (qItem) qItem.style.borderColor = '#ef4444';
+          const errDiv = document.createElement('div');
+          errDiv.className = 'error-msg';
+          errDiv.style.display = '';
+          errDiv.textContent = `${file.name}: ${e.message}`;
+          resultsContainer.appendChild(errDiv);
+        }
+      }
+      progressEl.style.display = 'none';
+      statusEl.textContent = `✓ Concluído (${upscaleFiles.length} vídeo${upscaleFiles.length > 1 ? 's' : ''})`;
+      submitBtn.disabled = false;
+    });
+  }
+})();
 
 // ── ESPELHAR ──
 let mirrorFlip = 'hflip';

@@ -149,6 +149,80 @@ const multiUpload = multer({ storage }).fields([{ name: 'hooks', maxCount: 20 },
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// ── Gemini Vision helper ───────────────────────────────────────────────────
+function geminiVisionDetect(apiKey, frameBase64, mimeType, prompt) {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify({
+      contents: [{ parts: [
+        { inline_data: { mime_type: mimeType, data: frameBase64 } },
+        { text: prompt }
+      ]}]
+    }));
+    const reqPath = `/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const req2 = https.request({
+      hostname: 'generativelanguage.googleapis.com', path: reqPath, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': body.length }
+    }, r => {
+      let data = ''; r.on('data', c => data += c);
+      r.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.error) return reject(new Error(json.error.message || JSON.stringify(json.error)));
+          const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) return reject(new Error('Resposta vazia do Gemini'));
+          resolve(text.trim());
+        } catch(e) { reject(new Error('Parse error: ' + e.message)); }
+      });
+    });
+    req2.on('error', reject); req2.write(body); req2.end();
+  });
+}
+
+// ── Detectar marca d'água com Gemini Vision ───────────────────────────────
+app.post('/api/watermark/detect-gemini', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const geminiKey = (req.body.geminiKey || '').trim();
+  if (!geminiKey) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'geminiKey obrigatório' }); }
+  const input = req.file.path;
+  const framePath = path.join(UPLOAD_DIR, `frame_${Date.now()}.jpg`);
+  try {
+    // Extract frame at 2 seconds (or start)
+    await new Promise((resolve, reject) => {
+      const ff = spawn('ffmpeg', ['-ss', '2', '-i', input, '-frames:v', '1', '-q:v', '2', '-y', framePath]);
+      ff.on('close', c => c === 0 ? resolve() : reject(new Error('ffmpeg frame extract failed')));
+      ff.on('error', reject);
+    });
+
+    // Get video dimensions
+    const dims = await new Promise((resolve, reject) => {
+      const ff = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries',
+        'stream=width,height', '-of', 'csv=p=0', input]);
+      let out = '';
+      ff.stdout.on('data', d => out += d);
+      ff.on('close', () => {
+        const parts = out.trim().split(',');
+        resolve({ w: parseInt(parts[0]) || 1920, h: parseInt(parts[1]) || 1080 });
+      });
+      ff.on('error', reject);
+    });
+
+    const frameData = fs.readFileSync(framePath).toString('base64');
+    const prompt = `Esta é um frame de vídeo. Identifique onde está a marca d'água (watermark/logo/texto de marca). Retorne APENAS um JSON com as coordenadas em pixels: {"x": LEFT, "y": TOP, "w": WIDTH, "h": HEIGHT}. Use coordenadas absolutas em pixels (o vídeo tem ${dims.w}x${dims.h} pixels). Se não houver marca d'água, retorne {"x":0,"y":0,"w":0,"h":0}. Não adicione texto explicativo, apenas JSON.`;
+
+    const raw = await geminiVisionDetect(geminiKey, frameData, 'image/jpeg', prompt);
+    const jsonMatch = raw.match(/\{[^}]+\}/);
+    if (!jsonMatch) throw new Error('Gemini não retornou coordenadas válidas: ' + raw.slice(0,100));
+    const coords = JSON.parse(jsonMatch[0]);
+    if (typeof coords.x !== 'number') throw new Error('Formato inválido: ' + raw.slice(0,100));
+    res.json({ x: Math.round(coords.x), y: Math.round(coords.y), w: Math.round(coords.w), h: Math.round(coords.h) });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.unlink(req.file.path, ()=>{});
+    fs.unlink(framePath, ()=>{});
+  }
+});
+
 // ── PROCESS: blur / delogo ────────────────────────────────────────────────────
 app.post('/api/process', upload.single('video'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'no file' });
