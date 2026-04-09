@@ -1418,6 +1418,63 @@ app.post('/api/upscale', upload.single('video'), async (req, res) => {
     input, output, duration, 3600000, 'upscale', `Qualidade ${h}p`);
 });
 
+// ── DIVIDIR VÍDEO ──────────────────────────────────────────────────────────
+app.post('/api/split', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  let points;
+  try { points = JSON.parse(req.body.points || '[]'); } catch { return res.status(400).json({ error: 'points inválido' }); }
+  if (!Array.isArray(points) || points.length === 0) return res.status(400).json({ error: 'Defina ao menos um ponto de corte' });
+  const input = req.file.path;
+  const duration = await getVideoDuration(input);
+  // Sort & deduplicate: only keep points within (0, duration)
+  const pts = [...new Set(points.map(Number).filter(t => t > 0 && t < duration))].sort((a,b) => a-b);
+  if (!pts.length) return res.status(400).json({ error: 'Nenhum ponto de corte válido dentro da duração do vídeo' });
+
+  // Build segments: [0 → pts[0]], [pts[0] → pts[1]], ..., [pts[n-1] → duration]
+  const segments = [];
+  let prev = 0;
+  for (const t of pts) { segments.push([prev, t]); prev = t; }
+  segments.push([prev, duration]);
+
+  const baseName = path.basename(req.file.originalname, path.extname(req.file.originalname)) || 'parte';
+  const outputs = segments.map((_, i) => path.join(UPLOAD_DIR, `split_${Date.now()}_${i+1}.mp4`));
+
+  const jobId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, parts: null };
+  res.json({ id: jobId, total: segments.length });
+
+  // Process each segment sequentially
+  (async () => {
+    try {
+      for (let i = 0; i < segments.length; i++) {
+        const [start, end] = segments[i];
+        const dur = end - start;
+        await new Promise((resolve, reject) => {
+          const proc = spawn(FFMPEG, [
+            '-y', '-ss', String(start), '-i', input, '-t', String(dur),
+            '-c', 'copy', outputs[i]
+          ]);
+          proc.on('close', c => c === 0 ? resolve() : reject(new Error(`FFmpeg exit ${c}`)));
+          proc.on('error', reject);
+        });
+        simpleJobs[jobId].progress = Math.round((i + 1) / segments.length * 100);
+      }
+      const urls = outputs.map(o => `/uploads/${path.basename(o)}`);
+      const expiry = Date.now() + 3600000;
+      urls.forEach((url, i) => {
+        addToLibrary({ id: Date.now().toString(36) + i, type: 'split', label: `Parte ${i+1}`, url, createdAt: Date.now(), expiresAt: expiry, friendlyName: `${baseName}_parte${i+1}.mp4` });
+      });
+      simpleJobs[jobId].status = 'done';
+      simpleJobs[jobId].parts = urls.map((url, i) => ({ url, label: `${baseName}_parte${i+1}.mp4` }));
+      scheduleDelete(input, 3600000);
+      outputs.forEach(o => scheduleDelete(o, 3600000));
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error = e.message;
+    }
+  })();
+});
+
 // ── ESPELHAR ───────────────────────────────────────────────────────────────
 app.post('/api/mirror', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
@@ -2365,11 +2422,11 @@ app.post('/api/autohook/generate-hooks', express.json({ limit: '50kb' }), async 
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// Analyze source videos with Gemini Vision — extract frames + identify hook clips
+// Analyze source videos with OpenRouter GPT-4o Vision — extract frames + identify hook clips
 app.post('/api/autohook/analyze-clips', upload.array('videos', 5), async (req, res) => {
-  const { gemini_key, description = '' } = req.body;
+  const { or_key, description = '' } = req.body;
   const files = req.files || [];
-  if (!gemini_key) return res.status(400).json({ error: 'gemini_key obrigatório' });
+  if (!or_key) return res.status(400).json({ error: 'or_key obrigatório' });
   if (!files.length) return res.status(400).json({ error: 'Envie ao menos 1 vídeo' });
 
   const clips = [];
@@ -2405,31 +2462,33 @@ app.post('/api/autohook/analyze-clips', upload.array('videos', 5), async (req, r
       if (!frameFiles.length) { tempIds[fi] = null; continue; }
 
       const frameInterval = duration / (frameFiles.length + 1);
-      const parts = [{
-        text: `${description ? 'Contexto: ' + description + '\n\n' : ''}Analise esses ${frameFiles.length} frames de um vídeo de ${duration.toFixed(0)}s (1 frame a cada ~${frameInterval.toFixed(1)}s).
+      const visionPrompt = `${description ? 'Contexto: ' + description + '\n\n' : ''}Analise esses ${frameFiles.length} frames de um vídeo de ${duration.toFixed(0)}s (1 frame a cada ~${frameInterval.toFixed(1)}s).
 Identifique 2-4 momentos mais impactantes para usar como HOOK (abertura) em redes sociais.
 Para cada momento, responda EXATAMENTE neste formato (uma linha por momento):
 START:Xs END:Ys TEXTO:"hook sugerido aqui" MOTIVO:"por que é impactante"
-Use timestamps estimados: frame N ≈ N × ${frameInterval.toFixed(1)}s. Apenas os formatos acima, sem texto extra.`
-      }];
-      for (const fname of frameFiles) {
-        const data = fs.readFileSync(path.join(framesDir, fname));
-        parts.push({ inline_data: { mime_type: 'image/jpeg', data: data.toString('base64') } });
-      }
+Use timestamps estimados: frame N ≈ N × ${frameInterval.toFixed(1)}s. Apenas os formatos acima, sem texto extra.`;
+
+      const imageContent = frameFiles.map(fname => ({
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${fs.readFileSync(path.join(framesDir, fname)).toString('base64')}` }
+      }));
 
       const responseText = await new Promise((resolve, reject) => {
-        const body2 = Buffer.from(JSON.stringify({ contents: [{ parts }] }));
-        const reqPath2 = `/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(gemini_key)}`;
+        const body2 = Buffer.from(JSON.stringify({
+          model: 'openai/gpt-4o-mini',
+          messages: [{ role: 'user', content: [{ type: 'text', text: visionPrompt }, ...imageContent] }],
+          max_tokens: 1024
+        }));
         const req3 = https.request({
-          hostname: 'generativelanguage.googleapis.com', path: reqPath2, method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': body2.length }
+          hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${or_key}`, 'Content-Length': body2.length }
         }, r2 => {
           let d = ''; r2.on('data', c => d += c);
           r2.on('end', () => {
             try {
               const j = JSON.parse(d);
-              if (j.error) return reject(new Error(j.error.message));
-              resolve(j.candidates?.[0]?.content?.parts?.[0]?.text || '');
+              if (j.error) return reject(new Error(j.error.message || JSON.stringify(j.error)));
+              resolve(j.choices?.[0]?.message?.content?.trim() || '');
             } catch(e) { reject(new Error('Parse: ' + e.message)); }
           });
         });

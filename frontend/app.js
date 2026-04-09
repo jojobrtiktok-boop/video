@@ -2129,6 +2129,168 @@ function makeSimpleTool({ fileInputId, dropZoneId, fileNameId, submitBtnId,
   });
 })();
 
+// ── DIVIDIR VÍDEO ─────────────────────────────────────────────────────────
+;(function() {
+  // These elements are inside tool-trim (same video file)
+  const splitAddBtn    = document.getElementById('split-add-btn');
+  const splitNewPoint  = document.getElementById('split-new-point');
+  const splitPointsList= document.getElementById('split-points-list');
+  const splitPreviewInfo=document.getElementById('split-preview-info');
+  const splitSubmitBtn = document.getElementById('split-submit-btn');
+  const splitProgress  = document.getElementById('split-progress');
+  const splitStatus    = document.getElementById('split-status');
+  const splitError     = document.getElementById('split-error');
+  const splitResults   = document.getElementById('split-results');
+  const splitResultsList=document.getElementById('split-results-list');
+  if (!splitAddBtn) return;
+
+  let splitPoints = []; // seconds
+
+  function parseTime(str) {
+    str = str.trim();
+    if (!str) return NaN;
+    const parts = str.split(':').map(Number);
+    if (parts.some(isNaN)) return NaN;
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return parts[0]*60 + parts[1];
+    return parts[0]*3600 + parts[1]*60 + parts[2];
+  }
+
+  function fmtTime(s) {
+    s = Math.round(s);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    return `${m}:${String(sec).padStart(2,'0')}`;
+  }
+
+  function renderPoints(videoDuration) {
+    splitPointsList.innerHTML = '';
+    if (!splitPoints.length) {
+      splitPointsList.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:4px 0">Nenhum ponto de corte adicionado ainda.</div>';
+      updateSubmitState(videoDuration);
+      return;
+    }
+    const sorted = [...splitPoints].sort((a,b) => a-b);
+    sorted.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:13px';
+      row.innerHTML = `<span style="flex:1">Corte ${i+1}: <strong>${fmtTime(t)}</strong></span>`;
+      const rm = document.createElement('button');
+      rm.textContent = '✕'; rm.className = 'submit-btn';
+      rm.style.cssText = 'width:28px;height:28px;padding:0;font-size:12px;background:none;border:1px solid var(--border);color:var(--text)';
+      rm.addEventListener('click', () => { splitPoints.splice(splitPoints.indexOf(t), 1); renderPoints(videoDuration); });
+      row.appendChild(rm);
+      splitPointsList.appendChild(row);
+    });
+    updatePreviewInfo(videoDuration);
+    updateSubmitState(videoDuration);
+  }
+
+  function updatePreviewInfo(dur) {
+    if (!dur || !splitPoints.length) { splitPreviewInfo.textContent = ''; return; }
+    const pts = [...splitPoints].sort((a,b)=>a-b);
+    const segs = [];
+    let prev = 0;
+    for (const t of pts) { segs.push([prev, t]); prev = t; }
+    segs.push([prev, dur]);
+    splitPreviewInfo.textContent = `Resultado: ${segs.length} partes — ` + segs.map((s,i) => `P${i+1}: ${fmtTime(s[0])}→${fmtTime(s[1])}`).join(', ');
+  }
+
+  function updateSubmitState(dur) {
+    // Get the trim tool's selected file (shared)
+    const trimInput = document.getElementById('trim-file-input');
+    const hasFile = trimInput && trimInput.files.length > 0;
+    if (hasFile && splitPoints.length > 0) {
+      splitSubmitBtn.disabled = false;
+      splitSubmitBtn.textContent = `✂️ Dividir em ${splitPoints.length + 1} partes`;
+    } else if (!hasFile) {
+      splitSubmitBtn.disabled = true;
+      splitSubmitBtn.textContent = 'Selecione um vídeo na área acima';
+    } else {
+      splitSubmitBtn.disabled = true;
+      splitSubmitBtn.textContent = 'Adicione ao menos um ponto de corte';
+    }
+  }
+
+  // Keep submit btn in sync when trim file changes
+  const trimInput = document.getElementById('trim-file-input');
+  if (trimInput) {
+    trimInput.addEventListener('change', () => {
+      const v = trimInput.files[0];
+      if (v) {
+        const tmpVid = document.createElement('video');
+        tmpVid.preload = 'metadata';
+        tmpVid.src = URL.createObjectURL(v);
+        tmpVid.onloadedmetadata = () => { renderPoints(tmpVid.duration); URL.revokeObjectURL(tmpVid.src); };
+      }
+    });
+  }
+
+  splitAddBtn.addEventListener('click', () => {
+    const t = parseTime(splitNewPoint.value);
+    if (isNaN(t) || t <= 0) { splitError.textContent = 'Tempo inválido. Use H:MM:SS, MM:SS ou segundos.'; splitError.style.display = ''; return; }
+    splitError.style.display = 'none';
+    if (splitPoints.includes(t)) { splitError.textContent = 'Esse ponto já foi adicionado.'; splitError.style.display = ''; return; }
+    splitPoints.push(t);
+    splitNewPoint.value = '';
+    const vid = document.getElementById('trim-preview-video');
+    renderPoints(vid && vid.duration ? vid.duration : null);
+  });
+
+  // Allow Enter key in input
+  splitNewPoint.addEventListener('keydown', e => { if (e.key === 'Enter') splitAddBtn.click(); });
+
+  splitSubmitBtn.addEventListener('click', async () => {
+    if (!splitPoints.length) return;
+    const trimInput = document.getElementById('trim-file-input');
+    if (!trimInput || !trimInput.files.length) { splitError.textContent = 'Selecione um vídeo acima.'; splitError.style.display = ''; return; }
+    splitSubmitBtn.disabled = true;
+    splitError.style.display = 'none';
+    splitResults.style.display = 'none';
+    splitProgress.style.display = '';
+    splitStatus.textContent = '⏳ Enviando vídeo…';
+    try {
+      const fd = new FormData();
+      fd.append('video', trimInput.files[0]);
+      fd.append('points', JSON.stringify(splitPoints));
+      const r = await fetch(API + '/api/split', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro no servidor');
+      const jobId = j.id;
+      // Poll
+      while (true) {
+        await new Promise(res => setTimeout(res, 2500));
+        const pr = await fetch(API + `/api/job/${jobId}`);
+        const pj = await pr.json();
+        if (pj.status === 'done') {
+          splitProgress.style.display = 'none';
+          splitStatus.textContent = `✓ Dividido em ${pj.parts.length} partes!`;
+          splitResultsList.innerHTML = '';
+          pj.parts.forEach((part, i) => {
+            const url = API + part.url;
+            const card = document.createElement('div');
+            card.style.cssText = 'padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px';
+            card.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:6px">Parte ${i+1} — ${part.label}</div>
+              <video controls class="result-video" src="${url}" style="margin-bottom:8px"></video>
+              <a href="${url}" download="${part.label}" class="download-btn">⬇ Baixar parte ${i+1}</a>`;
+            splitResultsList.appendChild(card);
+          });
+          splitResults.style.display = '';
+          splitResults.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          break;
+        }
+        if (pj.status === 'error') throw new Error(pj.error || 'Falhou');
+        splitStatus.textContent = `⏳ Processando… ${pj.progress || 0}%`;
+      }
+    } catch(e) {
+      splitProgress.style.display = 'none';
+      splitError.textContent = e.message; splitError.style.display = '';
+    } finally {
+      splitSubmitBtn.disabled = false;
+    }
+  });
+})();
+
 // ── REDIMENSIONAR ──
 // ── RESIZE ──────────────────────────────────────────────────────────────────
 let resizeRatioW = 1080, resizeRatioH = 1920;
@@ -3554,8 +3716,8 @@ function loadResizeFrame(file) {
   const ahSrcDrop      = document.getElementById('ah-src-drop');
   const ahSrcInput     = document.getElementById('ah-src-input');
   const ahSrcList      = document.getElementById('ah-src-list');
-  const ahGeminiKey    = document.getElementById('ah-gemini-key');
-  const ahGeminiSave   = document.getElementById('ah-gemini-save-btn');
+  const ahOrKey       = document.getElementById('ah-or-key');
+  const ahOrSave       = document.getElementById('ah-or-save-btn');
   const ahElKey        = document.getElementById('ah-el-key');
   const ahElSave       = document.getElementById('ah-el-save-btn');
   const ahLoadVoices   = document.getElementById('ah-load-voices-btn');
@@ -3593,7 +3755,7 @@ function loadResizeFrame(file) {
     });
     input.addEventListener('input', () => { if (btn.textContent === '✅') btn.textContent = '💾'; });
   }
-  makeSaveBtnAh(ahGeminiSave, ahGeminiKey, 'ah_gemini_key');
+  makeSaveBtnAh(ahOrSave, ahOrKey, 'ah_or_key');
   makeSaveBtnAh(ahElSave, ahElKey, 'tr_el_key');
 
   // ── Load ElevenLabs voices ──
@@ -3709,14 +3871,14 @@ function loadResizeFrame(file) {
       });
       // Wire regen
       div.querySelector('.ah-regen-btn').addEventListener('click', async () => {
-        const key = ahGeminiKey.value.trim();
-        if (!key) { ahGenErr.textContent = 'Informe a Gemini API Key.'; ahGenErr.style.display = 'block'; return; }
+        const key = ahOrKey.value.trim();
+        if (!key) { ahGenErr.textContent = 'Informe a OpenRouter API Key.'; ahGenErr.style.display = 'block'; return; }
         const btn = div.querySelector('.ah-regen-btn');
         btn.disabled = true; btn.textContent = '⏳';
         try {
           const r = await fetch(API + '/api/autohook/generate-hooks', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ description: ahDesc.value.trim(), prompt: 'Gere 1 hook alternativo.', gemini_key: key, count: 1 })
+            body: JSON.stringify({ description: ahDesc.value.trim(), prompt: 'Gere 1 hook alternativo.', or_key: key, count: 1 })
           });
           const j = await r.json();
           if (!r.ok) throw new Error(j.error);
@@ -3761,11 +3923,11 @@ function loadResizeFrame(file) {
     ahAddBtn.addEventListener('click', () => { ahAddHook(''); ahRenderHooks(); });
   }
 
-  // ── Generate hooks with Gemini ──
+  // ── Generate hooks with OpenRouter GPT-4o Mini ──
   if (ahGenBtn) {
     ahGenBtn.addEventListener('click', async () => {
-      const key = ahGeminiKey.value.trim();
-      if (!key) { ahGenErr.textContent = 'Informe a Gemini API Key.'; ahGenErr.style.display = 'block'; return; }
+      const key = ahOrKey.value.trim();
+      if (!key) { ahGenErr.textContent = 'Informe a OpenRouter API Key.'; ahGenErr.style.display = 'block'; return; }
       ahGenErr.style.display = 'none';
       ahGenBtn.disabled = true; ahGenBtn.textContent = '⏳';
       ahGenProg.style.display = '';
@@ -3775,7 +3937,7 @@ function loadResizeFrame(file) {
           body: JSON.stringify({
             description: ahDesc.value.trim(),
             prompt: ahPrompt.value.trim(),
-            gemini_key: key,
+            or_key: key,
             count: 5
           })
         });
@@ -3788,21 +3950,21 @@ function loadResizeFrame(file) {
     });
   }
 
-  // ── Analyze source videos with Gemini Vision ──
+  // ── Analyze source videos with OpenRouter GPT-4o Vision ──
   if (ahAnalyzeBtn) {
     ahAnalyzeBtn.addEventListener('click', async () => {
-      const key = ahGeminiKey.value.trim();
+      const key = ahOrKey.value.trim();
       const validSrcs = ahSrcFiles.filter(s => s.file);
-      if (!key) { ahAnalyzeErr.textContent = 'Informe a Gemini API Key.'; ahAnalyzeErr.style.display = 'block'; return; }
+      if (!key) { ahAnalyzeErr.textContent = 'Informe a OpenRouter API Key.'; ahAnalyzeErr.style.display = 'block'; return; }
       if (!validSrcs.length) { ahAnalyzeErr.textContent = 'Adicione ao menos 1 vídeo fonte.'; ahAnalyzeErr.style.display = 'block'; return; }
       ahAnalyzeErr.style.display = 'none';
       ahAnalyzeBtn.disabled = true;
       ahAnalyzeProg.style.display = '';
-      ahAnalyzeStat.textContent = '⏳ Enviando vídeos e analisando com Gemini…';
+      ahAnalyzeStat.textContent = '⏳ Enviando vídeos e analisando com GPT-4o Mini…';
       try {
         const fd = new FormData();
         validSrcs.forEach((s, i) => fd.append('videos', s.file));
-        fd.append('gemini_key', key);
+        fd.append('or_key', key);
         fd.append('description', ahDesc.value.trim());
         const r = await fetch(API + '/api/autohook/analyze-clips', { method: 'POST', body: fd });
         const j = await r.json();

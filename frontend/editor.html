@@ -1969,7 +1969,7 @@
       </div>
       <!-- Hook Generator -->
       <div class="card">
-        <div class="section-label" style="margin-bottom:10px">🤖 Gerador de Hooks com Gemini</div>
+        <div class="section-label" style="margin-bottom:10px">🤖 Gerador de Hooks com GPT-4o Mini</div>
         <div style="display:flex;gap:8px;margin-bottom:10px">
           <textarea id="ah-hook-prompt" class="tool-input" rows="2" placeholder="Ex: Gere 5 hooks impactantes para TikTok para chamar atenção nos primeiros 3 segundos..." style="flex:1;resize:vertical;min-height:52px"></textarea>
           <button id="ah-gen-hooks-btn" class="submit-btn" style="width:auto;padding:0 16px;white-space:nowrap;align-self:stretch">🤖 Gerar hooks</button>
@@ -1977,7 +1977,7 @@
         <div id="ah-gen-hooks-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
         <div id="ah-gen-hooks-error" class="error-msg"></div>
         <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
-          <button id="ah-analyze-clips-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text);width:100%;margin-bottom:6px">🔍 Analisar vídeos e sugerir clipes com Gemini Vision</button>
+          <button id="ah-analyze-clips-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text);width:100%;margin-bottom:6px">🔍 Analisar vídeos e sugerir clipes com GPT-4o Vision</button>
           <div id="ah-analyze-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
           <div id="ah-analyze-status" class="status-text"></div>
           <div id="ah-analyze-error" class="error-msg"></div>
@@ -2286,6 +2286,27 @@
         <h3>✓ Corte concluído!</h3>
         <video id="trim-result-video" class="result-video" controls></video><br/>
         <a id="trim-download-btn" class="download-btn" download>⬇ Baixar vídeo cortado</a>
+      </div>
+
+      <!-- ── Dividir Vídeo em partes ── -->
+      <div class="card" style="margin-top:20px">
+        <div class="section-label">✂️ Dividir Vídeo em partes</div>
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Defina os pontos de corte e o vídeo será dividido em vários arquivos. Use o mesmo vídeo carregado acima.</p>
+        <div id="split-points-list" style="margin-bottom:10px"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <input type="text" id="split-new-point" class="time-input" placeholder="0:01:30" style="width:110px" title="Tempo no formato H:MM:SS ou MM:SS ou segundos" />
+          <button id="split-add-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">+ Adicionar corte</button>
+          <span style="font-size:12px;color:var(--text-muted)">ex: 0:01:30 ou 1:30 ou 90</span>
+        </div>
+        <div id="split-preview-info" style="font-size:12px;color:var(--text-muted);margin-bottom:10px"></div>
+        <button id="split-submit-btn" class="submit-btn" disabled>Selecione um vídeo e adicione cortes</button>
+        <div id="split-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="split-status" class="status-text"></div>
+        <div id="split-error" class="error-msg"></div>
+        <div id="split-results" style="display:none;margin-top:12px">
+          <div class="section-label">✓ Partes geradas</div>
+          <div id="split-results-list"></div>
+        </div>
       </div>
     </div>
 
