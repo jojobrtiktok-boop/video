@@ -110,7 +110,7 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
-  translate: 'video', lipsync: 'video', autotr: 'video',
+  translate: 'video', autotr: 'video', autohook: 'video',
   rembg: 'imagem',
   imagegen: 'ia', videogen: 'ia',
   'video-library': null
@@ -2197,6 +2197,19 @@ function loadResizeFrame(file) {
     });
   });
 
+  // ── Music mode toggle visual ──
+  document.querySelectorAll('input[name="tr-music-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      ['tr-music-recreate-lbl','tr-music-none-lbl','tr-music-keep-lbl'].forEach(id => {
+        const lbl = document.getElementById(id);
+        if (!lbl) return;
+        const isActive = lbl.querySelector('input')?.value === radio.value;
+        lbl.style.border     = isActive ? '2px solid var(--accent)' : '1px solid var(--border)';
+        lbl.style.background = isActive ? 'color-mix(in srgb,var(--accent) 10%,transparent)' : '';
+      });
+    });
+  });
+
   // ── Restore saved keys ──
   const savedApiKey = localStorage.getItem('tr_api_key');
   const savedElKey  = localStorage.getItem('tr_el_key');
@@ -2415,6 +2428,7 @@ function loadResizeFrame(file) {
           trim_to_audio: trTrimVideo && trTrimVideo.checked,
           max_tempo: trMaxTempo ? parseFloat(trMaxTempo.value) : 1.8,
           dynamic_mode: (document.querySelector('input[name="tr-audio-mode"]:checked')?.value === 'dynamic'),
+          music_mode: document.querySelector('input[name="tr-music-mode"]:checked')?.value || 'recriar',
         })
       });
       const json = await resp.json();
@@ -2623,6 +2637,19 @@ function loadResizeFrame(file) {
     });
   });
 
+  // ── Music mode toggle visual (atr) ──
+  document.querySelectorAll('input[name="atr-music-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      ['atr-music-recreate-lbl','atr-music-none-lbl','atr-music-keep-lbl'].forEach(id => {
+        const lbl = document.getElementById(id);
+        if (!lbl) return;
+        const isActive = lbl.querySelector('input')?.value === radio.value;
+        lbl.style.border     = isActive ? '2px solid var(--accent)' : '1px solid var(--border)';
+        lbl.style.background = isActive ? 'color-mix(in srgb,var(--accent) 10%,transparent)' : '';
+      });
+    });
+  });
+
   // ── Phase 1a: Analyze ──
   if (atrAnalyzeBtn) {
     atrAnalyzeBtn.addEventListener('click', async () => {
@@ -2721,7 +2748,8 @@ function loadResizeFrame(file) {
             elevenlabs_key: elKey, voice_id: atrVoiceSel.value,
             trim_to_audio: document.getElementById('atr-trim-video')?.checked,
             max_tempo: parseFloat(atrMaxTempo?.value || 1.8),
-            dynamic_mode: (document.querySelector('input[name="atr-audio-mode"]:checked')?.value === 'dynamic')
+            dynamic_mode: (document.querySelector('input[name="atr-audio-mode"]:checked')?.value === 'dynamic'),
+            music_mode: document.querySelector('input[name="atr-music-mode"]:checked')?.value || 'recriar'
           })
         });
         const json = await resp.json();
@@ -3338,6 +3366,353 @@ function loadResizeFrame(file) {
     }
   }
 
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// AUTO HOOK
+// ════════════════════════════════════════════════════════════════════
+;(function() {
+  const ahPanel = document.getElementById('tool-autohook');
+  if (!ahPanel) return;
+
+  // ── State ──
+  let ahBodyFile = null;
+  let ahSrcFiles = []; // { file, tempId }
+  let ahHooks = []; // { id, text, approved, clipTempIdx, clipStart, clipEnd, clipReason, resultUrl }
+  let ahNextId = 1;
+
+  // ── Elements ──
+  const ahBodyDrop     = document.getElementById('ah-body-drop');
+  const ahBodyInput    = document.getElementById('ah-body-input');
+  const ahBodyName     = document.getElementById('ah-body-name');
+  const ahSrcDrop      = document.getElementById('ah-src-drop');
+  const ahSrcInput     = document.getElementById('ah-src-input');
+  const ahSrcList      = document.getElementById('ah-src-list');
+  const ahGeminiKey    = document.getElementById('ah-gemini-key');
+  const ahGeminiSave   = document.getElementById('ah-gemini-save-btn');
+  const ahElKey        = document.getElementById('ah-el-key');
+  const ahElSave       = document.getElementById('ah-el-save-btn');
+  const ahLoadVoices   = document.getElementById('ah-load-voices-btn');
+  const ahVoiceSel     = document.getElementById('ah-voice-select');
+  const ahVoicesErr    = document.getElementById('ah-voices-error');
+  const ahDesc         = document.getElementById('ah-description');
+  const ahPrompt       = document.getElementById('ah-hook-prompt');
+  const ahGenBtn       = document.getElementById('ah-gen-hooks-btn');
+  const ahGenProg      = document.getElementById('ah-gen-hooks-progress');
+  const ahGenErr       = document.getElementById('ah-gen-hooks-error');
+  const ahAnalyzeBtn   = document.getElementById('ah-analyze-clips-btn');
+  const ahAnalyzeProg  = document.getElementById('ah-analyze-progress');
+  const ahAnalyzeStat  = document.getElementById('ah-analyze-status');
+  const ahAnalyzeErr   = document.getElementById('ah-analyze-error');
+  const ahHooksList    = document.getElementById('ah-hooks-list');
+  const ahHooksEmpty   = document.getElementById('ah-hooks-empty');
+  const ahHooksCount   = document.getElementById('ah-hooks-count');
+  const ahAddBtn       = document.getElementById('ah-add-hook-btn');
+  const ahComposeBtn   = document.getElementById('ah-compose-btn');
+  const ahComposeProg  = document.getElementById('ah-compose-progress');
+  const ahComposeStat  = document.getElementById('ah-compose-status');
+  const ahComposeErr   = document.getElementById('ah-compose-error');
+  const ahResults      = document.getElementById('ah-results');
+  const ahResultsList  = document.getElementById('ah-results-list');
+
+  // ── Saved keys ──
+  function makeSaveBtnAh(btn, input, key) {
+    if (!btn || !input) return;
+    const saved = localStorage.getItem(key);
+    if (saved) { input.value = saved; btn.textContent = '✅'; }
+    btn.addEventListener('click', () => {
+      const v = input.value.trim();
+      if (v) { localStorage.setItem(key, v); btn.textContent = '✅'; setTimeout(() => btn.textContent = '💾', 2000); }
+      else { localStorage.removeItem(key); }
+    });
+    input.addEventListener('input', () => { if (btn.textContent === '✅') btn.textContent = '💾'; });
+  }
+  makeSaveBtnAh(ahGeminiSave, ahGeminiKey, 'ah_gemini_key');
+  makeSaveBtnAh(ahElSave, ahElKey, 'tr_el_key');
+
+  // ── Load ElevenLabs voices ──
+  if (ahLoadVoices) {
+    ahLoadVoices.addEventListener('click', async () => {
+      const key = ahElKey.value.trim();
+      if (!key) { ahVoicesErr.style.display = 'block'; ahVoicesErr.textContent = 'Informe a chave ElevenLabs.'; return; }
+      ahVoicesErr.style.display = 'none';
+      ahLoadVoices.disabled = true; ahLoadVoices.textContent = '⏳';
+      try {
+        const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.detail?.message || 'Erro ElevenLabs');
+        ahVoiceSel.innerHTML = '<option value="">Selecione uma voz...</option>' +
+          j.voices.map(v => `<option value="${v.voice_id}">${v.name}</option>`).join('');
+        ahVoiceSel.style.display = '';
+        ahUpdateCompose();
+      } catch(e) { ahVoicesErr.style.display = 'block'; ahVoicesErr.textContent = e.message; }
+      finally { ahLoadVoices.disabled = false; ahLoadVoices.textContent = 'Vozes'; }
+    });
+  }
+
+  // ── Body video ──
+  if (ahBodyDrop) {
+    ahBodyDrop.addEventListener('click', () => ahBodyInput.click());
+    ahBodyDrop.addEventListener('dragover', e => e.preventDefault());
+    ahBodyDrop.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.startsWith('video/')) setAhBody(f); });
+  }
+  if (ahBodyInput) ahBodyInput.addEventListener('change', () => { if (ahBodyInput.files[0]) setAhBody(ahBodyInput.files[0]); });
+
+  function setAhBody(f) {
+    ahBodyFile = f;
+    if (ahBodyName) ahBodyName.textContent = f.name.length > 40 ? f.name.slice(0,37)+'...' : f.name;
+    ahBodyDrop.classList.add('has-file');
+    ahUpdateCompose();
+  }
+
+  // ── Source videos ──
+  if (ahSrcDrop) {
+    ahSrcDrop.addEventListener('click', () => ahSrcInput.click());
+    ahSrcDrop.addEventListener('dragover', e => e.preventDefault());
+    ahSrcDrop.addEventListener('drop', e => {
+      e.preventDefault();
+      Array.from(e.dataTransfer.files).forEach(f => { if (f.type.startsWith('video/')) addAhSrc(f); });
+    });
+  }
+  if (ahSrcInput) ahSrcInput.addEventListener('change', () => {
+    Array.from(ahSrcInput.files).forEach(f => addAhSrc(f));
+    ahSrcInput.value = '';
+  });
+
+  function addAhSrc(f) {
+    const idx = ahSrcFiles.length;
+    ahSrcFiles.push({ file: f, tempId: null });
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg-secondary);border-radius:6px;margin-top:4px;font-size:12px';
+    item.dataset.srcIdx = idx;
+    item.innerHTML = `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🎬 ${ahEsc(f.name)}</span><button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0">&times;</button>`;
+    item.querySelector('button').addEventListener('click', () => {
+      ahSrcFiles.splice(parseInt(item.dataset.srcIdx), 1, { file: null, tempId: null });
+      item.remove();
+    });
+    if (ahSrcList) ahSrcList.appendChild(item);
+  }
+
+  // ── Hook helpers ──
+  function ahEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function secToStr(s) {
+    s = Math.round(s || 0);
+    const m = Math.floor(s/60), ss = s%60;
+    return m + ':' + String(ss).padStart(2,'0');
+  }
+
+  function ahRenderHooks() {
+    if (!ahHooksList) return;
+    const active = ahHooks.filter(h => !h._removed);
+    ahHooksEmpty.style.display = active.length ? 'none' : '';
+    ahHooksCount.textContent = '(' + active.length + ')';
+    ahHooksList.innerHTML = '';
+    active.forEach(hook => {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.style.cssText = 'margin-bottom:10px;position:relative';
+      div.dataset.ahId = hook.id;
+      const hasClip = hook.clipTempIdx != null && hook.clipTempIdx >= 0;
+      const srcName = hasClip ? (ahSrcFiles[hook.clipTempIdx]?.file?.name || 'vídeo') : '';
+      div.innerHTML = `
+        ${hasClip ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;padding:5px 8px;background:var(--bg-secondary);border-radius:5px">
+          🎬 <strong>${ahEsc(srcName)}</strong> · ${secToStr(hook.clipStart)} → ${secToStr(hook.clipEnd)}
+          ${hook.clipReason ? ` · <em>${ahEsc(hook.clipReason)}</em>` : ''}
+        </div>` : ''}
+        <textarea class="tool-input ah-hook-text" rows="2" style="width:100%;resize:vertical;margin-bottom:8px">${ahEsc(hook.text)}</textarea>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="ah-approve-btn submit-btn" style="width:auto;padding:6px 14px;font-size:12px;${hook.approved ? '' : 'background:none;border:1px solid var(--accent);color:var(--accent)'}">
+            ${hook.approved ? '✅ Aprovado' : '☐ Aprovar'}
+          </button>
+          <button class="ah-regen-btn submit-btn" style="width:auto;padding:6px 14px;font-size:12px;background:none;border:1px solid var(--border);color:var(--text)">🔄 Regenerar</button>
+          <button class="ah-remove-btn" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;padding:0 4px;line-height:1">&times;</button>
+        </div>
+        ${hook.resultUrl ? `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <video class="result-video" controls style="max-height:180px;margin-bottom:6px" src="${hook.resultUrl}"></video>
+          <a class="download-btn" href="${hook.resultUrl}" download style="width:auto;display:inline-block;padding:8px 16px;font-size:12px">⬇ Baixar</a>
+        </div>` : ''}
+      `;
+      // Wire textarea
+      div.querySelector('.ah-hook-text').addEventListener('input', e => { hook.text = e.target.value; });
+      // Wire approve
+      div.querySelector('.ah-approve-btn').addEventListener('click', () => {
+        hook.approved = !hook.approved;
+        ahRenderHooks();
+        ahUpdateCompose();
+      });
+      // Wire regen
+      div.querySelector('.ah-regen-btn').addEventListener('click', async () => {
+        const key = ahGeminiKey.value.trim();
+        if (!key) { ahGenErr.textContent = 'Informe a Gemini API Key.'; ahGenErr.style.display = 'block'; return; }
+        const btn = div.querySelector('.ah-regen-btn');
+        btn.disabled = true; btn.textContent = '⏳';
+        try {
+          const r = await fetch(API + '/api/autohook/generate-hooks', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: ahDesc.value.trim(), prompt: 'Gere 1 hook alternativo.', gemini_key: key, count: 1 })
+          });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error);
+          if (j.hooks && j.hooks[0]) { hook.text = j.hooks[0]; ahRenderHooks(); }
+        } catch(e) { ahGenErr.textContent = 'Erro: '+e.message; ahGenErr.style.display = 'block'; }
+        finally { btn.disabled = false; btn.textContent = '🔄 Regenerar'; }
+      });
+      // Wire remove
+      div.querySelector('.ah-remove-btn').addEventListener('click', () => {
+        hook._removed = true;
+        ahRenderHooks();
+        ahUpdateCompose();
+      });
+      ahHooksList.appendChild(div);
+    });
+    ahUpdateCompose();
+  }
+
+  function ahAddHook(text, clipTempIdx = null, clipStart = 0, clipEnd = 0, clipReason = '') {
+    ahHooks.push({ id: ahNextId++, text, approved: false, clipTempIdx, clipStart, clipEnd, clipReason, resultUrl: null, _removed: false });
+    ahRenderHooks();
+  }
+
+  function ahUpdateCompose() {
+    const approvedCount = ahHooks.filter(h => h.approved && !h._removed).length;
+    const hasVoice = ahVoiceSel.value;
+    const hasElKey = ahElKey.value.trim();
+    if (ahBodyFile && approvedCount > 0 && hasVoice && hasElKey) {
+      ahComposeBtn.disabled = false;
+      ahComposeBtn.textContent = `🚀 Gerar ${approvedCount} vídeo${approvedCount !== 1 ? 's' : ''}`;
+    } else {
+      ahComposeBtn.disabled = true;
+      if (!ahBodyFile) ahComposeBtn.textContent = 'Selecione o corpo do vídeo';
+      else if (!hasElKey) ahComposeBtn.textContent = 'Informe a chave ElevenLabs';
+      else if (!hasVoice) ahComposeBtn.textContent = 'Selecione uma voz';
+      else ahComposeBtn.textContent = 'Aprove ao menos 1 hook';
+    }
+  }
+
+  // ── Add manual hook ──
+  if (ahAddBtn) {
+    ahAddBtn.addEventListener('click', () => { ahAddHook(''); ahRenderHooks(); });
+  }
+
+  // ── Generate hooks with Gemini ──
+  if (ahGenBtn) {
+    ahGenBtn.addEventListener('click', async () => {
+      const key = ahGeminiKey.value.trim();
+      if (!key) { ahGenErr.textContent = 'Informe a Gemini API Key.'; ahGenErr.style.display = 'block'; return; }
+      ahGenErr.style.display = 'none';
+      ahGenBtn.disabled = true; ahGenBtn.textContent = '⏳';
+      ahGenProg.style.display = '';
+      try {
+        const r = await fetch(API + '/api/autohook/generate-hooks', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: ahDesc.value.trim(),
+            prompt: ahPrompt.value.trim(),
+            gemini_key: key,
+            count: 5
+          })
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        (j.hooks || []).forEach(t => ahAddHook(t));
+        ahRenderHooks();
+      } catch(e) { ahGenErr.textContent = 'Erro: ' + e.message; ahGenErr.style.display = 'block'; }
+      finally { ahGenBtn.disabled = false; ahGenBtn.textContent = '🤖 Gerar hooks'; ahGenProg.style.display = 'none'; }
+    });
+  }
+
+  // ── Analyze source videos with Gemini Vision ──
+  if (ahAnalyzeBtn) {
+    ahAnalyzeBtn.addEventListener('click', async () => {
+      const key = ahGeminiKey.value.trim();
+      const validSrcs = ahSrcFiles.filter(s => s.file);
+      if (!key) { ahAnalyzeErr.textContent = 'Informe a Gemini API Key.'; ahAnalyzeErr.style.display = 'block'; return; }
+      if (!validSrcs.length) { ahAnalyzeErr.textContent = 'Adicione ao menos 1 vídeo fonte.'; ahAnalyzeErr.style.display = 'block'; return; }
+      ahAnalyzeErr.style.display = 'none';
+      ahAnalyzeBtn.disabled = true;
+      ahAnalyzeProg.style.display = '';
+      ahAnalyzeStat.textContent = '⏳ Enviando vídeos e analisando com Gemini…';
+      try {
+        const fd = new FormData();
+        validSrcs.forEach((s, i) => fd.append('videos', s.file));
+        fd.append('gemini_key', key);
+        fd.append('description', ahDesc.value.trim());
+        const r = await fetch(API + '/api/autohook/analyze-clips', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        (j.clips || []).forEach(clip => {
+          // Map clip.videoIdx to the right ahSrcFiles index
+          ahAddHook(clip.hookText || '', clip.videoIdx, clip.start, clip.end, clip.reason || '');
+          // Store tempId in the src file entry
+          if (j.tempIds && j.tempIds[clip.videoIdx]) {
+            ahSrcFiles[clip.videoIdx] = { ...ahSrcFiles[clip.videoIdx], tempId: j.tempIds[clip.videoIdx] };
+          }
+        });
+        ahAnalyzeStat.textContent = `✅ ${j.clips?.length || 0} clipes sugeridos`;
+        ahRenderHooks();
+      } catch(e) { ahAnalyzeErr.textContent = 'Erro: ' + e.message; ahAnalyzeErr.style.display = 'block'; ahAnalyzeStat.textContent = ''; }
+      finally { ahAnalyzeBtn.disabled = false; ahAnalyzeProg.style.display = 'none'; }
+    });
+  }
+
+  // ── Compose all approved hooks ──
+  if (ahComposeBtn) {
+    ahComposeBtn.addEventListener('click', async () => {
+      const approved = ahHooks.filter(h => h.approved && !h._removed);
+      if (!approved.length || !ahBodyFile) return;
+      const elKey   = ahElKey.value.trim();
+      const voiceId = ahVoiceSel.value;
+      ahComposeBtn.disabled = true;
+      ahComposeStat.textContent = `⏳ Gerando vídeos (0/${approved.length})…`;
+      ahComposeErr.style.display = 'none';
+      ahComposeProg.style.display = '';
+      ahResults.style.display = 'none';
+      ahResultsList.innerHTML = '';
+      let doneCount = 0;
+      for (const hook of approved) {
+        try {
+          const fd = new FormData();
+          fd.append('body_video', ahBodyFile);
+          fd.append('hook_text', hook.text);
+          fd.append('el_key', elKey);
+          fd.append('voice_id', voiceId);
+          if (hook.clipTempIdx != null && hook.clipTempIdx >= 0) {
+            const srcEntry = ahSrcFiles[hook.clipTempIdx];
+            if (srcEntry?.file) fd.append('clip_video', srcEntry.file);
+            if (srcEntry?.tempId) fd.append('clip_temp_id', srcEntry.tempId);
+            fd.append('clip_start', String(hook.clipStart || 0));
+            fd.append('clip_end',   String(hook.clipEnd   || 0));
+          }
+          const r = await fetch(API + '/api/autohook/compose', { method: 'POST', body: fd });
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error || 'Erro ao gerar vídeo');
+          hook.resultUrl = API + j.url;
+          doneCount++;
+          ahComposeStat.textContent = `⏳ Gerando vídeos (${doneCount}/${approved.length})…`;
+          // Show result
+          const resDiv = document.createElement('div');
+          resDiv.className = 'card';
+          resDiv.style.marginBottom = '10px';
+          resDiv.innerHTML = `<div style="font-size:13px;font-weight:600;margin-bottom:8px">Hook ${doneCount}: "${ahEsc(hook.text.slice(0,60))}${hook.text.length>60?'…':''}"</div>
+            <video class="result-video" controls style="margin-bottom:6px" src="${hook.resultUrl}"></video>
+            <a class="download-btn" href="${hook.resultUrl}" download style="width:auto;display:inline-block;padding:8px 16px;font-size:12px">⬇ Baixar</a>`;
+          ahResultsList.appendChild(resDiv);
+          ahResults.style.display = '';
+        } catch(e) {
+          ahComposeErr.textContent = `Erro no hook "${hook.text.slice(0,40)}": ${e.message}`;
+          ahComposeErr.style.display = 'block';
+        }
+      }
+      ahComposeStat.textContent = doneCount === approved.length ? `✅ ${doneCount} vídeo${doneCount!==1?'s':''} gerado${doneCount!==1?'s':''}!` : `⚠️ ${doneCount}/${approved.length} gerados.`;
+      ahComposeProg.style.display = 'none';
+      ahComposeBtn.disabled = false;
+      ahRenderHooks();
+    });
+  }
+
+  ahRenderHooks();
+  ahUpdateCompose();
 })();
 
 function drawResizeCrop() {

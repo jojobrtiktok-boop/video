@@ -1953,10 +1953,11 @@ async function elevenLabsDeleteVoice(voiceId, elKey) {
 
 // Paso 2: gera vídeo traduzido com os segmentos aprovados (editados pelo usuário)
 app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req, res) => {
-  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync, trim_to_audio, max_tempo, dynamic_mode } = req.body;
+  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync, trim_to_audio, max_tempo, dynamic_mode, music_mode = 'recriar' } = req.body;
   if (!tempId || !segments || !elevenlabs_key || !voice_id)
     return res.status(400).json({ error: 'tempId, segments, elevenlabs_key e voice_id são obrigatórios' });
   const maxTempoRate = Math.max(1.0, Math.min(2.5, parseFloat(max_tempo) || 1.8));
+  const skipDemucs = (music_mode === 'sem_musica' || music_mode === 'manter');
 
   const metaPath = path.join(UPLOAD_DIR, tempId + '.meta.json');
   if (!fs.existsSync(metaPath)) return res.status(404).json({ error: 'Sessão expirada, faça o upload novamente.' });
@@ -1980,25 +1981,23 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
       exec(`"${FFMPEG}" -y -i "${input}" -vn -ar 44100 -ac 2 "${audioRaw}"`, (e, _, se) => e ? reject(new Error(se||e.message)) : resolve());
     });
 
-    // 2. Separar vocais do fundo com Demucs
+    // 2. Separar vocais do fundo com Demucs (apenas se music_mode=recriar)
     const demucsOut = input + '_demucs';
-    const sepScript = path.join(__dirname, 'separate_vocals.py');
-    const sepOut = await new Promise((resolve, reject) => {
-      exec(`"${PYTHON}" "${sepScript}" "${audioRaw}" "${demucsOut}"`, { timeout: 10 * 60 * 1000 }, (e, out, se) => {
-        if (e) return reject(new Error('Demucs falhou: ' + (se || e.message)));
-        resolve(out.trim());
-      });
-    });
-
     let noVocalsPath = null;
     let vocalsPath = null;
-    for (const line of sepOut.split('\n')) {
-      if (line.startsWith('no_vocals:')) noVocalsPath = line.slice(10).trim();
-      if (line.startsWith('vocals:')) vocalsPath = line.slice(7).trim();
-    }
-    if (!noVocalsPath || !fs.existsSync(noVocalsPath)) {
-      // Fallback: sem separação, usa áudio original com volume reduzido
-      noVocalsPath = null;
+    if (!skipDemucs) {
+      const sepScript = path.join(__dirname, 'separate_vocals.py');
+      const sepOut = await new Promise((resolve, reject) => {
+        exec(`"${PYTHON}" "${sepScript}" "${audioRaw}" "${demucsOut}"`, { timeout: 10 * 60 * 1000 }, (e, out, se) => {
+          if (e) return reject(new Error('Demucs falhou: ' + (se || e.message)));
+          resolve(out.trim());
+        });
+      });
+      for (const line of sepOut.split('\n')) {
+        if (line.startsWith('no_vocals:')) noVocalsPath = line.slice(10).trim();
+        if (line.startsWith('vocals:')) vocalsPath = line.slice(7).trim();
+      }
+      if (!noVocalsPath || !fs.existsSync(noVocalsPath)) noVocalsPath = null;
     }
 
     // 3. Clonar voz (se solicitado) / definir voice_id efetivo
@@ -2155,16 +2154,30 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
       translatedVoice = mixBase;
     }
 
-    // 6. Mixar voz traduzida com fundo original
-    // Fundo a 60% para dar espaço à voz e evitar estouro
+    // 6. Mixar voz traduzida com fundo conforme music_mode
+    // recriar: voz nova + trilha instrumental (demucs) a 60%
+    // manter:  voz nova + áudio original completo a 50%
+    // sem_musica: apenas voz nova
     const finalAudio = input + '_final_audio.wav';
-    if (noVocalsPath) {
+    if (music_mode === 'manter') {
+      // Mix TTS com áudio original completo (sem demucs)
       await new Promise((resolve, reject) => {
-        const cmd = `"${FFMPEG}" -y -i "${noVocalsPath}" -i "${translatedVoice}" -filter_complex "[0]volume=0.6[bg];[bg][1]amix=inputs=2:duration=longest,volume=2,alimiter=limit=0.95:level=false" "${finalAudio}"`;
+        const cmd = `"${FFMPEG}" -y -i "${audioRaw}" -i "${translatedVoice}" -filter_complex "[0]volume=0.5[bg];[bg][1]amix=inputs=2:duration=longest,volume=2,alimiter=limit=0.95:level=false" "${finalAudio}"`;
         exec(cmd, (e,_,se) => e ? reject(new Error(se)) : resolve());
       });
-    } else {
+    } else if (music_mode === 'sem_musica') {
+      // Apenas a voz traduzida, sem fundo
       fs.copyFileSync(translatedVoice, finalAudio);
+    } else {
+      // recriar: usa trilha instrumental do demucs (ou só voz se demucs falhou)
+      if (noVocalsPath) {
+        await new Promise((resolve, reject) => {
+          const cmd = `"${FFMPEG}" -y -i "${noVocalsPath}" -i "${translatedVoice}" -filter_complex "[0]volume=0.6[bg];[bg][1]amix=inputs=2:duration=longest,volume=2,alimiter=limit=0.95:level=false" "${finalAudio}"`;
+          exec(cmd, (e,_,se) => e ? reject(new Error(se)) : resolve());
+        });
+      } else {
+        fs.copyFileSync(translatedVoice, finalAudio);
+      }
     }
 
     // 7. Substituir áudio no vídeo
@@ -2226,6 +2239,265 @@ app.post('/api/translate/text', express.json({ limit: '20kb' }), async (req, res
     return res.json({ translated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// AUTO HOOK
+// ════════════════════════════════════════════════════════════════════
+
+// Gemini text generation helper
+function geminiGenerateText(apiKey, prompt) {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }));
+    const reqPath = `/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const req2 = https.request({
+      hostname: 'generativelanguage.googleapis.com', path: reqPath, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': body.length }
+    }, r => {
+      let data = ''; r.on('data', c => data += c);
+      r.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.error) return reject(new Error(json.error.message || JSON.stringify(json.error)));
+          const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) return reject(new Error('Resposta vazia do Gemini'));
+          resolve(text.trim());
+        } catch(e) { reject(new Error('Parse error: ' + e.message + ' body: ' + data.slice(0,200))); }
+      });
+    });
+    req2.on('error', reject); req2.write(body); req2.end();
+  });
+}
+
+// Generate hook texts with Gemini
+app.post('/api/autohook/generate-hooks', express.json({ limit: '50kb' }), async (req, res) => {
+  const { description = '', prompt = '', gemini_key, count = 5 } = req.body;
+  if (!gemini_key) return res.status(400).json({ error: 'gemini_key obrigatório' });
+  const cnt = Math.min(20, Math.max(1, parseInt(count) || 5));
+  const fullPrompt = [
+    description ? `Produto/contexto: ${description}` : '',
+    prompt || `Gere ${cnt} hooks curtos e impactantes para redes sociais sobre esse produto.`,
+    '',
+    `Retorne APENAS os ${cnt} hooks, um por linha, numerados (1. texto). Sem comentários adicionais.`
+  ].filter(Boolean).join('\n');
+  try {
+    const text = await geminiGenerateText(gemini_key, fullPrompt);
+    const hooks = text.split('\n')
+      .map(l => l.replace(/^\s*\d+[\.\)]\s*/, '').trim())
+      .filter(l => l.length > 3)
+      .slice(0, cnt);
+    res.json({ hooks });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Analyze source videos with Gemini Vision — extract frames + identify hook clips
+app.post('/api/autohook/analyze-clips', upload.array('videos', 5), async (req, res) => {
+  const { gemini_key, description = '' } = req.body;
+  const files = req.files || [];
+  if (!gemini_key) return res.status(400).json({ error: 'gemini_key obrigatório' });
+  if (!files.length) return res.status(400).json({ error: 'Envie ao menos 1 vídeo' });
+
+  const clips = [];
+  const tempIds = [];
+
+  for (let fi = 0; fi < files.length; fi++) {
+    const videoPath = files[fi].path;
+    const framesDir = videoPath + '_ahframes';
+
+    // Assign tempId (use existing filename as ID)
+    const tempId = path.basename(videoPath);
+    tempIds.push(tempId);
+    scheduleDelete(videoPath, 60 * 60 * 1000); // keep for 1 hour for clip cutting
+
+    try {
+      // Get video duration
+      const duration = await new Promise(resolve => {
+        exec(`"${FFPROBE}" -v quiet -print_format json -show_entries format=duration "${videoPath}"`, (e, out) => {
+          try { resolve(parseFloat(JSON.parse(out).format.duration) || 30); } catch { resolve(30); }
+        });
+      });
+
+      // Extract ~10 frames spread across the video
+      fs.mkdirSync(framesDir, { recursive: true });
+      const targetFrames = 10;
+      const fpsFrac = (targetFrames / duration).toFixed(4);
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${videoPath}" -vf "fps=${fpsFrac},scale=480:-1" "${framesDir}/frame_%04d.jpg"`,
+          { timeout: 30000 }, (e, _, se) => e ? reject(new Error(se || e.message)) : resolve());
+      });
+
+      const frameFiles = fs.readdirSync(framesDir).filter(f => f.endsWith('.jpg')).sort().slice(0, 12);
+      if (!frameFiles.length) { tempIds[fi] = null; continue; }
+
+      const frameInterval = duration / (frameFiles.length + 1);
+      const parts = [{
+        text: `${description ? 'Contexto: ' + description + '\n\n' : ''}Analise esses ${frameFiles.length} frames de um vídeo de ${duration.toFixed(0)}s (1 frame a cada ~${frameInterval.toFixed(1)}s).
+Identifique 2-4 momentos mais impactantes para usar como HOOK (abertura) em redes sociais.
+Para cada momento, responda EXATAMENTE neste formato (uma linha por momento):
+START:Xs END:Ys TEXTO:"hook sugerido aqui" MOTIVO:"por que é impactante"
+Use timestamps estimados: frame N ≈ N × ${frameInterval.toFixed(1)}s. Apenas os formatos acima, sem texto extra.`
+      }];
+      for (const fname of frameFiles) {
+        const data = fs.readFileSync(path.join(framesDir, fname));
+        parts.push({ inline_data: { mime_type: 'image/jpeg', data: data.toString('base64') } });
+      }
+
+      const responseText = await new Promise((resolve, reject) => {
+        const body2 = Buffer.from(JSON.stringify({ contents: [{ parts }] }));
+        const reqPath2 = `/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(gemini_key)}`;
+        const req3 = https.request({
+          hostname: 'generativelanguage.googleapis.com', path: reqPath2, method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': body2.length }
+        }, r2 => {
+          let d = ''; r2.on('data', c => d += c);
+          r2.on('end', () => {
+            try {
+              const j = JSON.parse(d);
+              if (j.error) return reject(new Error(j.error.message));
+              resolve(j.candidates?.[0]?.content?.parts?.[0]?.text || '');
+            } catch(e) { reject(new Error('Parse: ' + e.message)); }
+          });
+        });
+        req3.on('error', reject); req3.write(body2); req3.end();
+      });
+
+      for (const line of responseText.split('\n')) {
+        const sm = line.match(/START:\s*(\d+(?:\.\d+)?)\s*s?/i);
+        const em = line.match(/END:\s*(\d+(?:\.\d+)?)\s*s?/i);
+        const tm = line.match(/TEXTO:"([^"]+)"/i);
+        const mm = line.match(/MOTIVO:"([^"]+)"/i);
+        if (sm && em) {
+          const start = parseFloat(sm[1]), end = parseFloat(em[1]);
+          if (end > start && start >= 0 && end <= duration + 2) {
+            clips.push({ videoIdx: fi, start: Math.max(0, start), end: Math.min(duration, end), hookText: tm?.[1] || '', reason: mm?.[1] || '' });
+          }
+        }
+      }
+    } catch(e) {
+      console.error('analyze-clips error for file', fi, ':', e.message);
+    } finally {
+      try { fs.rmSync(framesDir, { recursive: true, force: true }); } catch {}
+    }
+  }
+
+  res.json({ clips, tempIds });
+});
+
+// Compose final video: [hook clip + TTS voice] + [body video]
+app.post('/api/autohook/compose', upload.fields([
+  { name: 'body_video', maxCount: 1 },
+  { name: 'clip_video', maxCount: 1 }
+]), async (req, res) => {
+  const { hook_text, el_key, voice_id, clip_start, clip_end, clip_temp_id } = req.body;
+  const bodyFile = req.files?.body_video?.[0];
+  const clipFile  = req.files?.clip_video?.[0];
+
+  if (!bodyFile) return res.status(400).json({ error: 'body_video obrigatório' });
+  if (!hook_text) return res.status(400).json({ error: 'hook_text obrigatório' });
+  if (!el_key || !voice_id) return res.status(400).json({ error: 'el_key e voice_id obrigatórios' });
+
+  const workDir = bodyFile.path + '_ahwork';
+  fs.mkdirSync(workDir, { recursive: true });
+
+  try {
+    // Step 1: ElevenLabs TTS for hook text
+    const ttsPath = path.join(workDir, 'hook_tts.mp3');
+    const ttsBody = JSON.stringify({ text: hook_text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } });
+    const ttsData = Buffer.from(ttsBody);
+    await new Promise((resolve, reject) => {
+      const opts = {
+        hostname: 'api.elevenlabs.io', port: 443,
+        path: `/v1/text-to-speech/${voice_id}`,
+        method: 'POST',
+        headers: { 'xi-api-key': el_key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg', 'Content-Length': ttsData.length }
+      };
+      const r = https.request(opts, resp => {
+        const chunks = []; resp.on('data', c => chunks.push(c));
+        resp.on('end', () => { fs.writeFileSync(ttsPath, Buffer.concat(chunks)); resolve(); });
+      });
+      r.on('error', reject); r.write(ttsData); r.end();
+    });
+
+    // Step 2: Determine clip source
+    let rawClipPath = null;
+    const hasClipFile = clipFile?.path;
+    const hasTempClip = clip_temp_id && clip_start != null && clip_end != null;
+
+    if (hasClipFile) {
+      rawClipPath = clipFile.path;
+    } else if (hasTempClip) {
+      const tempPath = path.join(UPLOAD_DIR, clip_temp_id);
+      if (fs.existsSync(tempPath)) rawClipPath = tempPath;
+    }
+
+    // Step 3: Cut and prepare hook video segment
+    let hookVideoPath;
+    if (rawClipPath) {
+      const cutPath = path.join(workDir, 'clip_cut.mp4');
+      const startSec = parseFloat(clip_start) || 0;
+      const endSec   = parseFloat(clip_end)   || (startSec + 5);
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -ss ${startSec.toFixed(3)} -to ${endSec.toFixed(3)} -i "${rawClipPath}" -c:v libx264 -preset fast -c:a aac "${cutPath}"`,
+          { timeout: 60000 }, (e,_,se) => e ? reject(new Error(se||e.message)) : resolve());
+      });
+      // Mix TTS over the clip (replace clip audio with TTS)
+      const hookWithVoicePath = path.join(workDir, 'hook_voiced.mp4');
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${cutPath}" -i "${ttsPath}" -c:v copy -map 0:v:0 -map 1:a:0 -shortest "${hookWithVoicePath}"`,
+          { timeout: 60000 }, (e,_,se) => e ? reject(new Error(se||e.message)) : resolve());
+      });
+      hookVideoPath = hookWithVoicePath;
+    } else {
+      // No clip: create a black screen video for the TTS duration
+      const ttsDur = await new Promise(resolve => {
+        exec(`"${FFPROBE}" -v quiet -print_format json -show_entries format=duration "${ttsPath}"`, (e, out) => {
+          try { resolve(parseFloat(JSON.parse(out).format.duration) || 3); } catch { resolve(3); }
+        });
+      });
+      const blackPath = path.join(workDir, 'hook_black.mp4');
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -f lavfi -i "color=c=black:s=1080x1920:r=30" -i "${ttsPath}" -c:v libx264 -preset fast -c:a aac -t ${(ttsDur+0.1).toFixed(3)} "${blackPath}"`,
+          { timeout: 60000 }, (e,_,se) => e ? reject(new Error(se||e.message)) : resolve());
+      });
+      hookVideoPath = blackPath;
+    }
+
+    // Step 4: Normalize both videos to same resolution/fps for concat
+    const hookNorm = path.join(workDir, 'hook_norm.mp4');
+    const bodyNorm = path.join(workDir, 'body_norm.mp4');
+    const normFilter = 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30';
+    await Promise.all([
+      new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${hookVideoPath}" -vf "${normFilter}" -c:v libx264 -preset fast -c:a aac "${hookNorm}"`,
+          { timeout: 120000 }, (e,_,se) => e ? reject(new Error('norm hook: '+(se||e.message))) : resolve());
+      }),
+      new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${bodyFile.path}" -vf "${normFilter}" -c:v libx264 -preset fast -c:a aac "${bodyNorm}"`,
+          { timeout: 120000 }, (e,_,se) => e ? reject(new Error('norm body: '+(se||e.message))) : resolve());
+      })
+    ]);
+
+    // Step 5: Concatenate hook + body
+    const concatList = path.join(workDir, 'concat.txt');
+    fs.writeFileSync(concatList, `file '${hookNorm}'\nfile '${bodyNorm}'\n`);
+    const outputName = 'autohook-' + Date.now() + '.mp4';
+    const output = path.join(UPLOAD_DIR, outputName);
+    await new Promise((resolve, reject) => {
+      exec(`"${FFMPEG}" -y -f concat -safe 0 -i "${concatList}" -c copy "${output}"`,
+        { timeout: 180000 }, (e,_,se) => e ? reject(new Error(se||e.message)) : resolve());
+    });
+
+    // Cleanup
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    scheduleDelete(output, 60 * 60 * 1000);
+    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'autohook', label: '🪝 Auto Hook', url: `/uploads/${outputName}`, createdAt: Date.now(), expiresAt: Date.now() + 60*60*1000, friendlyName: 'auto-hook.mp4' };
+    addToLibrary(libEntry);
+    res.json({ url: `/uploads/${outputName}`, id: libEntry.id });
+
+  } catch(e) {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    res.status(500).json({ error: e.message });
   }
 });
 

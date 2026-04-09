@@ -29,7 +29,25 @@
       "Bash(python scripts/search.py \"dark glassmorphism neon futuristic\" --domain style -n 3)",
       "Bash(python scripts/search.py \"video editor creative dark\" --domain color -n 2)",
       "Bash(\"H:\\\\projeto novo\\\\frontend\\\\app.js\")",
-      "Bash(node -e \"require\\(''''./backend/index.js''''\\)\")"
+      "Bash(node -e \"require\\(''''./backend/index.js''''\\)\")",
+      "Bash(wc -l *.html *.js)",
+      "WebFetch(domain:www.remotion.dev)",
+      "WebFetch(domain:salesblink.io)",
+      "WebFetch(domain:www.opus.pro)",
+      "WebFetch(domain:sovran.ai)",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(node:*)",
+      "Bash(npx skills:*)",
+      "Bash(echo \"FFMPEG_BIN: $FFMPEG_BIN\")",
+      "Bash(/tmp/test_ffmpeg.js:*)",
+      "Bash(curl -s http://localhost:3000/api/health)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(netstat -ano)",
+      "Bash(npx vite:*)",
+      "Bash(npm run:*)",
+      "Bash(ssh:*)",
+      "Bash(grep -v \"//\")"
     ]
   }
 }

@@ -873,10 +873,7 @@
             <span class="nav-item-title">Combinador</span>
             <span class="nav-item-desc">Hooks × corpos em massa</span>
           </button>
-          <button class="nav-item" data-tool="lipsync">
-            <span class="nav-item-title">Lipsync</span>
-            <span class="nav-item-desc">Sincroniza lábios com áudio</span>
-          </button>
+
           <button class="nav-item" data-tool="translate">
             <span class="nav-item-title">Traduzir Vídeo</span>
             <span class="nav-item-desc">Voz + fundo preservado</span>
@@ -884,6 +881,10 @@
           <button class="nav-item" data-tool="autotr">
             <span class="nav-item-title" style="color:var(--accent)">🤖 Auto Tradutor</span>
             <span class="nav-item-desc">Tradução → Marca d'Água → Legendas</span>
+          </button>
+          <button class="nav-item" data-tool="autohook">
+            <span class="nav-item-title" style="color:var(--accent)">🪝 Auto Hook</span>
+            <span class="nav-item-desc">Hooks IA + voz + edição automática</span>
           </button>
           <a href="/editor/" class="nav-item" style="text-decoration:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;">
             <span class="nav-item-title" style="color:var(--accent);display:flex;align-items:center;gap:5px;">
@@ -1339,51 +1340,7 @@
       </div>
     </div>
 
-    <!-- LIPSYNC -->
-    <div id="tool-lipsync" class="tool-panel" style="display:none">
-      <div class="tool-header">
-        <h1 class="tool-title">Lipsync</h1>
-        <p class="tool-subtitle">Sincronize o movimento dos lábios com um novo áudio</p>
-      </div>
-      <div class="lip-grid">
-        <div class="card">
-          <div class="section-label">📹 Vídeo</div>
-          <label for="lip-video-input" id="lip-drop-zone" class="drop-zone" tabindex="0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
-            <p><strong>Selecione o vídeo</strong></p>
-            <div id="lip-file-name" class="dz-filename"></div>
-          </label>
-          <input type="file" id="lip-video-input" accept="video/*" class="hidden-input" />
-        </div>
-        <div class="card">
-          <div class="section-label">🎵 Áudio</div>
-          <label for="lip-audio-input" id="lip-audio-drop-zone" class="drop-zone" tabindex="0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53L6.75 15.75H4.5A2.25 2.25 0 012.25 13.5v-3A2.25 2.25 0 014.5 8.25h2.25z"/></svg>
-            <p><strong>Selecione o áudio</strong></p>
-            <div id="lip-audio-name" class="dz-filename"></div>
-          </label>
-          <input type="file" id="lip-audio-input" accept="audio/*" class="hidden-input" />
-        </div>
-      </div>
-      <div class="card">
-        <div class="section-label">Tecnologia</div>
-        <div class="tech-info">
-          <div class="tech-option active-tech">
-            <span>🎯</span>
-            <div><strong>Wav2Lip</strong><small>Alta precisão no movimento dos lábios</small></div>
-          </div>
-        </div>
-        <button id="lip-submit-btn" class="submit-btn" disabled>Selecione o vídeo e o áudio</button>
-        <div id="lip-progress-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
-        <div id="lip-status" class="status-text"></div>
-        <div id="lip-error-msg" class="error-msg"></div>
-      </div>
-      <div id="lip-result-card" class="result-card" style="display:none">
-        <h3>✓ Lipsync concluído!</h3>
-        <video id="lip-result-video" class="result-video" controls></video><br/>
-        <a id="lip-download-btn" class="download-btn" download>⬇ Baixar vídeo sincronizado</a>
-      </div>
-    </div>
+
 
 
     <!-- TRADUÇÃO DE VÍDEO -->
@@ -1512,6 +1469,26 @@
                 <input type="radio" name="tr-audio-mode" value="dynamic" style="display:none">
                 <span style="font-size:13px;font-weight:600">⚡ Dinâmico</span>
                 <span style="font-size:11px;color:var(--text-muted)">Segmentos um após o outro, sem pausas — corte dinâmico.</span>
+              </label>
+            </div>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🎵 Música de fundo</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <label id="tr-music-recreate-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:2px solid var(--accent);border-radius:8px;cursor:pointer;background:color-mix(in srgb,var(--accent) 10%,transparent)">
+                <input type="radio" name="tr-music-mode" value="recriar" checked style="display:none">
+                <span style="font-size:13px;font-weight:600">🎵 Recriar música</span>
+                <span style="font-size:11px;color:var(--text-muted)">IA remove a voz original, mantém só a trilha.</span>
+              </label>
+              <label id="tr-music-none-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+                <input type="radio" name="tr-music-mode" value="sem_musica" style="display:none">
+                <span style="font-size:13px;font-weight:600">🔇 Sem música</span>
+                <span style="font-size:11px;color:var(--text-muted)">Apenas a voz traduzida, sem fundo musical.</span>
+              </label>
+              <label id="tr-music-keep-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+                <input type="radio" name="tr-music-mode" value="manter" style="display:none">
+                <span style="font-size:13px;font-weight:600">🎶 Manter música</span>
+                <span style="font-size:11px;color:var(--text-muted)">Áudio original completo como fundo misto.</span>
               </label>
             </div>
           </div>
@@ -1667,6 +1644,26 @@
                 <input type="radio" name="atr-audio-mode" value="dynamic" style="display:none">
                 <span style="font-size:13px;font-weight:600">⚡ Dinâmico</span>
                 <span style="font-size:11px;color:var(--text-muted)">Segmentos um após o outro, sem pausas — edição dinâmica.</span>
+              </label>
+            </div>
+          </div>
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🎵 Música de fundo</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <label id="atr-music-recreate-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:2px solid var(--accent);border-radius:8px;cursor:pointer;background:color-mix(in srgb,var(--accent) 10%,transparent)">
+                <input type="radio" name="atr-music-mode" value="recriar" checked style="display:none">
+                <span style="font-size:13px;font-weight:600">🎵 Recriar música</span>
+                <span style="font-size:11px;color:var(--text-muted)">IA remove a voz original, mantém só a trilha.</span>
+              </label>
+              <label id="atr-music-none-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+                <input type="radio" name="atr-music-mode" value="sem_musica" style="display:none">
+                <span style="font-size:13px;font-weight:600">🔇 Sem música</span>
+                <span style="font-size:11px;color:var(--text-muted)">Apenas a voz traduzida, sem fundo musical.</span>
+              </label>
+              <label id="atr-music-keep-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+                <input type="radio" name="atr-music-mode" value="manter" style="display:none">
+                <span style="font-size:13px;font-weight:600">🎶 Manter música</span>
+                <span style="font-size:11px;color:var(--text-muted)">Áudio original completo como fundo misto.</span>
               </label>
             </div>
           </div>
@@ -1862,6 +1859,100 @@
           <a id="atr-download-btn" class="download-btn" download>⬇ Baixar vídeo final</a>
           <button id="atr-restart-btn" class="submit-btn" style="margin-top:12px;background:none;border:1px solid var(--border);color:var(--text);display:block;width:100%">🔁 Novo pipeline</button>
         </div>
+      </div>
+    </div>
+
+    <!-- AUTO HOOK -->
+    <div id="tool-autohook" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🪝 Auto Hook Creator</h1>
+        <p class="tool-subtitle">Crie hooks irresistíveis com Gemini IA, voz ElevenLabs e edição automática</p>
+      </div>
+      <!-- Setup -->
+      <div class="card">
+        <div class="section-label">📝 Contexto do produto</div>
+        <textarea id="ah-description" class="tool-input" rows="3" placeholder="Descreva o produto, público-alvo, benefícios... (Gemini usará isso para gerar e avaliar hooks)" style="resize:vertical;width:100%;height:76px;margin-bottom:12px"></textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">🔑 Gemini API Key <span style="font-size:10px">(Google AI Studio)</span></div>
+            <div style="display:flex;gap:6px">
+              <input id="ah-gemini-key" type="password" class="tool-input" placeholder="AIza..." style="flex:1" />
+              <button id="ah-gemini-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">🔊 ElevenLabs</div>
+            <div style="display:flex;gap:6px">
+              <input id="ah-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+              <button id="ah-el-save-btn" class="submit-btn" style="width:auto;padding:0 8px;font-size:12px">💾</button>
+              <button id="ah-load-voices-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">Vozes</button>
+            </div>
+            <select id="ah-voice-select" class="tool-select" style="width:100%;margin-top:6px;display:none">
+              <option value="">Selecione uma voz...</option>
+            </select>
+            <div id="ah-voices-error" class="error-msg"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Upload videos -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card">
+          <div class="section-label">📹 Corpo do vídeo</div>
+          <label id="ah-body-drop" class="drop-zone" style="min-height:80px" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:28px;height:28px;margin-bottom:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z"/></svg>
+            <p><strong>Vídeo corpo</strong></p>
+            <div id="ah-body-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="ah-body-input" accept="video/*" class="hidden-input" />
+        </div>
+        <div class="card">
+          <div class="section-label">🎬 Vídeos fonte dos hooks</div>
+          <label id="ah-src-drop" class="drop-zone" style="min-height:80px" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:28px;height:28px;margin-bottom:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            <p><strong>Adicionar vídeos fonte</strong></p>
+            <p style="font-size:11px;color:var(--text-muted);margin:0">Gemini analisará e sugerirá clipes para hook</p>
+          </label>
+          <input type="file" id="ah-src-input" accept="video/*" multiple class="hidden-input" />
+          <div id="ah-src-list" style="margin-top:8px"></div>
+        </div>
+      </div>
+      <!-- Hook Generator -->
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px">🤖 Gerador de Hooks com Gemini</div>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <textarea id="ah-hook-prompt" class="tool-input" rows="2" placeholder="Ex: Gere 5 hooks impactantes para TikTok para chamar atenção nos primeiros 3 segundos..." style="flex:1;resize:vertical;min-height:52px"></textarea>
+          <button id="ah-gen-hooks-btn" class="submit-btn" style="width:auto;padding:0 16px;white-space:nowrap;align-self:stretch">🤖 Gerar hooks</button>
+        </div>
+        <div id="ah-gen-hooks-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="ah-gen-hooks-error" class="error-msg"></div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+          <button id="ah-analyze-clips-btn" class="submit-btn" style="background:none;border:1px solid var(--border);color:var(--text);width:100%;margin-bottom:6px">🔍 Analisar vídeos e sugerir clipes com Gemini Vision</button>
+          <div id="ah-analyze-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+          <div id="ah-analyze-status" class="status-text"></div>
+          <div id="ah-analyze-error" class="error-msg"></div>
+        </div>
+      </div>
+      <!-- Hook list -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="section-label" style="margin-bottom:0">🪝 Hooks <span id="ah-hooks-count" style="font-size:12px;color:var(--text-muted);font-weight:400">(0)</span></div>
+        </div>
+        <div id="ah-hooks-list"></div>
+        <div id="ah-hooks-empty" style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">Nenhum hook adicionado ainda.<br>Use o Gemini acima ou adicione manualmente.</div>
+        <button id="ah-add-hook-btn" style="width:100%;padding:10px;border:2px dashed var(--border);background:none;color:var(--text-muted);border-radius:8px;cursor:pointer;font-size:13px;margin-top:8px">+ Adicionar hook manualmente</button>
+      </div>
+      <!-- Compose -->
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px">🚀 Gerar vídeos</div>
+        <div id="ah-compose-status" class="status-text"></div>
+        <div id="ah-compose-error" class="error-msg"></div>
+        <button id="ah-compose-btn" class="submit-btn" disabled>Selecione o corpo e configure os hooks</button>
+        <div id="ah-compose-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+      </div>
+      <!-- Results -->
+      <div id="ah-results" style="display:none">
+        <div class="section-label" style="margin-bottom:10px">✅ Vídeos gerados</div>
+        <div id="ah-results-list"></div>
       </div>
     </div>
 

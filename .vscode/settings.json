@@ -1,0 +1,38 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "npm run build": true,
+        "Test-Path": true,
+        "ForEach-Object": true,
+        "/^node -e \"\nconst fs = require\\('fs'\\);\nconst fixes = \\[\n  \\['Ã\\\\u00e3o','ão'\\],\\['Ã\\\\u00e3','ã'\\],\\['Ã\\\\u00a1','á'\\],\\['Ã\\\\u00a7Ã\\\\u00b5es','ções'\\],\n  \\['Ã\\\\u00a7Ã\\\\u00a3o','ção'\\],\\['Ã\\\\u00a7','ç'\\],\\['Ã\\\\u00a9','é'\\],\\['Ã\\\\u00ad','í'\\],\n  \\['Ã\\\\u00b3','ó'\\],\\['Ã\\\\u00ba','ú'\\],\\['Ã\\\\u00a0','à'\\],\\['Ã\\\\u00a2','â'\\],\n  \\['Ã\\\\u00b4','ô'\\],\\['Ã\\\\u00b5es','ões'\\],\\['Ã\\\\u00b5','õ'\\],\n  \\['â\\\\u0080\\\\u0093','–'\\],\\['â\\\\u009c\\\\u0093','✓'\\],\n  \\['ð\\\\u009f\\\\u0091\\\\u0091','👑'\\],\\['ð\\\\u009f\\\\u0093\\\\u00a6','📦'\\],\\['ð\\\\u009f\\\\u0092\\\\u00b0','💰'\\],\n  \\['ð\\\\u009f\\\\u0094\\\\u00b4','🔴'\\],\\['ð\\\\u009f\\\\u008d\\\\u00bd','🍽'\\],\\['ð\\\\u009f\\\\u0092\\\\u00a1','💡'\\],\n  \\['â\\\\u0094\\\\u0080','─'\\]\n\\];\nconst files = \\[\n  'src/pages/Configuracoes\\.jsx',\n  'src/pages/AdminPanel\\.jsx',\n  'src/components/NotificationManager\\.jsx'\n\\];\nfiles\\.forEach\\(f => \\{\n  let c = fs\\.readFileSync\\(f, 'utf8'\\);\n  fixes\\.forEach\\(\\(\\[bad, good\\]\\) => \\{ c = c\\.split\\(bad\\)\\.join\\(good\\); \\}\\);\n  fs\\.writeFileSync\\(f, c, 'utf8'\\);\n  console\\.log\\('fixed:', f\\);\n\\}\\);\n\" 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd \"z:\\\\projetos claude\\\\restaurante-dashboard\"; node -e \"const fs=require\\('fs'\\);const c=fs\\.readFileSync\\('src/pages/AdminPanel\\.jsx','utf8'\\);const lines=c\\.split\\('\\\\n'\\);\\[59,67,108,181,186,285,301,302,333,345\\]\\.forEach\\(n=>\\{console\\.log\\(n\\+':',lines\\[n-1\\]\\?\\.trim\\(\\)\\.slice\\(0,100\\)\\)\\}\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^node -e \"const fs=require\\('fs'\\);const b=fs\\.readFileSync\\('src/pages/Configuracoes\\.jsx'\\);console\\.log\\('First 6 bytes hex:',b\\.slice\\(0,6\\)\\.toString\\('hex'\\)\\);console\\.log\\('First 3 chars:',JSON\\.stringify\\(b\\.slice\\(0,3\\)\\.toString\\('utf8'\\)\\)\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd \"z:\\\\projetos claude\\\\restaurante-dashboard\"; node -e \"const fs=require\\('fs'\\);let c=fs\\.readFileSync\\('src/pages/Configuracoes\\.jsx','utf8'\\);const before=c\\.length;c=c\\.replace\\(/\\^\\\\uFFFD\\+/,''\\);const remaining=\\[\\];c\\.split\\('\\\\n'\\)\\.forEach\\(\\(l,i\\)=>\\{if\\(l\\.includes\\('\\\\uFFFD'\\)\\)remaining\\.push\\('L'\\+\\(i\\+1\\)\\+': '\\+l\\.trim\\(\\)\\.slice\\(0,80\\)\\)\\}\\);if\\(remaining\\.length\\)\\{console\\.log\\('Still broken:'\\);remaining\\.forEach\\(x=>console\\.log\\(x\\)\\)\\}else\\{console\\.log\\('No more replacement chars'\\)\\}fs\\.writeFileSync\\('src/pages/Configuracoes\\.jsx',c,'utf8'\\);console\\.log\\('Stripped '\\+\\(before-c\\.length\\)\\+' leading chars'\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd \"z:\\\\projetos claude\\\\restaurante-dashboard\"; node -e \"\nconst fs=require\\('fs'\\);\nconst c=fs\\.readFileSync\\('src/pages/Configuracoes\\.jsx','utf8'\\);\nconst lines=c\\.split\\('\\\\n'\\);\n// Show exact codepoints for lines with replacement chars or arrows\n\\[9,129,258,261,265,309,343,361\\]\\.forEach\\(n=>\\{\n  const l=lines\\[n-1\\]\\|\\|'';\n  const codes=\\[\\.\\.\\.l\\]\\.map\\(ch=>'U\\+'\\+ch\\.codePointAt\\(0\\)\\.toString\\(16\\)\\.toUpperCase\\(\\)\\.padStart\\(4,'0'\\)\\+' \\('\\+JSON\\.stringify\\(ch\\)\\+'\\)'\\);\n  console\\.log\\('=== Line',n,'==='\\);\n  console\\.log\\(codes\\.slice\\(0,50\\)\\.join\\(' '\\)\\);\n\\}\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd \"z:\\\\projetos claude\\\\restaurante-dashboard\"; node -e \"\nconst fs=require\\('fs'\\);\nconst c=fs\\.readFileSync\\('src/pages/Configuracoes\\.jsx','utf8'\\);\nconst lines=c\\.split\\('\\\\n'\\);\n\\[231,238,239,277,334,335,336,337,353,354,355\\]\\.forEach\\(n=>\\{\n  const l=lines\\[n-1\\]\\|\\|'';\n  const codes=\\[\\.\\.\\.l\\]\\.map\\(ch=>\\{const cp=ch\\.codePointAt\\(0\\);return cp<32\\|\\|cp>126\\?'U\\+'\\+cp\\.toString\\(16\\)\\.toUpperCase\\(\\)\\.padStart\\(4,'0'\\):ch\\}\\)\\.join\\(''\\);\n  console\\.log\\('L'\\+n\\+': '\\+codes\\.slice\\(0,110\\)\\);\n\\}\\);\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd \"z:\\\\projetos claude\\\\restaurante-dashboard\"; node -e \"const c=require\\('fs'\\)\\.readFileSync\\('src/pages/Configuracoes\\.jsx','utf8'\\);const m=c\\.match\\(/import \\\\\\{\\[\\\\s\\\\S\\]\\*\\?\\\\\\} from 'lucide-react'/\\);console\\.log\\(m\\?\\.\\[0\\]\\)\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "git add": true,
+        "git commit": true,
+        "git push": true
+    }
+}
