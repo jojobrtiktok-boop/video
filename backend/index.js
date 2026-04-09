@@ -2543,8 +2543,8 @@ function geminiGenerateText(apiKey, prompt) {
 
 // Generate hook texts with Gemini
 app.post('/api/autohook/generate-hooks', express.json({ limit: '50kb' }), async (req, res) => {
-  const { description = '', prompt = '', gemini_key, count = 5 } = req.body;
-  if (!gemini_key) return res.status(400).json({ error: 'gemini_key obrigatório' });
+  const { description = '', prompt = '', gemini_key, or_key, count = 5 } = req.body;
+  if (!gemini_key && !or_key) return res.status(400).json({ error: 'gemini_key ou or_key obrigatório' });
   const cnt = Math.min(20, Math.max(1, parseInt(count) || 5));
   const fullPrompt = [
     description ? `Produto/contexto: ${description}` : '',
@@ -2553,7 +2553,33 @@ app.post('/api/autohook/generate-hooks', express.json({ limit: '50kb' }), async 
     `Retorne APENAS os ${cnt} hooks, um por linha, numerados (1. texto). Sem comentários adicionais.`
   ].filter(Boolean).join('\n');
   try {
-    const text = await geminiGenerateText(gemini_key, fullPrompt);
+    let text;
+    if (gemini_key) {
+      text = await geminiGenerateText(gemini_key, fullPrompt);
+    } else {
+      // Fallback: OpenRouter GPT-4o-mini
+      const body = Buffer.from(JSON.stringify({
+        model: 'openai/gpt-4o-mini',
+        messages: [{ role: 'user', content: fullPrompt }],
+        max_tokens: 1024
+      }));
+      text = await new Promise((resolve, reject) => {
+        const r2 = https.request({
+          hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${or_key}`, 'Content-Length': body.length }
+        }, r => {
+          let d = ''; r.on('data', c => d += c);
+          r.on('end', () => {
+            try {
+              const j = JSON.parse(d);
+              if (j.error) return reject(new Error(j.error.message || JSON.stringify(j.error)));
+              resolve((j.choices?.[0]?.message?.content || '').trim());
+            } catch(e) { reject(new Error('Parse error: ' + e.message)); }
+          });
+        });
+        r2.on('error', reject); r2.write(body); r2.end();
+      });
+    }
     const hooks = text.split('\n')
       .map(l => l.replace(/^\s*\d+[\.\)]\s*/, '').trim())
       .filter(l => l.length > 3)
@@ -2771,6 +2797,72 @@ app.post('/api/autohook/compose', upload.fields([
   } catch(e) {
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Clonar voz do vídeo com ElevenLabs instant voice cloning ────────────────
+app.post('/api/speech/clone-voice', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const el_key = (req.body.el_key || '').trim();
+  if (!el_key) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'el_key obrigatório' }); }
+  const excludeStart = parseFloat(req.body.exclude_start) || 0;
+  const excludeEnd   = parseFloat(req.body.exclude_end)   || 0;
+  const input = req.file.path;
+  const samplePath = input + '_sample.mp3';
+  try {
+    // Extract 25s audio sample avoiding the replacement segment
+    const sampleStart = excludeEnd > 0 ? excludeEnd + 1 : 0;
+    await new Promise((resolve, reject) => {
+      const ff = spawn('ffmpeg', [
+        '-ss', String(sampleStart), '-i', input,
+        '-vn', '-ar', '44100', '-ac', '1', '-b:a', '128k',
+        '-t', '25', '-y', samplePath
+      ]);
+      ff.on('close', c => c === 0 ? resolve() : reject(new Error('Erro ao extrair áudio do vídeo')));
+      ff.on('error', reject);
+    });
+
+    const audioData = fs.readFileSync(samplePath);
+    const boundary = 'ELBound' + Date.now();
+    const voiceName = 'Clone-' + Date.now();
+
+    // Build multipart/form-data manually
+    const CRLF = '\r\n';
+    const partName   = Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="name"${CRLF}${CRLF}${voiceName}${CRLF}`);
+    const partDesc   = Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="description"${CRLF}${CRLF}Voz clonada do video${CRLF}`);
+    const partFileH  = Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="files"; filename="sample.mp3"${CRLF}Content-Type: audio/mpeg${CRLF}${CRLF}`);
+    const partEnd    = Buffer.from(`${CRLF}--${boundary}--${CRLF}`);
+    const body = Buffer.concat([partName, partDesc, partFileH, audioData, partEnd]);
+
+    const voice_id = await new Promise((resolve, reject) => {
+      const r2 = https.request({
+        hostname: 'api.elevenlabs.io', port: 443,
+        path: '/v1/voices/add', method: 'POST',
+        headers: {
+          'xi-api-key': el_key,
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': body.length
+        }
+      }, r => {
+        let d = ''; r.on('data', c => d += c);
+        r.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            if (j.detail) return reject(new Error(typeof j.detail === 'string' ? j.detail : (j.detail?.message || 'ElevenLabs error')));
+            if (!j.voice_id) return reject(new Error('voice_id não retornado: ' + d.slice(0, 100)));
+            resolve(j.voice_id);
+          } catch(e) { reject(new Error('Parse error: ' + d.slice(0, 100))); }
+        });
+      });
+      r2.on('error', reject); r2.write(body); r2.end();
+    });
+
+    res.json({ voice_id, voice_name: voiceName });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.unlink(req.file.path, ()=>{});
+    fs.unlink(samplePath, ()=>{});
   }
 });
 

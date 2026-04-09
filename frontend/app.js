@@ -3387,6 +3387,8 @@ function loadResizeFrame(file) {
   const ahSrcList      = document.getElementById('ah-src-list');
   const ahOrKey       = document.getElementById('ah-or-key');
   const ahOrSave       = document.getElementById('ah-or-save-btn');
+  const ahGeminiKey    = document.getElementById('ah-gemini-key');
+  const ahGeminiSave   = document.getElementById('ah-gemini-save-btn');
   const ahElKey        = document.getElementById('ah-el-key');
   const ahElSave       = document.getElementById('ah-el-save-btn');
   const ahLoadVoices   = document.getElementById('ah-load-voices-btn');
@@ -3425,6 +3427,7 @@ function loadResizeFrame(file) {
     input.addEventListener('input', () => { if (btn.textContent === '✅') btn.textContent = '💾'; });
   }
   makeSaveBtnAh(ahOrSave, ahOrKey, 'ah_or_key');
+  makeSaveBtnAh(ahGeminiSave, ahGeminiKey, 'ah_gemini_key');
   makeSaveBtnAh(ahElSave, ahElKey, 'tr_el_key');
 
   // ── Load ElevenLabs voices ──
@@ -3592,11 +3595,12 @@ function loadResizeFrame(file) {
     ahAddBtn.addEventListener('click', () => { ahAddHook(''); ahRenderHooks(); });
   }
 
-  // ── Generate hooks with OpenRouter GPT-4o Mini ──
+  // ── Generate hooks with Gemini (or OpenRouter GPT-4o Mini fallback) ──
   if (ahGenBtn) {
     ahGenBtn.addEventListener('click', async () => {
-      const key = ahOrKey.value.trim();
-      if (!key) { ahGenErr.textContent = 'Informe a OpenRouter API Key.'; ahGenErr.style.display = 'block'; return; }
+      const gemKey = ahGeminiKey && ahGeminiKey.value.trim();
+      const orKey  = ahOrKey && ahOrKey.value.trim();
+      if (!gemKey && !orKey) { ahGenErr.textContent = 'Informe a Gemini API Key ou a OpenRouter Key.'; ahGenErr.style.display = 'block'; return; }
       ahGenErr.style.display = 'none';
       ahGenBtn.disabled = true; ahGenBtn.textContent = '⏳';
       ahGenProg.style.display = '';
@@ -3606,7 +3610,8 @@ function loadResizeFrame(file) {
           body: JSON.stringify({
             description: ahDesc.value.trim(),
             prompt: ahPrompt.value.trim(),
-            or_key: key,
+            gemini_key: gemKey || undefined,
+            or_key: orKey || undefined,
             count: 5
           })
         });
@@ -4000,6 +4005,15 @@ makeSimpleTool({
   const detectBtn  = document.getElementById('sf-detect-btn');
   const detectStat = document.getElementById('sf-detect-status');
   const detectErr  = document.getElementById('sf-detect-error');
+  // Clone voice elements
+  const cloneBtn  = document.getElementById('sf-clone-btn');
+  const cloneStat = document.getElementById('sf-clone-status');
+  const cloneErr  = document.getElementById('sf-clone-error');
+  // AI rewrite elements
+  const rewriteCmd = document.getElementById('sf-rewrite-cmd');
+  const rewriteBtn = document.getElementById('sf-rewrite-btn');
+  const rewriteStat = document.getElementById('sf-rewrite-status');
+  const rewriteErr  = document.getElementById('sf-rewrite-error');
   if (!sub) return;
 
   // Restore keys
@@ -4075,6 +4089,67 @@ makeSimpleTool({
     } finally {
       detectBtn.disabled = false;
     }
+  });
+
+  // ── Clone voice from video ───────────────────────────────────────────
+  cloneBtn && cloneBtn.addEventListener('click', async () => {
+    if (!sfFile) { if (cloneErr) { cloneErr.style.display = 'block'; cloneErr.textContent = 'Selecione o vídeo primeiro.'; } return; }
+    const key = (elKeyEl.value.trim()) || localStorage.getItem('sf_el_key') || '';
+    if (!key) { if (cloneErr) { cloneErr.style.display = 'block'; cloneErr.textContent = 'Informe a ElevenLabs API Key abaixo.'; } return; }
+    cloneBtn.disabled = true;
+    if (cloneErr) cloneErr.style.display = 'none';
+    if (cloneStat) cloneStat.textContent = '🎙 Extraindo e clonando voz…';
+    try {
+      const fd = new FormData();
+      fd.append('video', sfFile);
+      fd.append('el_key', key);
+      if (startEl && startEl.value) fd.append('exclude_start', startEl.value);
+      if (endEl && endEl.value)     fd.append('exclude_end',   endEl.value);
+      const r = await fetch(API + '/api/speech/clone-voice', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+      const existing = voiceSel.querySelector('[data-cloned]');
+      if (existing) existing.remove();
+      const opt = document.createElement('option');
+      opt.value = j.voice_id; opt.textContent = '🧬 Voz clonada do vídeo'; opt.dataset.cloned = 'true';
+      voiceSel.insertBefore(opt, voiceSel.firstChild);
+      voiceSel.value = j.voice_id; voiceSel.style.display = '';
+      checkReady();
+      if (cloneStat) cloneStat.textContent = `✓ Voz clonada! ID: ${j.voice_id.slice(0,10)}…`;
+    } catch(e) {
+      if (cloneErr) { cloneErr.style.display = 'block'; cloneErr.textContent = e.message; }
+      if (cloneStat) cloneStat.textContent = '';
+    } finally { cloneBtn.disabled = false; }
+  });
+
+  // ── AI rewrite ────────────────────────────────────────────────────────
+  rewriteBtn && rewriteBtn.addEventListener('click', async () => {
+    const curText = textEl && textEl.value.trim();
+    if (!curText) { if (rewriteErr) { rewriteErr.style.display = 'block'; rewriteErr.textContent = 'Escreva o texto no card "Novo texto" primeiro.'; } return; }
+    const key = (orKeyEl && orKeyEl.value.trim()) || localStorage.getItem('wm_or_key') || '';
+    if (!key) { if (rewriteErr) { rewriteErr.style.display = 'block'; rewriteErr.textContent = 'Informe a OpenRouter API Key no card acima.'; } return; }
+    const cmd = rewriteCmd && rewriteCmd.value.trim();
+    rewriteBtn.disabled = true;
+    if (rewriteErr) rewriteErr.style.display = 'none';
+    if (rewriteStat) rewriteStat.textContent = '✍️ Reescrevendo…';
+    try {
+      const prompt = cmd
+        ? `Reescreva o texto conforme o comando.\nComando: ${cmd}\nTexto: "${curText}"\nRetorne APENAS o texto reescrito, sem aspas ou comentários.`
+        : `Melhore o texto para soar mais natural e impactante: "${curText}"\nRetorne APENAS o texto melhorado.`;
+      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ model: 'openai/gpt-4o-mini', messages: [{ role: 'user', content: prompt }], max_tokens: 512 })
+      });
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error?.message || 'Erro OpenRouter');
+      const newText = j.choices?.[0]?.message?.content?.trim() || '';
+      if (newText && textEl) { textEl.value = newText; checkReady(); }
+      if (rewriteStat) rewriteStat.textContent = '✓ Texto reescrito!';
+    } catch(e) {
+      if (rewriteErr) { rewriteErr.style.display = 'block'; rewriteErr.textContent = e.message; }
+      if (rewriteStat) rewriteStat.textContent = '';
+    } finally { rewriteBtn.disabled = false; }
   });
 
   // Load voices

@@ -1883,11 +1883,20 @@
         <div class="section-label">📝 Contexto do produto</div>
         <textarea id="ah-description" class="tool-input" rows="3" placeholder="Descreva o produto, público-alvo, benefícios... (Gemini usará isso para gerar e avaliar hooks)" style="resize:vertical;width:100%;height:76px;margin-bottom:12px"></textarea>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">🔑 Gemini API Key <span style="font-size:10px">(Google AI Studio)</span></div>
-            <div style="display:flex;gap:6px">
-              <input id="ah-gemini-key" type="password" class="tool-input" placeholder="AIza..." style="flex:1" />
-              <button id="ah-gemini-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div>
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔑 Gemini API Key <span style="font-size:10px">(Google AI Studio — texto)</span></div>
+              <div style="display:flex;gap:6px">
+                <input id="ah-gemini-key" type="password" class="tool-input" placeholder="AIza..." style="flex:1" />
+                <button id="ah-gemini-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔄 OpenRouter Key <span style="font-size:10px">(GPT-4o mini / análise visual)</span></div>
+              <div style="display:flex;gap:6px">
+                <input id="ah-or-key" type="password" class="tool-input" placeholder="sk-or-..." style="flex:1" />
+                <button id="ah-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+              </div>
             </div>
           </div>
           <div>
@@ -2275,6 +2284,25 @@
         <button id="sf-detect-btn" class="submit-btn" style="margin-bottom:4px">🔍 Detectar trecho com IA</button>
         <div id="sf-detect-status" class="status-text"></div>
         <div id="sf-detect-error" class="error-msg"></div>
+      </div>
+
+      <!-- Clone voice card -->
+      <div class="card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px">🧬 Clonar voz do vídeo</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Extrai a voz do próprio vídeo e cria um clone instantâneo no ElevenLabs — o áudio gerado soa idêntico ao locutor original.</div>
+        <button id="sf-clone-btn" class="submit-btn" style="margin-bottom:4px">🧬 Clonar voz agora</button>
+        <div id="sf-clone-status" class="status-text"></div>
+        <div id="sf-clone-error" class="error-msg"></div>
+      </div>
+
+      <!-- AI rewrite card -->
+      <div class="card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px">✍️ Reescrever com IA</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Use o GPT-4o mini para reescrever o texto antes de gerar o áudio — usa a mesma OpenRouter Key do card acima.</div>
+        <textarea id="sf-rewrite-cmd" class="tool-textarea" rows="2" placeholder="Comando: ex — torne mais energético, adicione uma chamada pra ação, deixe mais curto..." style="width:100%;box-sizing:border-box;resize:vertical;margin-bottom:8px"></textarea>
+        <button id="sf-rewrite-btn" class="submit-btn" style="margin-bottom:4px">✍️ Reescrever com IA</button>
+        <div id="sf-rewrite-status" class="status-text"></div>
+        <div id="sf-rewrite-error" class="error-msg"></div>
       </div>
 
       <div class="card">
