@@ -110,7 +110,7 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
-  translate: 'video', autotr: 'video', autohook: 'video', autocorpo: 'video', ferramentas: 'video', swapfala: 'video',
+  translate: 'video', autotr: 'video', autohook: 'video', autocorpo: 'video', automontador: 'video', ferramentas: 'video', swapfala: 'video',
   'video-library': null
 };
 
@@ -3363,6 +3363,143 @@ function loadResizeFrame(file) {
     }
   }
 
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// AUTO MONTADOR IA
+// ════════════════════════════════════════════════════════════════════
+;(function() {
+  const panel = document.getElementById('tool-automontador');
+  if (!panel) return;
+
+  let amAudioFile  = null;
+  let amVideoFiles = [];
+  let amJobId      = null;
+  let amPollTimer  = null;
+
+  const amOrKey     = document.getElementById('am-or-key');
+  const amOrSave    = document.getElementById('am-or-save-btn');
+  const amAudioDrop = document.getElementById('am-audio-drop');
+  const amAudioIn   = document.getElementById('am-audio-input');
+  const amAudioName = document.getElementById('am-audio-name');
+  const amVideosDrop= document.getElementById('am-videos-drop');
+  const amVideosIn  = document.getElementById('am-videos-input');
+  const amVideosList= document.getElementById('am-videos-list');
+  const amVideosCount=document.getElementById('am-videos-count');
+  const amStartBtn  = document.getElementById('am-start-btn');
+  const amProgWrap  = document.getElementById('am-progress-wrap');
+  const amProgBar   = document.getElementById('am-progress-bar');
+  const amProgLabel = document.getElementById('am-progress-label');
+  const amStatus    = document.getElementById('am-status');
+  const amError     = document.getElementById('am-error');
+  const amResultCard= document.getElementById('am-result-card');
+  const amResultVid = document.getElementById('am-result-video');
+  const amDownBtn   = document.getElementById('am-download-btn');
+
+  // Save key
+  const savedOrKey = localStorage.getItem('ah_or_key');
+  if (savedOrKey && amOrKey) { amOrKey.value = savedOrKey; if (amOrSave) amOrSave.textContent = '✅'; }
+  amOrSave && amOrSave.addEventListener('click', () => {
+    const v = amOrKey.value.trim();
+    if (v) { localStorage.setItem('ah_or_key', v); amOrSave.textContent = '✅'; setTimeout(() => amOrSave.textContent = '💾', 2000); }
+  });
+  amOrKey && amOrKey.addEventListener('input', () => { if (amOrSave && amOrSave.textContent === '✅') amOrSave.textContent = '💾'; });
+
+  // Audio upload
+  amAudioDrop && amAudioDrop.addEventListener('click', () => amAudioIn && amAudioIn.click());
+  amAudioDrop && amAudioDrop.addEventListener('dragover', e => e.preventDefault());
+  amAudioDrop && amAudioDrop.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setAmAudio(f); });
+  amAudioIn   && amAudioIn.addEventListener('change', () => { if (amAudioIn.files[0]) setAmAudio(amAudioIn.files[0]); });
+  function setAmAudio(f) { amAudioFile = f; if (amAudioName) amAudioName.textContent = f.name; if (amAudioDrop) amAudioDrop.classList.add('has-file'); amCheckReady(); }
+
+  // Videos upload
+  amVideosDrop && amVideosDrop.addEventListener('click', () => amVideosIn && amVideosIn.click());
+  amVideosDrop && amVideosDrop.addEventListener('dragover', e => e.preventDefault());
+  amVideosDrop && amVideosDrop.addEventListener('drop', e => { e.preventDefault(); Array.from(e.dataTransfer.files).forEach(f => { if (f.type.startsWith('video/')) addAmVideo(f); }); });
+  amVideosIn   && amVideosIn.addEventListener('change', () => { Array.from(amVideosIn.files).forEach(f => addAmVideo(f)); amVideosIn.value = ''; });
+
+  function addAmVideo(f) {
+    const idx = amVideoFiles.length;
+    amVideoFiles.push(f);
+    if (amVideosCount) amVideosCount.textContent = '(' + amVideoFiles.length + ')';
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg-secondary);border-radius:6px;margin-top:4px;font-size:12px';
+    d.innerHTML = `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🎬 ${f.name}</span><button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0">&times;</button>`;
+    d.querySelector('button').addEventListener('click', () => { amVideoFiles.splice(idx, 1, null); d.remove(); if (amVideosCount) amVideosCount.textContent = '(' + amVideoFiles.filter(Boolean).length + ')'; amCheckReady(); });
+    if (amVideosList) amVideosList.appendChild(d);
+    amCheckReady();
+  }
+
+  function amCheckReady() {
+    if (!amStartBtn) return;
+    const ok = amAudioFile && amVideoFiles.filter(Boolean).length > 0 && amOrKey && amOrKey.value.trim();
+    amStartBtn.disabled = !ok;
+    amStartBtn.textContent = ok ? '🎬 Iniciar montagem automática' : 'Adicione o áudio e pelo menos 1 vídeo';
+  }
+
+  function setAmProgress(pct, label) {
+    if (amProgBar) amProgBar.style.width = pct + '%';
+    if (amProgLabel) amProgLabel.textContent = label || (pct + '%');
+  }
+
+  amStartBtn && amStartBtn.addEventListener('click', async () => {
+    const orKey = amOrKey && amOrKey.value.trim();
+    if (!orKey || !amAudioFile || !amVideoFiles.filter(Boolean).length) return;
+
+    // Reset UI
+    amStartBtn.disabled = true;
+    if (amError) amError.style.display = 'none';
+    if (amResultCard) amResultCard.style.display = 'none';
+    if (amProgWrap) amProgWrap.style.display = '';
+    if (amStatus) amStatus.textContent = '📤 Enviando arquivos…';
+    setAmProgress(0, '0% — enviando…');
+
+    try {
+      const fd = new FormData();
+      fd.append('audio', amAudioFile);
+      amVideoFiles.filter(Boolean).forEach((f, i) => fd.append('videos', f));
+      fd.append('or_key', orKey);
+
+      const r = await fetch(API + '/api/automontador/start', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+      amJobId = j.id;
+
+      // Poll
+      if (amPollTimer) clearInterval(amPollTimer);
+      amPollTimer = setInterval(async () => {
+        try {
+          const pr = await fetch(API + '/api/job/' + amJobId);
+          const pj = await pr.json();
+
+          if (pj.progress !== undefined) setAmProgress(pj.progress, pj.label || pj.progress + '%');
+          if (pj.status_label && amStatus) amStatus.textContent = pj.status_label;
+
+          if (pj.status === 'done') {
+            clearInterval(amPollTimer);
+            setAmProgress(100, '100% — concluído!');
+            if (amStatus) amStatus.textContent = '✓ Montagem concluída!';
+            if (amResultCard) amResultCard.style.display = '';
+            if (amResultVid) amResultVid.src = API + pj.url;
+            if (amDownBtn) { amDownBtn.href = API + pj.url; amDownBtn.download = 'montagem.mp4'; }
+            amStartBtn.disabled = false;
+          } else if (pj.status === 'error') {
+            clearInterval(amPollTimer);
+            if (amError) { amError.style.display = 'block'; amError.textContent = pj.error || 'Erro desconhecido'; }
+            if (amProgWrap) amProgWrap.style.display = 'none';
+            if (amStatus) amStatus.textContent = '';
+            amStartBtn.disabled = false;
+          }
+        } catch {}
+      }, 3000);
+
+    } catch(e) {
+      if (amError) { amError.style.display = 'block'; amError.textContent = e.message; }
+      if (amProgWrap) amProgWrap.style.display = 'none';
+      if (amStatus) amStatus.textContent = '';
+      amStartBtn.disabled = false;
+    }
+  });
 })();
 
 // ════════════════════════════════════════════════════════════════════

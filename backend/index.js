@@ -2866,6 +2866,204 @@ app.post('/api/speech/clone-voice', upload.single('video'), async (req, res) => 
   }
 });
 
+// ── Auto Montador IA ─────────────────────────────────────────────────────────
+app.post('/api/automontador/start', upload.fields([
+  { name: 'audio', maxCount: 1 },
+  { name: 'videos', maxCount: 20 }
+]), async (req, res) => {
+  const audioFile  = req.files?.audio?.[0];
+  const videoFiles = req.files?.videos || [];
+  const orKey      = (req.body.or_key || '').trim();
+
+  if (!audioFile) return res.status(400).json({ error: 'Áudio obrigatório' });
+  if (!videoFiles.length) return res.status(400).json({ error: 'Envie pelo menos 1 vídeo' });
+  if (!orKey) return res.status(400).json({ error: 'or_key obrigatório' });
+
+  const jobId = Date.now().toString() + Math.random().toString(36).slice(2);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, status_label: '🎙 Transcrevendo áudio…' };
+  res.json({ id: jobId });
+
+  // Run async
+  (async () => {
+    const workDir = path.join(UPLOAD_DIR, 'am_' + jobId);
+    fs.mkdirSync(workDir, { recursive: true });
+    const allPaths = [audioFile.path, ...videoFiles.map(f => f.path)];
+
+    try {
+      // ── Step 1: Transcribe audio (5%) ────────────────────────────────
+      simpleJobs[jobId].status_label = '🎙 Transcrevendo áudio com Whisper…';
+      simpleJobs[jobId].progress = 3;
+      const transcriptRaw = await new Promise((resolve, reject) => {
+        const cmd = `"${PYTHON}" "${path.join(__dirname, 'transcribe.py')}" "${audioFile.path}" "small" "pt" "1"`;
+        exec(cmd, { maxBuffer: 10*1024*1024, timeout: 300000 }, (err, stdout, stderr) => {
+          if (err) return reject(new Error((stderr||err.message).slice(0,300)));
+          resolve(stdout.trim());
+        });
+      });
+      let segments;
+      try { segments = JSON.parse(transcriptRaw); } catch { throw new Error('Erro ao transcrever: ' + transcriptRaw.slice(0,120)); }
+      if (!Array.isArray(segments) || !segments.length) throw new Error('Nenhuma fala detectada no áudio');
+      simpleJobs[jobId].progress = 10;
+
+      // Get durations of all videos
+      const videoDurations = await Promise.all(videoFiles.map(f => getVideoDuration(f.path)));
+
+      // ── Step 2: Extract representative frames from each video (10-30%) ──
+      simpleJobs[jobId].status_label = '🖼 Extraindo frames dos vídeos…';
+      // For each video, extract 1 frame every ~8s (max 8 frames per video to keep GPT prompt small)
+      const videoFrames = {}; // { videoIdx: [{ time, base64 }] }
+      const totalFrameJobs = videoFiles.length;
+      for (let vi = 0; vi < videoFiles.length; vi++) {
+        const dur = videoDurations[vi] || 60;
+        const interval = Math.max(3, dur / 8);
+        const times = [];
+        for (let t = interval/2; t < dur; t += interval) times.push(Math.min(t, dur - 0.5));
+        times.splice(8); // max 8 frames
+        videoFrames[vi] = [];
+        for (const t of times) {
+          const framePath = path.join(workDir, `frame_v${vi}_t${Math.round(t)}.jpg`);
+          await new Promise(resolve => {
+            exec(`"${FFMPEG}" -y -ss ${t.toFixed(2)} -i "${videoFiles[vi].path}" -vframes 1 -q:v 5 -vf "scale=320:-1" "${framePath}"`,
+              { timeout: 15000 }, () => resolve());
+          });
+          if (fs.existsSync(framePath)) {
+            const b64 = fs.readFileSync(framePath).toString('base64');
+            videoFrames[vi].push({ time: t, base64: b64 });
+            fs.unlink(framePath, ()=>{});
+          }
+        }
+        simpleJobs[jobId].progress = 10 + Math.round((vi+1)/totalFrameJobs * 20);
+      }
+
+      // ── Step 3: Ask GPT-4o-mini to choose clips for each segment (30-60%) ──
+      simpleJobs[jobId].status_label = '🤖 GPT-4o analisando cenas e montando roteiro…';
+      simpleJobs[jobId].progress = 32;
+
+      // Build a text-only summary of available videos + frame timestamps
+      const videoSummary = videoFiles.map((f, vi) => {
+        const dur = videoDurations[vi] || 0;
+        const frameTimes = (videoFrames[vi]||[]).map(fr => fr.time.toFixed(1) + 's').join(', ');
+        return `Vídeo ${vi+1} (${path.basename(f.originalname||f.filename||f.path)}, duração: ${dur.toFixed(1)}s). Frames amostrados em: ${frameTimes}`;
+      }).join('\n');
+
+      const segSummary = segments.map((s, i) =>
+        `[Seg ${i+1}] ${s.start.toFixed(1)}s–${s.end.toFixed(1)}s: "${s.text}"`
+      ).join('\n');
+
+      const audioDuration = segments[segments.length-1]?.end || 30;
+
+      const gptPrompt = `Você é um editor de vídeo profissional. Precisa montar um vídeo usando vários clipes e um áudio narrado.
+
+ÁUDIO TRANSCRITO (${segments.length} segmentos, duração total ~${audioDuration.toFixed(1)}s):
+${segSummary}
+
+VÍDEOS DISPONÍVEIS:
+${videoSummary}
+
+TAREFA: Para cada segmento do áudio, escolha qual vídeo e em que trecho (start→end em segundos) usar. A duração do clipe deve corresponder à duração do segmento de áudio. Distribua os vídeos de forma variada e dinâmica. Se possível, escolha cenas que combinem com o conteúdo falado.
+
+Retorne SOMENTE um array JSON sem comentários, no formato:
+[{"seg": 1, "video": 1, "clip_start": 0, "clip_end": 5.2, "reason": "motivo breve"}, ...]
+- "video" é o número do vídeo (1-based)
+- "clip_start" e "clip_end" devem respeitar os limites de duração do vídeo escolhido
+- A duração do clipe (clip_end - clip_start) deve ser próxima à duração do segmento de áudio correspondente`;
+
+      const gptBody = Buffer.from(JSON.stringify({
+        model: 'openai/gpt-4o-mini',
+        messages: [{ role: 'user', content: gptPrompt }],
+        max_tokens: 2000
+      }));
+
+      const gptRaw = await new Promise((resolve, reject) => {
+        const r = https.request({
+          hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, 'Content-Length': gptBody.length }
+        }, resp => {
+          let d = ''; resp.on('data', c => d += c);
+          resp.on('end', () => {
+            try {
+              const j = JSON.parse(d);
+              if (j.error) return reject(new Error(j.error.message || JSON.stringify(j.error)));
+              resolve((j.choices?.[0]?.message?.content || '').trim());
+            } catch(e) { reject(new Error('Parse error: ' + d.slice(0,100))); }
+          });
+        });
+        r.on('error', reject); r.write(gptBody); r.end();
+      });
+
+      const arrMatch = gptRaw.match(/\[[\s\S]*\]/);
+      if (!arrMatch) throw new Error('GPT não retornou roteiro válido: ' + gptRaw.slice(0,150));
+      let editPlan = JSON.parse(arrMatch[0]);
+      if (!Array.isArray(editPlan) || !editPlan.length) throw new Error('Roteiro vazio da IA');
+      simpleJobs[jobId].progress = 55;
+
+      // ── Step 4: Cut clips with FFmpeg (55-90%) ───────────────────────
+      simpleJobs[jobId].status_label = '✂️ Cortando clipes com FFmpeg…';
+      const clipPaths = [];
+      const concatLines = [];
+      for (let i = 0; i < editPlan.length; i++) {
+        const plan = editPlan[i];
+        const vi   = Math.max(0, Math.min(videoFiles.length - 1, (plan.video || 1) - 1));
+        const vDur = videoDurations[vi] || 60;
+        const segDur = segments[i] ? (segments[i].end - segments[i].start) : 3;
+        let cs = Math.max(0, parseFloat(plan.clip_start) || 0);
+        let ce = Math.min(vDur - 0.1, parseFloat(plan.clip_end) || (cs + segDur));
+        if (ce - cs < 0.5) ce = Math.min(vDur - 0.1, cs + segDur);
+        const clipPath = path.join(workDir, `clip_${i}.mp4`);
+        await new Promise((resolve, reject) => {
+          exec(
+            `"${FFMPEG}" -y -ss ${cs.toFixed(3)} -i "${videoFiles[vi].path}" -t ${(ce-cs).toFixed(3)} -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30" -c:v libx264 -preset fast -an "${clipPath}"`,
+            { timeout: 120000 }, (e,_,se) => e ? reject(new Error('clip '+i+': '+(se||e.message).slice(0,100))) : resolve()
+          );
+        });
+        clipPaths.push(clipPath);
+        concatLines.push(`file '${clipPath}'`);
+        simpleJobs[jobId].progress = 55 + Math.round((i+1)/editPlan.length * 30);
+        simpleJobs[jobId].status_label = `✂️ Cortando clipe ${i+1}/${editPlan.length}…`;
+      }
+
+      // ── Step 5: Concat video clips (90%) ─────────────────────────────
+      simpleJobs[jobId].status_label = '🔗 Juntando clipes…';
+      simpleJobs[jobId].progress = 88;
+      const concatList = path.join(workDir, 'concat.txt');
+      fs.writeFileSync(concatList, concatLines.join('\n'));
+      const silentVideo = path.join(workDir, 'silent.mp4');
+      await new Promise((resolve, reject) => {
+        exec(
+          `"${FFMPEG}" -y -f concat -safe 0 -i "${concatList}" -c copy "${silentVideo}"`,
+          { timeout: 300000 }, (e,_,se) => e ? reject(new Error('concat: '+(se||e.message).slice(0,100))) : resolve()
+        );
+      });
+
+      // ── Step 6: Mix audio over concatenated video (95%) ───────────────
+      simpleJobs[jobId].status_label = '🎙 Adicionando áudio…';
+      simpleJobs[jobId].progress = 93;
+      const outName = 'automontador-' + jobId + '.mp4';
+      const outPath = path.join(UPLOAD_DIR, outName);
+      await new Promise((resolve, reject) => {
+        exec(
+          `"${FFMPEG}" -y -i "${silentVideo}" -i "${audioFile.path}" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest "${outPath}"`,
+          { timeout: 180000 }, (e,_,se) => e ? reject(new Error('mix: '+(se||e.message).slice(0,100))) : resolve()
+        );
+      });
+
+      scheduleDelete(outPath, 3600000);
+      addToLibrary({ id: jobId, type: 'automontador', label: '🎬 Auto Montador', url: `/uploads/${outName}`, createdAt: Date.now(), expiresAt: Date.now() + 3600000, friendlyName: 'montagem-ia.mp4' });
+      simpleJobs[jobId].status      = 'done';
+      simpleJobs[jobId].progress    = 100;
+      simpleJobs[jobId].url         = `/uploads/${outName}`;
+      simpleJobs[jobId].status_label = '✓ Montagem concluída!';
+
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error  = e.message;
+    } finally {
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+      allPaths.forEach(p => { try { fs.unlink(p, ()=>{}); } catch {} });
+    }
+  })();
+});
+
 // ── Auto Corpo: gerar variações de copy com GPT-4o-mini ─────────────────────
 app.post('/api/autocorpo/generate', express.json({ limit: '100kb' }), async (req, res) => {
   const { or_key, examples = [], prompt = '', count = 5 } = req.body;

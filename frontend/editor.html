@@ -857,6 +857,10 @@
             <span class="nav-item-title">Ferramentas</span>
             <span class="nav-item-desc">Marca d'água, cortar, resize…</span>
           </button>
+          <button class="nav-item" data-tool="automontador">
+            <span class="nav-item-title" style="color:var(--accent)">Auto Montador</span>
+            <span class="nav-item-desc">IA escolhe cenas + monta o vídeo</span>
+          </button>
           <button class="nav-item" data-tool="autocorpo">
             <span class="nav-item-title" style="color:var(--accent)">Auto Corpo</span>
             <span class="nav-item-desc">Corpos IA + voz ElevenLabs</span>
@@ -1484,6 +1488,70 @@
         <video id="tr-result-video" class="result-video" controls></video><br/>
         <a id="tr-download-btn" class="download-btn" download>⬇ Baixar vídeo traduzido</a>
         <button id="tr-new-btn" class="submit-btn" style="margin-top:10px;background:none;border:1px solid var(--border);color:var(--text)">🔄 Traduzir novo vídeo</button>
+      </div>
+    </div>
+
+    <!-- AUTO MONTADOR -->
+    <div id="tool-automontador" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🎬 Auto Montador IA</h1>
+        <p class="tool-subtitle">Envie vídeos + seu áudio → Whisper transcreve → GPT-4o escolhe as melhores cenas → FFmpeg monta tudo automaticamente</p>
+      </div>
+
+      <!-- Config -->
+      <div class="card">
+        <div class="section-label">⚙️ Configuração</div>
+        <div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔑 OpenRouter Key <span style="font-size:10px">(GPT-4o mini — análise de cenas)</span></div>
+          <div style="display:flex;gap:6px">
+            <input id="am-or-key" type="password" class="tool-input" placeholder="sk-or-..." style="flex:1" />
+            <button id="am-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Áudio -->
+      <div class="card">
+        <div class="section-label">🎙 Seu Áudio / Narração</div>
+        <label id="am-audio-drop" class="drop-zone" style="min-height:80px" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:28px;height:28px;margin-bottom:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
+          <p><strong>Clique ou arraste</strong> seu áudio aqui</p>
+          <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0">mp3, wav, m4a, aac</p>
+          <div id="am-audio-name" class="dz-filename"></div>
+        </label>
+        <input type="file" id="am-audio-input" accept="audio/*,video/*" class="hidden-input" />
+      </div>
+
+      <!-- Vídeos -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div class="section-label" style="margin-bottom:0">📹 Vídeos de Cenas <span id="am-videos-count" style="font-size:12px;color:var(--text-muted);font-weight:400">(0)</span></div>
+        </div>
+        <label id="am-videos-drop" class="drop-zone" style="min-height:70px" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:24px;height:24px;margin-bottom:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+          <p style="margin:0;font-size:13px"><strong>Adicionar vídeos</strong> (múltiplos)</p>
+          <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0">A IA analisa os frames e escolhe as melhores cenas para cada parte do áudio</p>
+        </label>
+        <input type="file" id="am-videos-input" accept="video/*" multiple class="hidden-input" />
+        <div id="am-videos-list" style="margin-top:8px"></div>
+      </div>
+
+      <!-- Botão principal -->
+      <button id="am-start-btn" class="submit-btn" disabled>Adicione o áudio e pelo menos 1 vídeo</button>
+
+      <!-- Progresso -->
+      <div id="am-progress-wrap" style="display:none;margin-top:12px">
+        <div class="progress-wrap"><div class="progress-bar" id="am-progress-bar" style="width:0%;transition:width 0.5s"></div></div>
+        <div id="am-progress-label" class="status-text" style="margin-top:6px;text-align:center;font-size:13px">0%</div>
+      </div>
+      <div id="am-status" class="status-text"></div>
+      <div id="am-error" class="error-msg"></div>
+
+      <!-- Resultado -->
+      <div id="am-result-card" class="result-card" style="display:none">
+        <h3>✓ Montagem concluída!</h3>
+        <video id="am-result-video" class="result-video" controls></video><br/>
+        <a id="am-download-btn" class="download-btn" download>⬇ Baixar vídeo montado</a>
       </div>
     </div>
 
