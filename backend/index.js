@@ -150,26 +150,27 @@ const multiUpload = multer({ storage }).fields([{ name: 'hooks', maxCount: 20 },
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // ── Gemini Vision helper ───────────────────────────────────────────────────
-function geminiVisionDetect(apiKey, frameBase64, mimeType, prompt) {
+function orVisionDetect(apiKey, frameBase64, mimeType, prompt) {
   return new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify({
-      contents: [{ parts: [
-        { inline_data: { mime_type: mimeType, data: frameBase64 } },
-        { text: prompt }
-      ]}]
+      model: 'openai/gpt-4o-mini',
+      messages: [{ role: 'user', content: [
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${frameBase64}` } },
+        { type: 'text', text: prompt }
+      ]}],
+      max_tokens: 256
     }));
-    const reqPath = `/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(apiKey)}`;
     const req2 = https.request({
-      hostname: 'generativelanguage.googleapis.com', path: reqPath, method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': body.length }
+      hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}`, 'Content-Length': body.length }
     }, r => {
       let data = ''; r.on('data', c => data += c);
       r.on('end', () => {
         try {
           const json = JSON.parse(data);
           if (json.error) return reject(new Error(json.error.message || JSON.stringify(json.error)));
-          const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!text) return reject(new Error('Resposta vazia do Gemini'));
+          const text = json.choices?.[0]?.message?.content;
+          if (!text) return reject(new Error('Resposta vazia do OpenRouter'));
           resolve(text.trim());
         } catch(e) { reject(new Error('Parse error: ' + e.message)); }
       });
@@ -178,11 +179,11 @@ function geminiVisionDetect(apiKey, frameBase64, mimeType, prompt) {
   });
 }
 
-// ── Detectar marca d'água com Gemini Vision ───────────────────────────────
+// ── Detectar marca d'água com OpenRouter Vision ───────────────────────────
 app.post('/api/watermark/detect-gemini', upload.single('video'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
-  const geminiKey = (req.body.geminiKey || '').trim();
-  if (!geminiKey) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'geminiKey obrigatório' }); }
+  const orKey = (req.body.orKey || '').trim();
+  if (!orKey) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'orKey obrigatório' }); }
   const input = req.file.path;
   const framePath = path.join(UPLOAD_DIR, `frame_${Date.now()}.jpg`);
   try {
@@ -209,7 +210,7 @@ app.post('/api/watermark/detect-gemini', upload.single('video'), async (req, res
     const frameData = fs.readFileSync(framePath).toString('base64');
     const prompt = `Esta é um frame de vídeo. Identifique onde está a marca d'água (watermark/logo/texto de marca). Retorne APENAS um JSON com as coordenadas em pixels: {"x": LEFT, "y": TOP, "w": WIDTH, "h": HEIGHT}. Use coordenadas absolutas em pixels (o vídeo tem ${dims.w}x${dims.h} pixels). Se não houver marca d'água, retorne {"x":0,"y":0,"w":0,"h":0}. Não adicione texto explicativo, apenas JSON.`;
 
-    const raw = await geminiVisionDetect(geminiKey, frameData, 'image/jpeg', prompt);
+    const raw = await orVisionDetect(orKey, frameData, 'image/jpeg', prompt);
     const jsonMatch = raw.match(/\{[^}]+\}/);
     if (!jsonMatch) throw new Error('Gemini não retornou coordenadas válidas: ' + raw.slice(0,100));
     const coords = JSON.parse(jsonMatch[0]);
@@ -2632,6 +2633,81 @@ app.post('/api/autohook/compose', upload.fields([
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Substituir segmento de fala com ElevenLabs TTS ──────────────────────────
+app.post('/api/replace-segment', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum vídeo enviado' });
+  const { start_time, end_time, new_text, el_key, voice_id } = req.body;
+  if (!new_text || !el_key || !voice_id) {
+    fs.unlink(req.file.path, ()=>{});
+    return res.status(400).json({ error: 'new_text, el_key e voice_id são obrigatórios' });
+  }
+  const startSec = parseFloat(start_time) || 0;
+  const endSec   = parseFloat(end_time)   || 0;
+  if (endSec <= startSec) {
+    fs.unlink(req.file.path, ()=>{});
+    return res.status(400).json({ error: 'end_time deve ser maior que start_time' });
+  }
+  const segDur = endSec - startSec;
+  const jobId  = Date.now().toString() + Math.random().toString(36).slice(2);
+  const expiry = Date.now() + 60 * 60 * 1000;
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry };
+  res.json({ id: jobId, status: 'processing' });
+
+  (async () => {
+    const inputPath = req.file.path;
+    const workDir   = inputPath + '_rs';
+    fs.mkdirSync(workDir, { recursive: true });
+    const ttsPath    = path.join(workDir, 'tts.mp3');
+    const outputPath = path.join(UPLOAD_DIR, `swapfala_${jobId}.mp4`);
+    try {
+      // Step 1: ElevenLabs TTS
+      const ttsBody = Buffer.from(JSON.stringify({ text: new_text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }));
+      await new Promise((resolve, reject) => {
+        const opts = {
+          hostname: 'api.elevenlabs.io', port: 443,
+          path: `/v1/text-to-speech/${voice_id}`, method: 'POST',
+          headers: { 'xi-api-key': el_key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg', 'Content-Length': ttsBody.length }
+        };
+        const r = https.request(opts, resp => {
+          if (resp.statusCode >= 400) return reject(new Error(`ElevenLabs error ${resp.statusCode}`));
+          const chunks = []; resp.on('data', c => chunks.push(c));
+          resp.on('end', () => { fs.writeFileSync(ttsPath, Buffer.concat(chunks)); resolve(); });
+        });
+        r.on('error', reject); r.write(ttsBody); r.end();
+      });
+
+      simpleJobs[jobId].progress = 40;
+
+      // Step 2: FFmpeg splice – replace [start,end] with TTS, pad/trim to exactly segDur
+      await new Promise((resolve, reject) => {
+        const filter = [
+          `[0:a]atrim=0:${startSec},asetpts=PTS-STARTPTS[before]`,
+          `[1:a]apad=whole_dur=${segDur},atrim=0:${segDur},asetpts=PTS-STARTPTS[newaud]`,
+          `[0:a]atrim=start=${endSec},asetpts=PTS-STARTPTS[after]`,
+          `[before][newaud][after]concat=n=3:v=0:a=1[outa]`
+        ].join(';');
+        const args = ['-y', '-i', inputPath, '-i', ttsPath,
+          '-filter_complex', filter,
+          '-map', '0:v', '-map', '[outa]', '-c:v', 'copy', '-shortest', outputPath];
+        const ff = spawn(FFMPEG, args);
+        ff.on('close', c => c === 0 ? resolve() : reject(new Error('FFmpeg replace-segment failed')));
+        ff.on('error', reject);
+      });
+
+      simpleJobs[jobId].status   = 'done';
+      simpleJobs[jobId].progress = 100;
+      simpleJobs[jobId].url      = `/uploads/${path.basename(outputPath)}`;
+      scheduleDelete(outputPath, expiry - Date.now());
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error  = e.message;
+    } finally {
+      fs.unlink(inputPath, ()=>{});
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    }
+  })();
 });
 
 // Serve o Remotion Editor (build de produção)

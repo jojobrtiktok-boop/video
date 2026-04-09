@@ -813,6 +813,19 @@
     .auto-settings, .vg-api-row { grid-template-columns: 1fr; flex-direction: column; }
     .mirror-opts, .res-presets { flex-direction: column; }
   }
+  /* ── FERRAMENTAS TAB STRIP ── */
+  #ftools-tab-strip {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    padding: 10px 44px; margin: -36px -44px 24px;
+  }
+  .ftools-tabs-inner { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; max-width: 860px; padding-bottom: 2px; }
+  .ftools-tabs-inner::-webkit-scrollbar { display: none; }
+  .ftab { padding: 5px 13px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all .15s; }
+  .ftab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .ftab:hover:not(.active) { background: var(--card-bg); color: var(--text); }
+  @media (max-width: 680px) { #ftools-tab-strip { padding: 8px 16px; margin: -20px -16px 16px; } }
+
   </style>
 </head>
 <body>
@@ -837,53 +850,20 @@
       </div>
       <div class="nav-group-items">
         <div class="nav-group-items-inner">
-          <button class="nav-item active" data-tool="watermark">
-            <span class="nav-item-title">Marca d'Água</span>
-            <span class="nav-item-desc">Blur ou remoção limpa</span>
-          </button>
           <button class="nav-item" data-tool="subtitle">
             <span class="nav-item-title">Legendas</span>
             <span class="nav-item-desc">AutoCaption + manual</span>
           </button>
-          <button class="nav-item" data-tool="trim">
-            <span class="nav-item-title">Cortar Vídeo</span>
-            <span class="nav-item-desc">Recorta um trecho</span>
-          </button>
-          <button class="nav-item" data-tool="resize">
-            <span class="nav-item-title">Redimensionar</span>
-            <span class="nav-item-desc">9:16, 1:1, 16:9, 4:5</span>
-          </button>
-          <button class="nav-item" data-tool="compress">
-            <span class="nav-item-title">Comprimir</span>
-            <span class="nav-item-desc">Reduz tamanho do arquivo</span>
-          </button>
-          <button class="nav-item" data-tool="upscale">
-            <span class="nav-item-title">Aumentar Qualidade</span>
-            <span class="nav-item-desc">Escala para HD, 1080p, 4K</span>
-          </button>
-          <button class="nav-item" data-tool="mirror">
-            <span class="nav-item-title">Espelhar</span>
-            <span class="nav-item-desc">Horizontal ou vertical</span>
-          </button>
-          <button class="nav-item" data-tool="extrair">
-            <span class="nav-item-title">Extrair</span>
-            <span class="nav-item-desc">Áudio, vídeo, transcrição</span>
-          </button>
-          <button class="nav-item" data-tool="combine">
-            <span class="nav-item-title">Combinador</span>
-            <span class="nav-item-desc">Hooks × corpos em massa</span>
-          </button>
-
-          <button class="nav-item" data-tool="translate">
-            <span class="nav-item-title">Traduzir Vídeo</span>
-            <span class="nav-item-desc">Voz + fundo preservado</span>
+          <button class="nav-item active" data-tool="ferramentas">
+            <span class="nav-item-title">Ferramentas</span>
+            <span class="nav-item-desc">Marca d'água, cortar, resize…</span>
           </button>
           <button class="nav-item" data-tool="autotr">
-            <span class="nav-item-title" style="color:var(--accent)">🤖 Auto Tradutor</span>
+            <span class="nav-item-title" style="color:var(--accent)">Auto Tradutor</span>
             <span class="nav-item-desc">Tradução → Marca d'Água → Legendas</span>
           </button>
           <button class="nav-item" data-tool="autohook">
-            <span class="nav-item-title" style="color:var(--accent)">🪝 Auto Hook</span>
+            <span class="nav-item-title" style="color:var(--accent)">Auto Hook</span>
             <span class="nav-item-desc">Hooks IA + voz + edição automática</span>
           </button>
           <a href="/editor/" class="nav-item" style="text-decoration:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;">
@@ -959,6 +939,22 @@
   <!-- MAIN -->
   <main class="editor-main">
 
+    <!-- FERRAMENTAS TAB STRIP -->
+    <div id="ftools-tab-strip">
+      <div class="ftools-tabs-inner">
+        <button class="ftab active" data-ftool="watermark">Marca d'água</button>
+        <button class="ftab" data-ftool="trim">Cortar Vídeo</button>
+        <button class="ftab" data-ftool="resize">Redimensionar</button>
+        <button class="ftab" data-ftool="compress">Comprimir</button>
+        <button class="ftab" data-ftool="upscale">Qualidade</button>
+        <button class="ftab" data-ftool="mirror">Espelhar</button>
+        <button class="ftab" data-ftool="extrair">Extrair</button>
+        <button class="ftab" data-ftool="combine">Combinador</button>
+        <button class="ftab" data-ftool="translate">Traduzir</button>
+        <button class="ftab" data-ftool="swapfala">Substituir Fala</button>
+      </div>
+    </div>
+
     <!-- MARCA D'ÁGUA -->
     <div id="tool-watermark" class="tool-panel">
       <div class="tool-header">
@@ -1002,14 +998,14 @@
         <div id="mode-desc" class="mode-desc">Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.</div>
         <!-- Gemini Vision auto-detect -->
         <div style="margin-top:12px;padding:10px;border:1px dashed var(--border);border-radius:8px">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🤖 Detectar marca d'água com Gemini Mini</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🤖 Detectar marca d'água com IA (OpenRouter)</div>
           <div style="display:flex;gap:6px;margin-bottom:6px">
-            <input id="wm-gemini-key" type="password" class="tool-input" placeholder="Gemini API Key (AIza...)" style="flex:1;height:34px" />
-            <button id="wm-gemini-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
-            <button id="wm-gemini-detect-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">🔍 Detectar</button>
+            <input id="wm-or-key" type="password" class="tool-input" placeholder="OpenRouter API Key (sk-or-...)" style="flex:1;height:34px" />
+            <button id="wm-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+            <button id="wm-or-detect-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">🔍 Detectar</button>
           </div>
-          <div id="wm-gemini-status" class="status-text"></div>
-          <div id="wm-gemini-error" class="error-msg"></div>
+          <div id="wm-or-status" class="status-text"></div>
+          <div id="wm-or-error" class="error-msg"></div>
         </div>
         <button id="submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
         <div id="progress-bar-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
@@ -1719,14 +1715,14 @@
         </div>
         <!-- Gemini Vision auto-detect -->
         <div style="margin-top:12px;padding:10px;border:1px dashed var(--border);border-radius:8px">
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🤖 Detectar marca d'água com Gemini Mini</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">🤖 Detectar marca d'água com IA (OpenRouter)</div>
           <div style="display:flex;gap:6px;margin-bottom:6px">
-            <input id="atr-wm-gemini-key" type="password" class="tool-input" placeholder="Gemini API Key (AIza...)" style="flex:1;height:34px" />
-            <button id="atr-wm-gemini-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
-            <button id="atr-wm-gemini-detect-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">🔍 Detectar</button>
+            <input id="atr-wm-or-key" type="password" class="tool-input" placeholder="OpenRouter API Key (sk-or-...)" style="flex:1;height:34px" />
+            <button id="atr-wm-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+            <button id="atr-wm-or-detect-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">🔍 Detectar</button>
           </div>
-          <div id="atr-wm-gemini-status" class="status-text"></div>
-          <div id="atr-wm-gemini-error" class="error-msg"></div>
+          <div id="atr-wm-or-status" class="status-text"></div>
+          <div id="atr-wm-or-error" class="error-msg"></div>
         </div>
         <button id="atr-wm-process-btn" class="submit-btn">▶ Remover Marca d'Água</button>
         <div id="atr-wm-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
@@ -2526,6 +2522,68 @@
         <img id="rembg-result-img" class="rembg-result-img" alt="Resultado">
         <br/>
         <a id="rembg-download-btn" class="download-btn" download="sem-fundo.png" style="margin-top:12px;display:inline-block">⬇ Baixar PNG</a>
+      </div>
+    </div>
+
+    <!-- SUBSTITUIR FALA -->
+    <div id="tool-swapfala" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">Substituir Fala</h1>
+        <p class="tool-subtitle">Substitua um trecho de áudio no vídeo sem regeração completa — economize créditos ElevenLabs</p>
+      </div>
+
+      <div class="card">
+        <label for="sf-file-input" id="sf-drop-zone" class="drop-zone" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+          <p><strong>Clique ou arraste</strong> o vídeo final aqui</p>
+          <p>MP4, MKV, MOV</p>
+          <div id="sf-file-name" class="dz-filename"></div>
+        </label>
+        <input type="file" id="sf-file-input" accept="video/*" class="hidden-input" />
+      </div>
+
+      <div class="card">
+        <div class="section-label">⏱ Trecho a substituir</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px">
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Início (segundos)</div>
+            <input id="sf-start-time" type="number" step="0.1" min="0" placeholder="ex: 5.3" class="tool-input" />
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Fim (segundos)</div>
+            <input id="sf-end-time" type="number" step="0.1" min="0" placeholder="ex: 8.9" class="tool-input" />
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">O áudio fora desse intervalo permanece idêntico ao original.</div>
+      </div>
+
+      <div class="card">
+        <div class="section-label">📝 Novo texto para o trecho</div>
+        <textarea id="sf-new-text" class="tool-textarea" rows="4" placeholder="Digite o novo texto que será gerado por TTS nesse trecho…" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+      </div>
+
+      <div class="card">
+        <div class="section-label">🎙 Voz ElevenLabs</div>
+        <div style="display:flex;gap:8px">
+          <input id="sf-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+          <button id="sf-el-save-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:13px">💾</button>
+          <button id="sf-load-voices-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">Carregar vozes</button>
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">Salvo só no seu navegador</div>
+        <select id="sf-voice-select" class="tool-select" style="width:100%;margin-top:8px;display:none">
+          <option value="">Selecione uma voz...</option>
+        </select>
+        <div id="sf-voices-error" class="error-msg"></div>
+      </div>
+
+      <button id="sf-submit-btn" class="submit-btn" disabled>Selecione vídeo e configure</button>
+      <div id="sf-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+      <div id="sf-status" class="status-text"></div>
+      <div id="sf-error" class="error-msg"></div>
+      <div id="sf-result-card" class="result-card" style="display:none">
+        <h3>✓ Fala substituída!</h3>
+        <video id="sf-result-video" class="result-video" controls></video><br/>
+        <a id="sf-download-btn" class="download-btn" download>⬇ Baixar vídeo</a>
       </div>
     </div>
 

@@ -110,19 +110,31 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
-  translate: 'video', autotr: 'video', autohook: 'video',
+  translate: 'video', autotr: 'video', autohook: 'video', ferramentas: 'video', swapfala: 'video',
   rembg: 'imagem',
   imagegen: 'ia', videogen: 'ia',
   'video-library': null
 };
 
+const FERR_TOOLS = new Set(['watermark','trim','resize','compress','upscale','mirror','extrair','combine','translate','swapfala']);
+
 function showTool(name) {
+  if (name === 'ferramentas') name = 'watermark';
   document.querySelectorAll('.tool-panel').forEach(p => {
     p.style.display = p.id === 'tool-' + name ? 'block' : 'none';
   });
+  // ferramentas tab strip
+  const tabStrip = document.getElementById('ftools-tab-strip');
+  if (tabStrip) {
+    tabStrip.style.display = FERR_TOOLS.has(name) ? '' : 'none';
+    tabStrip.querySelectorAll('.ftab').forEach(b => {
+      b.classList.toggle('active', b.dataset.ftool === name);
+    });
+  }
   // nav item active state
+  const activeNavTool = FERR_TOOLS.has(name) ? 'ferramentas' : name;
   document.querySelectorAll('.nav-item[data-tool], .nav-direct[data-tool]').forEach(item => {
-    item.classList.toggle('active', item.dataset.tool === name);
+    item.classList.toggle('active', item.dataset.tool === activeNavTool);
   });
   // auto-open the category group that contains this tool
   const cat = CAT_MAP[name];
@@ -152,6 +164,11 @@ document.querySelectorAll('.nav-direct[data-tool]').forEach(item => {
     }
   });
 });
+document.querySelectorAll('.ftab').forEach(btn => {
+  btn.addEventListener('click', () => showTool(btn.dataset.ftool));
+});
+// Initialize: show tab strip for default tool (watermark)
+showTool('watermark');
 
 function formatTime(s) {
   if (isNaN(s) || !isFinite(s)) return '0:00';
@@ -467,46 +484,46 @@ function endDragWm() {
 
 const ASYNC_MODES = new Set(['delogo', 'sora']);
 
-// ── Gemini watermark detect (main WM tool) ──
+// ── OpenRouter watermark detect (main WM tool) ──
 (function() {
-  const geminiKeyInput = document.getElementById('wm-gemini-key');
-  const geminiSaveBtn  = document.getElementById('wm-gemini-save-btn');
-  const geminiDetectBtn= document.getElementById('wm-gemini-detect-btn');
-  const geminiStatus   = document.getElementById('wm-gemini-status');
-  const geminiError    = document.getElementById('wm-gemini-error');
-  if (!geminiDetectBtn) return;
-  const saved = localStorage.getItem('wm_gemini_key');
-  if (saved && geminiKeyInput) geminiKeyInput.value = saved;
-  if (geminiSaveBtn && geminiKeyInput) {
-    geminiSaveBtn.addEventListener('click', () => {
-      const v = geminiKeyInput.value.trim();
-      if (v) { localStorage.setItem('wm_gemini_key', v); geminiSaveBtn.textContent = '✅'; setTimeout(() => geminiSaveBtn.textContent = '💾', 2000); }
+  const orKeyInput  = document.getElementById('wm-or-key');
+  const orSaveBtn   = document.getElementById('wm-or-save-btn');
+  const orDetectBtn = document.getElementById('wm-or-detect-btn');
+  const orStatus    = document.getElementById('wm-or-status');
+  const orError     = document.getElementById('wm-or-error');
+  if (!orDetectBtn) return;
+  const saved = localStorage.getItem('wm_or_key');
+  if (saved && orKeyInput) orKeyInput.value = saved;
+  if (orSaveBtn && orKeyInput) {
+    orSaveBtn.addEventListener('click', () => {
+      const v = orKeyInput.value.trim();
+      if (v) { localStorage.setItem('wm_or_key', v); orSaveBtn.textContent = '✅'; setTimeout(() => orSaveBtn.textContent = '💾', 2000); }
     });
   }
-  geminiDetectBtn.addEventListener('click', async () => {
-    if (!selectedFile) { if (geminiError) { geminiError.textContent = 'Selecione um vídeo primeiro.'; geminiError.style.display = ''; } return; }
-    const key = (geminiKeyInput && geminiKeyInput.value.trim()) || localStorage.getItem('wm_gemini_key') || '';
-    if (!key) { if (geminiError) { geminiError.textContent = 'Informe a Gemini API Key.'; geminiError.style.display = ''; } return; }
-    geminiDetectBtn.disabled = true;
-    if (geminiError) { geminiError.textContent = ''; geminiError.style.display = 'none'; }
-    if (geminiStatus) geminiStatus.textContent = 'Analisando com Gemini…';
+  orDetectBtn.addEventListener('click', async () => {
+    if (!selectedFile) { if (orError) { orError.textContent = 'Selecione um vídeo primeiro.'; orError.style.display = ''; } return; }
+    const key = (orKeyInput && orKeyInput.value.trim()) || localStorage.getItem('wm_or_key') || '';
+    if (!key) { if (orError) { orError.textContent = 'Informe a OpenRouter API Key.'; orError.style.display = ''; } return; }
+    orDetectBtn.disabled = true;
+    if (orError) { orError.textContent = ''; orError.style.display = 'none'; }
+    if (orStatus) orStatus.textContent = 'Analisando com IA…';
     try {
       const fd = new FormData();
       fd.append('video', selectedFile);
-      fd.append('geminiKey', key);
+      fd.append('orKey', key);
       const r = await fetch(API + '/api/watermark/detect-gemini', { method: 'POST', body: fd });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Erro');
       // j.x, j.y, j.w, j.h are pixel values in video dimensions
       selRect = { x: j.x * previewW / videoW, y: j.y * previewH / videoH, w: j.w * previewW / videoW, h: j.h * previewH / videoH };
       drawFrame();
-      if (geminiStatus) geminiStatus.textContent = `✓ Detectado: ${j.w}×${j.h}px em (${j.x}, ${j.y})`;
+      if (orStatus) orStatus.textContent = `✓ Detectado: ${j.w}×${j.h}px em (${j.x}, ${j.y})`;
       submitBtn.disabled = false;
     } catch(e) {
-      if (geminiError) { geminiError.textContent = e.message; geminiError.style.display = ''; }
-      if (geminiStatus) geminiStatus.textContent = '';
+      if (orError) { orError.textContent = e.message; orError.style.display = ''; }
+      if (orStatus) orStatus.textContent = '';
     } finally {
-      geminiDetectBtn.disabled = false;
+      orDetectBtn.disabled = false;
     }
   });
 })();
@@ -3197,32 +3214,32 @@ function loadResizeFrame(file) {
 
   // ── Gemini detect for ATR watermark ──
   (function() {
-    const keyInput  = document.getElementById('atr-wm-gemini-key');
-    const saveBtn   = document.getElementById('atr-wm-gemini-save-btn');
-    const detectBtn = document.getElementById('atr-wm-gemini-detect-btn');
-    const status    = document.getElementById('atr-wm-gemini-status');
-    const error     = document.getElementById('atr-wm-gemini-error');
+    const keyInput  = document.getElementById('atr-wm-or-key');
+    const saveBtn   = document.getElementById('atr-wm-or-save-btn');
+    const detectBtn = document.getElementById('atr-wm-or-detect-btn');
+    const status    = document.getElementById('atr-wm-or-status');
+    const error     = document.getElementById('atr-wm-or-error');
     if (!detectBtn) return;
-    const saved = localStorage.getItem('wm_gemini_key');
+    const saved = localStorage.getItem('wm_or_key');
     if (saved && keyInput) keyInput.value = saved;
     if (saveBtn && keyInput) {
       saveBtn.addEventListener('click', () => {
         const v = keyInput.value.trim();
-        if (v) { localStorage.setItem('wm_gemini_key', v); saveBtn.textContent = '✅'; setTimeout(() => saveBtn.textContent = '💾', 2000); }
+        if (v) { localStorage.setItem('wm_or_key', v); saveBtn.textContent = '✅'; setTimeout(() => saveBtn.textContent = '💾', 2000); }
       });
     }
     detectBtn.addEventListener('click', async () => {
       if (!atrTranslatedUrl) { if (error) { error.textContent = 'Processe a tradução primeiro para ter um vídeo.'; error.style.display = ''; } return; }
-      const key = (keyInput && keyInput.value.trim()) || localStorage.getItem('wm_gemini_key') || '';
-      if (!key) { if (error) { error.textContent = 'Informe a Gemini API Key.'; error.style.display = ''; } return; }
+      const key = (keyInput && keyInput.value.trim()) || localStorage.getItem('wm_or_key') || '';
+      if (!key) { if (error) { error.textContent = 'Informe a OpenRouter API Key.'; error.style.display = ''; } return; }
       detectBtn.disabled = true;
       if (error) { error.textContent = ''; error.style.display = 'none'; }
-      if (status) status.textContent = 'Analisando com Gemini…';
+      if (status) status.textContent = 'Analisando com IA…';
       try {
         const blob = await fetch(atrTranslatedUrl).then(r => r.blob());
         const fd = new FormData();
         fd.append('video', blob, 'video.mp4');
-        fd.append('geminiKey', key);
+        fd.append('orKey', key);
         const r = await fetch(API + '/api/watermark/detect-gemini', { method: 'POST', body: fd });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || 'Erro');
@@ -4346,6 +4363,138 @@ makeSimpleTool({
     } finally {
       sub.disabled = false; sub.textContent = '▶ Remover Fundo';
       if (prog) prog.style.display = 'none';
+    }
+  });
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// SUBSTITUIR FALA
+// ══════════════════════════════════════════════════════════════════
+(function() {
+  const fi       = document.getElementById('sf-file-input');
+  const dz       = document.getElementById('sf-drop-zone');
+  const fnLabel  = document.getElementById('sf-file-name');
+  const startEl  = document.getElementById('sf-start-time');
+  const endEl    = document.getElementById('sf-end-time');
+  const textEl   = document.getElementById('sf-new-text');
+  const elKeyEl  = document.getElementById('sf-el-key');
+  const elSaveEl = document.getElementById('sf-el-save-btn');
+  const loadVoEl = document.getElementById('sf-load-voices-btn');
+  const voiceSel = document.getElementById('sf-voice-select');
+  const voiceErr = document.getElementById('sf-voices-error');
+  const sub      = document.getElementById('sf-submit-btn');
+  const prog     = document.getElementById('sf-progress');
+  const stat     = document.getElementById('sf-status');
+  const errEl    = document.getElementById('sf-error');
+  const rc       = document.getElementById('sf-result-card');
+  const rv       = document.getElementById('sf-result-video');
+  const dl       = document.getElementById('sf-download-btn');
+  if (!sub) return;
+
+  // Restore key
+  const savedKey = localStorage.getItem('sf_el_key');
+  if (savedKey && elKeyEl) elKeyEl.value = savedKey;
+
+  elSaveEl && elSaveEl.addEventListener('click', () => {
+    const v = elKeyEl.value.trim();
+    if (v) { localStorage.setItem('sf_el_key', v); elSaveEl.textContent = '✅'; setTimeout(() => elSaveEl.textContent = '💾', 2000); }
+  });
+
+  let sfFile = null;
+  function setFile(f) {
+    sfFile = f;
+    if (fnLabel) fnLabel.textContent = f.name;
+    checkReady();
+  }
+  fi && fi.addEventListener('change', () => { if (fi.files[0]) setFile(fi.files[0]); });
+  if (dz) {
+    dz.addEventListener('click', () => fi && fi.click());
+    dz.addEventListener('dragover', e => e.preventDefault());
+    dz.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+  }
+
+  function checkReady() {
+    if (!sub) return;
+    const ok = sfFile && startEl.value !== '' && endEl.value !== '' && textEl.value.trim() && voiceSel.value;
+    sub.disabled = !ok;
+    sub.textContent = ok ? '▶ Substituir Fala' : 'Selecione vídeo e configure';
+  }
+  [startEl, endEl, textEl].forEach(el => el && el.addEventListener('input', checkReady));
+  voiceSel && voiceSel.addEventListener('change', checkReady);
+
+  // Load voices
+  loadVoEl && loadVoEl.addEventListener('click', async () => {
+    const key = (elKeyEl.value.trim()) || localStorage.getItem('sf_el_key') || '';
+    if (!key) { if (voiceErr) { voiceErr.style.display = 'block'; voiceErr.textContent = 'Informe a ElevenLabs API Key.'; } return; }
+    loadVoEl.disabled = true; loadVoEl.textContent = '⏳';
+    if (voiceErr) voiceErr.style.display = 'none';
+    try {
+      const resp = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.detail || 'Erro ao carregar vozes');
+      voiceSel.innerHTML = '<option value="">Selecione uma voz...</option>';
+      (json.voices || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.voice_id; opt.textContent = v.name;
+        voiceSel.appendChild(opt);
+      });
+      voiceSel.style.display = '';
+      localStorage.setItem('sf_el_key', key);
+    } catch(e) {
+      if (voiceErr) { voiceErr.style.display = 'block'; voiceErr.textContent = e.message; }
+    } finally {
+      loadVoEl.disabled = false; loadVoEl.textContent = 'Carregar vozes';
+    }
+  });
+
+  sub.addEventListener('click', async () => {
+    if (!sfFile) return;
+    const startSec = parseFloat(startEl.value);
+    const endSec   = parseFloat(endEl.value);
+    const newText  = textEl.value.trim();
+    const elKey    = (elKeyEl.value.trim()) || localStorage.getItem('sf_el_key') || '';
+    const voiceId  = voiceSel.value;
+    if (isNaN(startSec) || isNaN(endSec) || endSec <= startSec) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Tempos inválidos: fim deve ser maior que início.'; } return;
+    }
+    sub.disabled = true; sub.textContent = '⏳ Processando…';
+    if (prog) prog.style.display = 'block';
+    if (errEl) errEl.style.display = 'none';
+    if (rc) rc.style.display = 'none';
+    if (stat) stat.textContent = 'Gerando TTS e substituindo áudio…';
+    try {
+      const fd = new FormData();
+      fd.append('video', sfFile);
+      fd.append('start_time', startSec.toString());
+      fd.append('end_time', endSec.toString());
+      fd.append('new_text', newText);
+      fd.append('el_key', elKey);
+      fd.append('voice_id', voiceId);
+      const resp = await fetch(API + '/api/replace-segment', { method: 'POST', body: fd });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ' + resp.status);
+      // Poll job
+      const jobId = json.id;
+      let url;
+      while (true) {
+        await new Promise(r => setTimeout(r, 2000));
+        const jr = await fetch(API + '/api/job/' + jobId);
+        const jj = await jr.json();
+        if (jj.status === 'done') { url = API + jj.url; break; }
+        if (jj.status === 'error') throw new Error(jj.error || 'Erro no processamento');
+        if (stat) stat.textContent = `Processando… ${jj.progress || 0}%`;
+      }
+      if (rv) rv.src = url;
+      if (dl) { dl.href = url; dl.download = 'fala-substituida.mp4'; }
+      if (rc) { rc.style.display = 'block'; rc.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+      if (stat) stat.textContent = '';
+    } catch(e) {
+      if (errEl) { errEl.style.display = 'block'; errEl.textContent = 'Erro: ' + e.message; }
+      if (stat) stat.textContent = '';
+    } finally {
+      sub.disabled = false; sub.textContent = '▶ Substituir Fala';
+      if (prog) prog.style.display = 'none';
+      checkReady();
     }
   });
 })();
