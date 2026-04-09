@@ -4078,9 +4078,10 @@ makeSimpleTool({
       const r = await fetch(API + '/api/speech/find-segment', { method: 'POST', body: fd });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
-      // Auto-fill start/end time
+      // Auto-fill start/end time and original text
       if (startEl) { startEl.value = j.start.toFixed(1); }
       if (endEl)   { endEl.value   = j.end.toFixed(1);   }
+      if (textEl && j.text) { textEl.value = j.text; }
       checkReady();
       if (detectStat) detectStat.textContent = `✓ Encontrado: ${j.start.toFixed(1)}s – ${j.end.toFixed(1)}s  "${j.text}"`;
     } catch(e) {
