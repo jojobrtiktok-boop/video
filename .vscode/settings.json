@@ -46,6 +46,10 @@
         "/^node --check \"h:\\\\projeto novo\\\\frontend\\\\app\\.js\" 2>&1 ; node --check \"h:\\\\projeto novo\\\\backend\\\\index\\.js\" 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^cd \"h:\\\\projeto novo\" ; node --check frontend/app\\.js 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

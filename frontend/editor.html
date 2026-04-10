@@ -861,6 +861,10 @@
             <span class="nav-item-title" style="color:var(--accent)">Auto Montador</span>
             <span class="nav-item-desc">IA escolhe cenas + monta o vídeo</span>
           </button>
+          <button class="nav-item" data-tool="imageia">
+            <span class="nav-item-title" style="color:var(--accent)">Imagem IA</span>
+            <span class="nav-item-desc">Gerar, traduzir, variar e remixar imagens</span>
+          </button>
           <button class="nav-item" data-tool="autolegenda">
             <span class="nav-item-title" style="color:var(--accent)">Auto Legenda</span>
             <span class="nav-item-desc">Legendas de anúncio Facebook com GPT-4o mini</span>
@@ -1660,6 +1664,131 @@
         <h3>✓ Montagem concluída!</h3>
         <video id="am-result-video" class="result-video" controls></video><br/>
         <a id="am-download-btn" class="download-btn" download>⬇ Baixar vídeo montado</a>
+      </div>
+    </div>
+
+    <!-- IMAGEM IA -->
+    <div id="tool-imageia" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🖼 Imagem IA</h1>
+        <p class="tool-subtitle">Gere, traduza, varie e remixe imagens com Gemini (Google AI)</p>
+      </div>
+
+      <!-- Chave Gemini -->
+      <div class="card">
+        <div class="section-label">⚙️ Configuração</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔑 Gemini API Key <span style="font-size:10px">(Google AI Studio — gratuito)</span></div>
+        <div style="display:flex;gap:6px">
+          <input id="ii-key" type="password" class="tool-input" placeholder="AIza..." style="flex:1" />
+          <button id="ii-key-save" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:5px">Obtenha gratuitamente em <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com/apikey</a></div>
+      </div>
+
+      <!-- Modos -->
+      <div class="mode-toggle" style="margin-bottom:16px">
+        <button class="mode-btn ii-tab active" data-iimode="create">✨ Criar do Zero</button>
+        <button class="mode-btn ii-tab" data-iimode="vary">🎨 Variar Criativo</button>
+        <button class="mode-btn ii-tab" data-iimode="remix">🔄 Remix / Editar</button>
+        <button class="mode-btn ii-tab" data-iimode="translate">🌐 Traduzir Imagem</button>
+      </div>
+
+      <!-- ── CRIAR DO ZERO ── -->
+      <div id="ii-panel-create">
+        <div class="card">
+          <div class="section-label" style="margin-bottom:10px">✨ Criar do Zero</div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Descreva a imagem que quer gerar. Pode escrever em português.</p>
+          <textarea id="ii-create-prompt" class="tool-input" rows="3" placeholder="Ex: Anúncio de suplemento, fundo escuro, frasco dourado, texto 'POWER UP' em destaque, estilo editorial moderno..." style="width:100%;resize:vertical;margin-bottom:10px"></textarea>
+          <select id="ii-create-aspect" class="tool-select" style="margin-bottom:10px">
+            <option value="9:16">📱 9:16 — Story / Reels</option>
+            <option value="1:1" selected>⬜ 1:1 — Feed quadrado</option>
+            <option value="16:9">🖥 16:9 — Horizontal</option>
+            <option value="4:5">📸 4:5 — Feed retrato</option>
+          </select>
+          <button id="ii-create-btn" class="submit-btn">✨ Gerar imagem</button>
+        </div>
+      </div>
+
+      <!-- ── VARIAR CRIATIVO ── -->
+      <div id="ii-panel-vary" style="display:none">
+        <div class="card">
+          <div class="section-label" style="margin-bottom:10px">🎨 Variar Criativo</div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Envie uma imagem base e descreva como quer variar (cor, produto, estilo, texto…).</p>
+          <label id="ii-vary-drop" class="drop-zone" style="min-height:70px;margin-bottom:8px" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:24px;height:24px;margin-bottom:4px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <p style="font-size:12px;margin:0"><strong>Clique ou arraste</strong> a imagem base</p>
+            <div id="ii-vary-fname" class="dz-filename" style="font-size:11px"></div>
+          </label>
+          <input type="file" id="ii-vary-input" accept="image/*" class="hidden-input" />
+          <div id="ii-vary-preview-wrap" style="display:none;margin-bottom:8px">
+            <img id="ii-vary-preview" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border)" />
+          </div>
+          <textarea id="ii-vary-prompt" class="tool-input" rows="2" placeholder="Ex: Troque a cor do produto para azul, mude o fundo para gradiente roxo, adicione estrelas..." style="width:100%;resize:vertical;margin-bottom:10px"></textarea>
+          <button id="ii-vary-btn" class="submit-btn">🎨 Gerar variação</button>
+        </div>
+      </div>
+
+      <!-- ── REMIX / EDITAR ── -->
+      <div id="ii-panel-remix" style="display:none">
+        <div class="card">
+          <div class="section-label" style="margin-bottom:10px">🔄 Remix / Editar</div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Mande uma imagem de base e peça qualquer edição: troca de produto, cor, estilo, elementos…</p>
+          <label id="ii-remix-drop" class="drop-zone" style="min-height:70px;margin-bottom:8px" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:24px;height:24px;margin-bottom:4px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <p style="font-size:12px;margin:0"><strong>Clique ou arraste</strong> a imagem de base</p>
+            <div id="ii-remix-fname" class="dz-filename" style="font-size:11px"></div>
+          </label>
+          <input type="file" id="ii-remix-input" accept="image/*" class="hidden-input" />
+          <div id="ii-remix-preview-wrap" style="display:none;margin-bottom:8px">
+            <img id="ii-remix-preview" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border)" />
+          </div>
+          <textarea id="ii-remix-prompt" class="tool-input" rows="3" placeholder="Ex: Troque o produto por um frasco de proteína, deixe o fundo preto com efeito neon roxo, adicione o texto &quot;NOVO&quot; em cima..." style="width:100%;resize:vertical;margin-bottom:10px"></textarea>
+          <button id="ii-remix-btn" class="submit-btn">🔄 Remixar imagem</button>
+        </div>
+      </div>
+
+      <!-- ── TRADUZIR IMAGEM ── -->
+      <div id="ii-panel-translate" style="display:none">
+        <div class="card">
+          <div class="section-label" style="margin-bottom:10px">🌐 Traduzir Texto da Imagem</div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Envie uma imagem com texto em outro idioma. A IA traduz mantendo o layout original.</p>
+          <label id="ii-tr-drop" class="drop-zone" style="min-height:70px;margin-bottom:8px" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:24px;height:24px;margin-bottom:4px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <p style="font-size:12px;margin:0"><strong>Clique ou arraste</strong> a imagem a traduzir</p>
+            <div id="ii-tr-fname" class="dz-filename" style="font-size:11px"></div>
+          </label>
+          <input type="file" id="ii-tr-input" accept="image/*" class="hidden-input" />
+          <div id="ii-tr-preview-wrap" style="display:none;margin-bottom:8px">
+            <img id="ii-tr-preview" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border)" />
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+            <label style="font-size:13px;color:var(--text-muted);white-space:nowrap">Traduzir para:</label>
+            <select id="ii-tr-lang" class="tool-select" style="flex:1">
+              <option value="Português do Brasil" selected>🇧🇷 Português BR</option>
+              <option value="Inglês">🇺🇸 Inglês</option>
+              <option value="Espanhol">🇪🇸 Espanhol</option>
+              <option value="Francês">🇫🇷 Francês</option>
+              <option value="Alemão">🇩🇪 Alemão</option>
+              <option value="Italiano">🇮🇹 Italiano</option>
+              <option value="Japonês">🇯🇵 Japonês</option>
+            </select>
+          </div>
+          <button id="ii-tr-btn" class="submit-btn">🌐 Traduzir imagem</button>
+        </div>
+      </div>
+
+      <!-- ── PROGRESSO E RESULTADO (compartilhado) ── -->
+      <div id="ii-progress-wrap" class="progress-wrap" style="display:none">
+        <div id="ii-progress-bar" class="progress-bar" style="width:10%;animation:none;transition:width .4s"></div>
+      </div>
+      <div id="ii-status" class="status-text" style="margin-top:6px"></div>
+      <div id="ii-error" class="error-msg"></div>
+
+      <div id="ii-result-card" class="result-card" style="display:none">
+        <div class="section-label" style="margin-bottom:10px">✅ Imagem Gerada</div>
+        <img id="ii-result-img" style="max-width:100%;border-radius:10px;border:1px solid var(--border);display:block;margin-bottom:10px" />
+        <div id="ii-result-desc" style="font-size:12px;color:var(--text-muted);margin-bottom:10px;white-space:pre-wrap"></div>
+        <a id="ii-download-btn" class="download-btn" download="imagem-ia.png">⬇ Baixar imagem</a>
       </div>
     </div>
 

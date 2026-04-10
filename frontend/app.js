@@ -3503,6 +3503,200 @@ function loadResizeFrame(file) {
 })();
 
 // ════════════════════════════════════════════════════════════════════
+// IMAGEM IA (Gemini Image Generation)
+// ════════════════════════════════════════════════════════════════════
+;(function() {
+  const panel = document.getElementById('tool-imageia');
+  if (!panel) return;
+
+  // ── Key ──
+  const iiKey     = document.getElementById('ii-key');
+  const iiKeySave = document.getElementById('ii-key-save');
+  const savedKey  = localStorage.getItem('ii_gemini_key');
+  if (savedKey && iiKey) { iiKey.value = savedKey; iiKeySave.textContent = '✅'; }
+  iiKeySave.addEventListener('click', () => {
+    const v = iiKey.value.trim();
+    if (!v) return;
+    localStorage.setItem('ii_gemini_key', v);
+    iiKeySave.textContent = '✅';
+    setTimeout(() => iiKeySave.textContent = '💾', 1500);
+  });
+
+  // ── Shared UI ──
+  const progWrap  = document.getElementById('ii-progress-wrap');
+  const progBar   = document.getElementById('ii-progress-bar');
+  const statusEl  = document.getElementById('ii-status');
+  const errEl     = document.getElementById('ii-error');
+  const resultCard= document.getElementById('ii-result-card');
+  const resultImg = document.getElementById('ii-result-img');
+  const resultDesc= document.getElementById('ii-result-desc');
+  const dlBtn     = document.getElementById('ii-download-btn');
+
+  // ── Mode tabs ──
+  const tabs   = panel.querySelectorAll('.ii-tab');
+  const panels = {
+    create:    document.getElementById('ii-panel-create'),
+    vary:      document.getElementById('ii-panel-vary'),
+    remix:     document.getElementById('ii-panel-remix'),
+    translate: document.getElementById('ii-panel-translate')
+  };
+  let currentMode = 'create';
+
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentMode = btn.dataset.iimode;
+      tabs.forEach(b => b.classList.toggle('active', b.dataset.iimode === currentMode));
+      Object.entries(panels).forEach(([k, el]) => { if (el) el.style.display = k === currentMode ? '' : 'none'; });
+      // clear result when switching
+      if (resultCard) resultCard.style.display = 'none';
+      if (errEl) errEl.style.display = 'none';
+    });
+  });
+
+  // ── Image preview helper ──
+  function wireImageField(dropId, inputId, previewWrapId, previewId, fnameId) {
+    const drop  = document.getElementById(dropId);
+    const input = document.getElementById(inputId);
+    const prevW = document.getElementById(previewWrapId);
+    const prev  = document.getElementById(previewId);
+    const fname = document.getElementById(fnameId);
+    let file = null;
+
+    function setFile(f) {
+      if (!f || !f.type.startsWith('image/')) return;
+      file = f;
+      if (fname) fname.textContent = f.name;
+      const url = URL.createObjectURL(f);
+      if (prev) { prev.src = url; prev.onload = () => URL.revokeObjectURL(url); }
+      if (prevW) prevW.style.display = '';
+      if (drop) drop.classList.add('has-file');
+    }
+
+    if (drop) {
+      drop.addEventListener('click', () => input && input.click());
+      drop.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') input&&input.click(); });
+      drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+      drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+      drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('drag-over'); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
+    }
+    if (input) input.addEventListener('change', () => { if (input.files[0]) setFile(input.files[0]); });
+
+    return { getFile: () => file };
+  }
+
+  const varyField    = wireImageField('ii-vary-drop',  'ii-vary-input',  'ii-vary-preview-wrap',  'ii-vary-preview',  'ii-vary-fname');
+  const remixField   = wireImageField('ii-remix-drop', 'ii-remix-input', 'ii-remix-preview-wrap', 'ii-remix-preview', 'ii-remix-fname');
+  const trField      = wireImageField('ii-tr-drop',    'ii-tr-input',    'ii-tr-preview-wrap',    'ii-tr-preview',    'ii-tr-fname');
+
+  // ── Submit helper ──
+  async function submit(mode, prompt, imageFile) {
+    const key = (iiKey && iiKey.value.trim()) || localStorage.getItem('ii_gemini_key') || '';
+    if (!key) { showErr('Cole sua Gemini API Key primeiro.'); return; }
+
+    // UI reset
+    errEl.style.display = 'none'; errEl.textContent = '';
+    resultCard.style.display = 'none';
+    progWrap.style.display = '';
+    progBar.style.width = '10%';
+    statusEl.textContent = '📤 Enviando…';
+
+    const fd = new FormData();
+    fd.append('mode', mode);
+    fd.append('gemini_key', key);
+    fd.append('prompt', prompt);
+    if (imageFile) fd.append('image', imageFile);
+
+    try {
+      const r = await fetch(API + '/api/imageia', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      const jobId = j.id;
+      // Poll
+      while (true) {
+        await new Promise(res => setTimeout(res, 2500));
+        const jr = await fetch(API + '/api/job/' + jobId);
+        const jj = await jr.json();
+        if (jj.status === 'done') {
+          progBar.style.width = '100%';
+          statusEl.textContent = '✅ Pronto!';
+          const imgUrl = API + jj.url;
+          resultImg.src = imgUrl;
+          if (dlBtn) { dlBtn.href = imgUrl; dlBtn.download = `imageia-${mode}.png`; }
+          if (resultDesc) resultDesc.textContent = jj.description || '';
+          resultCard.style.display = 'block';
+          resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          break;
+        }
+        if (jj.status === 'error') throw new Error(jj.error || 'Falhou');
+        progBar.style.width = (jj.progress || 30) + '%';
+        statusEl.textContent = jj.status_label || 'Processando…';
+      }
+    } catch(e) {
+      showErr(e.message);
+    } finally {
+      setTimeout(() => { progWrap.style.display = 'none'; statusEl.textContent = ''; }, 2000);
+      // Re-enable all buttons
+      panel.querySelectorAll('.ii-submit-btn, .submit-btn[id$="-btn"]').forEach(b => { if (!b.classList.contains('ii-tab') && !b.classList.contains('mode-btn')) b.disabled = false; });
+    }
+  }
+
+  function showErr(msg) {
+    errEl.textContent = msg; errEl.style.display = 'block';
+    errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function lockBtn(btn, text) { btn.disabled = true; btn.dataset.orig = btn.textContent; btn.textContent = text || '⏳ Gerando…'; }
+  function unlockBtn(btn) { btn.disabled = false; btn.textContent = btn.dataset.orig || btn.textContent; }
+
+  // ── Criar do Zero ──
+  const createBtn = document.getElementById('ii-create-btn');
+  createBtn && createBtn.addEventListener('click', async () => {
+    const prompt = (document.getElementById('ii-create-prompt')?.value || '').trim();
+    if (!prompt) { showErr('Descreva a imagem que quer gerar.'); return; }
+    const aspect = document.getElementById('ii-create-aspect')?.value || '1:1';
+    lockBtn(createBtn);
+    await submit('create', `${prompt} [aspect ratio: ${aspect}]`, null);
+    unlockBtn(createBtn);
+  });
+
+  // ── Variar Criativo ──
+  const varyBtn = document.getElementById('ii-vary-btn');
+  varyBtn && varyBtn.addEventListener('click', async () => {
+    const file   = varyField.getFile();
+    const prompt = (document.getElementById('ii-vary-prompt')?.value || '').trim();
+    if (!file) { showErr('Adicione uma imagem base.'); return; }
+    if (!prompt) { showErr('Descreva como quer variar a imagem.'); return; }
+    lockBtn(varyBtn);
+    await submit('vary', prompt, file);
+    unlockBtn(varyBtn);
+  });
+
+  // ── Remix / Editar ──
+  const remixBtn = document.getElementById('ii-remix-btn');
+  remixBtn && remixBtn.addEventListener('click', async () => {
+    const file   = remixField.getFile();
+    const prompt = (document.getElementById('ii-remix-prompt')?.value || '').trim();
+    if (!file) { showErr('Adicione a imagem de base.'); return; }
+    if (!prompt) { showErr('Descreva a edição que quer fazer.'); return; }
+    lockBtn(remixBtn);
+    await submit('remix', prompt, file);
+    unlockBtn(remixBtn);
+  });
+
+  // ── Traduzir Imagem ──
+  const trBtn = document.getElementById('ii-tr-btn');
+  trBtn && trBtn.addEventListener('click', async () => {
+    const file = trField.getFile();
+    const lang = document.getElementById('ii-tr-lang')?.value || 'Português do Brasil';
+    if (!file) { showErr('Adicione a imagem a traduzir.'); return; }
+    lockBtn(trBtn);
+    await submit('translate', lang, file);
+    unlockBtn(trBtn);
+  });
+})();
+
+// ════════════════════════════════════════════════════════════════════
 // AUTO LEGENDA
 // ════════════════════════════════════════════════════════════════════
 ;(function() {

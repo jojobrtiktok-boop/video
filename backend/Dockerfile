@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y ffmpeg python3 python3-pip fonts-dejavu
 RUN pip3 install --no-cache-dir faster-whisper
 RUN pip3 install --no-cache-dir demucs
 RUN pip3 install --no-cache-dir opencv-python-headless "librosa==0.9.2" numpy audioread scipy numba
-RUN pip3 install --no-cache-dir rembg pillow
+RUN pip3 install --no-cache-dir rembg pillow requests
 # Torch CPU (para Wav2Lip dentro do container)
 RUN pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 RUN pip3 install --no-cache-dir face_alignment

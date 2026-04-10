@@ -3949,6 +3949,69 @@ app.post('/api/gencenas/render-video', upload.single('video'), async (req, res) 
   })();
 });
 
+// ── Imagem IA: geração/edição com Gemini ─────────────────────────────────────
+app.post('/api/imageia', upload.single('image'), async (req, res) => {
+  const { mode, gemini_key, prompt = '' } = req.body;
+  const validModes = ['create', 'translate', 'vary', 'remix'];
+  if (!gemini_key) { if (req.file) fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'gemini_key obrigatório' }); }
+  if (!validModes.includes(mode)) { if (req.file) fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'mode inválido' }); }
+  if (mode !== 'create' && !req.file) return res.status(400).json({ error: 'image obrigatória para este modo' });
+
+  const jobId   = Date.now().toString() + Math.random().toString(36).slice(2);
+  const outName = `imageia-${jobId}.png`;
+  const outPath = path.join(UPLOADS_DIR, outName);
+
+  simpleJobs[jobId] = { status: 'processing', progress: 10, url: null, error: null, status_label: '🎨 Gerando com Gemini…' };
+  res.json({ id: jobId });
+
+  (async () => {
+    const inputPath = req.file ? req.file.path : null;
+    try {
+      const scriptPath = path.join(__dirname, 'gemini_image.py');
+      const args = [
+        `"${PYTHON}"`,
+        `"${scriptPath}"`,
+        mode,
+        gemini_key,
+        JSON.stringify(prompt),  // wrap in quotes via JSON to handle spaces/special chars
+        `"${outPath}"`,
+        inputPath ? `"${inputPath}"` : ''
+      ];
+      // Build final command — avoid shell injection by constructing carefully
+      const cmd = `${PYTHON} "${scriptPath}" ${mode} ${gemini_key} ${JSON.stringify(prompt)} "${outPath}"` +
+                  (inputPath ? ` "${inputPath}"` : '');
+
+      simpleJobs[jobId].status_label = '🤖 Chamando Gemini API…';
+      simpleJobs[jobId].progress = 30;
+
+      const output = await new Promise((resolve, reject) => {
+        const { exec: execChild } = require('child_process');
+        execChild(cmd, { timeout: 180000 }, (err, stdout, stderr) => {
+          if (err && !stdout) return reject(new Error(stderr || err.message));
+          resolve(stdout.trim());
+        });
+      });
+
+      let parsed;
+      try { parsed = JSON.parse(output); } catch(e) { throw new Error('Resposta inesperada do script: ' + output.slice(0,200)); }
+      if (!parsed.ok) throw new Error(parsed.error || 'Erro no script');
+
+      addToLibrary({ id: jobId, type: 'imageia', label: '🖼 Imagem IA', url: `/uploads/${outName}`, createdAt: Date.now(), expiresAt: Date.now() + 3600000 * 24, friendlyName: `imageia-${mode}.png` });
+
+      simpleJobs[jobId].status    = 'done';
+      simpleJobs[jobId].progress  = 100;
+      simpleJobs[jobId].url       = `/uploads/${outName}`;
+      simpleJobs[jobId].status_label = '✓ Pronto!';
+      simpleJobs[jobId].description  = parsed.description || '';
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error  = e.message;
+    } finally {
+      if (inputPath) fs.unlink(inputPath, () => {});
+    }
+  })();
+});
+
 // Serve o Remotion Editor (build de produção)
 const editorDist = path.join(__dirname, '..', 'remotion-editor', 'dist');
 if (fs.existsSync(editorDist)) {
