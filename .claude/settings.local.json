@@ -48,7 +48,8 @@
       "Bash(npm run:*)",
       "Bash(ssh:*)",
       "Bash(grep -v \"//\")",
-      "WebFetch(domain:greenn.com.br)"
+      "WebFetch(domain:greenn.com.br)",
+      "WebFetch(domain:worldtreinamentos.site)"
     ]
   }
 }

@@ -861,6 +861,10 @@
             <span class="nav-item-title" style="color:var(--accent)">Auto Montador</span>
             <span class="nav-item-desc">IA escolhe cenas + monta o vídeo</span>
           </button>
+          <button class="nav-item" data-tool="autolegenda">
+            <span class="nav-item-title" style="color:var(--accent)">Auto Legenda</span>
+            <span class="nav-item-desc">Legendas de anúncio Facebook com GPT-4o mini</span>
+          </button>
           <button class="nav-item" data-tool="autocorpo">
             <span class="nav-item-title" style="color:var(--accent)">Auto Corpo</span>
             <span class="nav-item-desc">Corpos IA + voz ElevenLabs</span>
@@ -1656,6 +1660,70 @@
         <h3>✓ Montagem concluída!</h3>
         <video id="am-result-video" class="result-video" controls></video><br/>
         <a id="am-download-btn" class="download-btn" download>⬇ Baixar vídeo montado</a>
+      </div>
+    </div>
+
+    <!-- AUTO LEGENDA -->
+    <div id="tool-autolegenda" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">✍️ Auto Legenda</h1>
+        <p class="tool-subtitle">Gere as 3 partes do anúncio Facebook automaticamente com GPT-4o mini</p>
+      </div>
+
+      <!-- Configuração -->
+      <div class="card">
+        <div class="section-label">⚙️ Configuração</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔑 OpenRouter Key <span style="font-size:10px">(GPT-4o mini)</span></div>
+        <div style="display:flex;gap:6px">
+          <input id="al-or-key" type="password" class="tool-input" placeholder="sk-or-..." style="flex:1" />
+          <button id="al-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+        </div>
+      </div>
+
+      <!-- Produto / Criativo -->
+      <div class="card">
+        <div class="section-label">🛍️ Produto / Criativo</div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Descreva o produto <strong>e/ou</strong> envie um criativo (imagem) para a IA analisar.</p>
+        <textarea id="al-product-desc" class="tool-input" rows="3" placeholder="Ex: Suplemento de colágeno para pele, 30 cápsulas, benefícios: firmeza, hidratação, rejuvenescimento..." style="width:100%;resize:vertical;margin-bottom:10px"></textarea>
+        <!-- Upload de criativo -->
+        <label id="al-img-drop" class="drop-zone" style="min-height:70px;margin-bottom:6px" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:24px;height:24px;margin-bottom:4px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <p style="font-size:12px;margin:0"><strong>Clique ou arraste</strong> uma imagem do criativo <span style="color:var(--text-muted)">(opcional)</span></p>
+          <div id="al-img-name" class="dz-filename" style="font-size:11px"></div>
+        </label>
+        <input type="file" id="al-img-input" accept="image/*" class="hidden-input" />
+        <div id="al-img-preview-wrap" style="display:none;margin-top:8px">
+          <img id="al-img-preview" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid var(--border)" />
+          <button id="al-img-clear" style="margin-top:4px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px">✕ remover imagem</button>
+        </div>
+      </div>
+
+      <!-- Gerador -->
+      <div class="card">
+        <div class="section-label" style="margin-bottom:10px">🤖 Gerar Legendas</div>
+        <textarea id="al-extra-prompt" class="tool-input" rows="2" placeholder="Comando extra (opcional): ex — tom urgente, inclua prova social, CTA com desconto..." style="width:100%;resize:vertical;margin-bottom:10px"></textarea>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="font-size:13px;color:var(--text-muted);white-space:nowrap">Variações:</label>
+          <select id="al-gen-count" class="tool-select" style="width:90px">
+            <option value="1">1</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+            <option value="10">10</option>
+          </select>
+          <button id="al-gen-btn" class="submit-btn" style="flex:1">✍️ Gerar legendas</button>
+        </div>
+        <div id="al-gen-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="al-gen-error" class="error-msg"></div>
+      </div>
+
+      <!-- Resultados -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="section-label" style="margin-bottom:0">📋 Legendas Geradas <span id="al-results-count" style="font-size:12px;color:var(--text-muted);font-weight:400">(0)</span></div>
+          <button id="al-copy-all-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px;display:none">📋 Copiar tudo</button>
+        </div>
+        <div id="al-results-list"></div>
+        <div id="al-results-empty" style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px">Nenhuma legenda gerada ainda.<br>Preencha o produto e clique em Gerar.</div>
       </div>
     </div>
 

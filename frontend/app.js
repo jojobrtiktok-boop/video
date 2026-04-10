@@ -3503,6 +3503,180 @@ function loadResizeFrame(file) {
 })();
 
 // ════════════════════════════════════════════════════════════════════
+// AUTO LEGENDA
+// ════════════════════════════════════════════════════════════════════
+;(function() {
+  const alPanel = document.getElementById('tool-autolegenda');
+  if (!alPanel) return;
+
+  // ── Elements ──
+  const alOrKey       = document.getElementById('al-or-key');
+  const alOrSave      = document.getElementById('al-or-save-btn');
+  const alProductDesc = document.getElementById('al-product-desc');
+  const alImgDrop     = document.getElementById('al-img-drop');
+  const alImgInput    = document.getElementById('al-img-input');
+  const alImgName     = document.getElementById('al-img-name');
+  const alImgPreviewW = document.getElementById('al-img-preview-wrap');
+  const alImgPreview  = document.getElementById('al-img-preview');
+  const alImgClear    = document.getElementById('al-img-clear');
+  const alExtraPrompt = document.getElementById('al-extra-prompt');
+  const alGenCount    = document.getElementById('al-gen-count');
+  const alGenBtn      = document.getElementById('al-gen-btn');
+  const alGenProgress = document.getElementById('al-gen-progress');
+  const alGenError    = document.getElementById('al-gen-error');
+  const alResultsList = document.getElementById('al-results-list');
+  const alResultsEmpty= document.getElementById('al-results-empty');
+  const alResultsCount= document.getElementById('al-results-count');
+  const alCopyAllBtn  = document.getElementById('al-copy-all-btn');
+
+  let alImageBase64 = null; // { data: base64str, type: 'image/jpeg' }
+  let alVariations  = [];   // [{ primary_text, headline, description }]
+
+  function alEsc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // ── Save key ──
+  const alSavedKey = localStorage.getItem('al_or_key');
+  if (alSavedKey) { alOrKey.value = alSavedKey; alOrSave.textContent = '✅'; }
+  alOrSave.addEventListener('click', () => {
+    const v = alOrKey.value.trim();
+    if (!v) return;
+    localStorage.setItem('al_or_key', v);
+    alOrSave.textContent = '✅';
+    setTimeout(() => alOrSave.textContent = '💾', 1500);
+  });
+
+  // ── Image upload ──
+  function setImage(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      alImageBase64 = { data: dataUrl.split(',')[1], type: file.type };
+      alImgPreview.src = dataUrl;
+      alImgPreviewW.style.display = '';
+      alImgName.textContent = file.name;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  alImgDrop.addEventListener('click', () => alImgInput.click());
+  alImgDrop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') alImgInput.click(); });
+  alImgDrop.addEventListener('dragover', e => { e.preventDefault(); alImgDrop.classList.add('drag-over'); });
+  alImgDrop.addEventListener('dragleave', () => alImgDrop.classList.remove('drag-over'));
+  alImgDrop.addEventListener('drop', e => {
+    e.preventDefault(); alImgDrop.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) setImage(e.dataTransfer.files[0]);
+  });
+  alImgInput.addEventListener('change', () => { if (alImgInput.files[0]) setImage(alImgInput.files[0]); });
+  alImgClear.addEventListener('click', () => {
+    alImageBase64 = null; alImgInput.value = ''; alImgPreviewW.style.display = 'none'; alImgName.textContent = '';
+  });
+
+  // ── Render results ──
+  function renderResults() {
+    alResultsCount.textContent = `(${alVariations.length})`;
+    alCopyAllBtn.style.display = alVariations.length ? '' : 'none';
+    alResultsEmpty.style.display = alVariations.length ? 'none' : '';
+    alResultsList.innerHTML = alVariations.map((v, i) => `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--bg-card2,rgba(255,255,255,0.03))">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:600;color:var(--accent)">Variação ${i+1}</div>
+          <button class="al-copy-var-btn submit-btn" data-idx="${i}" style="width:auto;padding:0 10px;font-size:11px">📋 Copiar tudo</button>
+        </div>
+        <div style="margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📄 Texto Principal (Legenda)</div>
+          <div style="display:flex;gap:6px;align-items:flex-start">
+            <div class="tool-input" style="flex:1;padding:8px;font-size:13px;white-space:pre-wrap;min-height:48px;cursor:text" contenteditable="true" data-field="primary_text" data-idx="${i}">${alEsc(v.primary_text)}</div>
+            <button class="al-copy-field submit-btn" data-field="primary_text" data-idx="${i}" style="width:auto;padding:0 8px;font-size:11px;align-self:flex-start;margin-top:0">📋</button>
+          </div>
+        </div>
+        <div style="margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">🔤 Título (Headline)</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div class="tool-input" style="flex:1;padding:8px;font-size:13px;cursor:text" contenteditable="true" data-field="headline" data-idx="${i}">${alEsc(v.headline)}</div>
+            <button class="al-copy-field submit-btn" data-field="headline" data-idx="${i}" style="width:auto;padding:0 8px;font-size:11px">📋</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">📝 Descrição</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <div class="tool-input" style="flex:1;padding:8px;font-size:13px;cursor:text" contenteditable="true" data-field="description" data-idx="${i}">${alEsc(v.description)}</div>
+            <button class="al-copy-field submit-btn" data-field="description" data-idx="${i}" style="width:auto;padding:0 8px;font-size:11px">📋</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // copy single field
+    alResultsList.querySelectorAll('.al-copy-field').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = +btn.dataset.idx;
+        const field = btn.dataset.field;
+        const text = alVariations[idx]?.[field] || '';
+        navigator.clipboard.writeText(text).then(() => { btn.textContent = '✅'; setTimeout(() => btn.textContent = '📋', 1400); });
+      });
+    });
+
+    // copy entire variation
+    alResultsList.querySelectorAll('.al-copy-var-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const v = alVariations[+btn.dataset.idx];
+        if (!v) return;
+        const text = `Texto Principal:\n${v.primary_text}\n\nTítulo:\n${v.headline}\n\nDescrição:\n${v.description}`;
+        navigator.clipboard.writeText(text).then(() => { btn.textContent = '✅'; setTimeout(() => btn.textContent = '📋 Copiar tudo', 1400); });
+      });
+    });
+  }
+
+  // ── Copy all ──
+  alCopyAllBtn.addEventListener('click', () => {
+    const text = alVariations.map((v, i) =>
+      `=== Variação ${i+1} ===\nTexto Principal:\n${v.primary_text}\n\nTítulo:\n${v.headline}\n\nDescrição:\n${v.description}`
+    ).join('\n\n');
+    navigator.clipboard.writeText(text).then(() => { alCopyAllBtn.textContent = '✅'; setTimeout(() => alCopyAllBtn.textContent = '📋 Copiar tudo', 1500); });
+  });
+
+  // ── Generate ──
+  alGenBtn.addEventListener('click', async () => {
+    const orKey = alOrKey.value.trim() || localStorage.getItem('al_or_key') || '';
+    if (!orKey) { alGenError.textContent = 'Cole sua OpenRouter Key primeiro.'; return; }
+    const productDesc = alProductDesc.value.trim();
+    const extraPrompt = alExtraPrompt.value.trim();
+    if (!productDesc && !alImageBase64) { alGenError.textContent = 'Descreva o produto ou envie uma imagem criativa.'; return; }
+    alGenError.textContent = '';
+    alGenBtn.disabled = true;
+    alGenProgress.style.display = '';
+
+    const payload = {
+      or_key: orKey,
+      product_desc: productDesc,
+      extra_prompt: extraPrompt,
+      count: parseInt(alGenCount.value, 10) || 3,
+      image: alImageBase64 || null
+    };
+
+    try {
+      const resp = await fetch('/api/autolegenda/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Erro ao gerar');
+      alVariations = data.variations;
+      renderResults();
+    } catch(e) {
+      alGenError.textContent = e.message;
+    } finally {
+      alGenBtn.disabled = false;
+      alGenProgress.style.display = 'none';
+    }
+  });
+
+  renderResults();
+})();
+
+// ════════════════════════════════════════════════════════════════════
 // AUTO CORPO
 // ════════════════════════════════════════════════════════════════════
 ;(function() {

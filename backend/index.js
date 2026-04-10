@@ -3064,6 +3064,67 @@ Retorne SOMENTE um array JSON sem comentários, no formato:
   })();
 });
 
+// ── Auto Legenda: gerar legendas de anúncio Facebook com GPT-4o-mini ────────
+app.post('/api/autolegenda/generate', express.json({ limit: '10mb' }), async (req, res) => {
+  const { or_key, product_desc = '', extra_prompt = '', count = 3, image = null } = req.body;
+  if (!or_key) return res.status(400).json({ error: 'or_key obrigatório' });
+  if (!product_desc && !image) return res.status(400).json({ error: 'Forneça a descrição do produto ou uma imagem criativa' });
+
+  const systemMsg = `Você é um especialista em copy para anúncios no Facebook. Sua tarefa é criar as 3 partes obrigatórias de um anúncio:
+1. Texto Principal (Primary Text / Legenda): aparece acima da imagem/vídeo no feed. Pode ser mais longo, usa ganchos, conta história, gera desejo.
+2. Título (Headline): texto em negrito abaixo da mídia. Curto, direto, chamativo, máx 40 caracteres.
+3. Descrição: texto menor abaixo do título. Complementa o headline, reforça a oferta ou CTA. Máx 30 palavras.
+
+Retorne APENAS um array JSON válido com os objetos de variações, sem comentários, sem markdown: [{"primary_text":"...","headline":"...","description":"..."},...]`;
+
+  const userContent = [];
+  if (product_desc) userContent.push({ type: 'text', text: `Produto/Oferta: ${product_desc}` });
+  if (image) userContent.push({ type: 'image_url', image_url: { url: `data:${image.type};base64,${image.data}` } });
+  userContent.push({ type: 'text', text: `${extra_prompt ? `Instrução extra: ${extra_prompt}\n\n` : ''}Crie ${count} variação(ões) de anúncio. Retorne APENAS o array JSON.` });
+
+  const bodyBuf = Buffer.from(JSON.stringify({
+    model: 'openai/gpt-4o-mini',
+    messages: [
+      { role: 'system', content: systemMsg },
+      { role: 'user', content: image ? userContent : userContent.map(c => c.text).join('\n\n') }
+    ],
+    max_tokens: 3000
+  }));
+
+  try {
+    const raw = await new Promise((resolve, reject) => {
+      const r = https.request({
+        hostname: 'openrouter.ai', path: '/api/v1/chat/completions', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${or_key}`, 'Content-Length': bodyBuf.length }
+      }, resp => {
+        let d = ''; resp.on('data', c => d += c);
+        resp.on('end', () => {
+          try {
+            const j = JSON.parse(d);
+            if (j.error) return reject(new Error(j.error.message || JSON.stringify(j.error)));
+            resolve((j.choices?.[0]?.message?.content || '').trim());
+          } catch(e) { reject(new Error('Parse error: ' + d.slice(0, 120))); }
+        });
+      });
+      r.on('error', reject); r.write(bodyBuf); r.end();
+    });
+
+    const arrMatch = raw.match(/\[[\s\S]*\]/);
+    if (!arrMatch) throw new Error('IA não retornou array válido: ' + raw.slice(0, 200));
+    const variations = JSON.parse(arrMatch[0]);
+    if (!Array.isArray(variations)) throw new Error('Formato inválido da resposta IA');
+    // Validate each item has the 3 fields
+    const clean = variations.map(v => ({
+      primary_text: String(v.primary_text || ''),
+      headline:     String(v.headline || ''),
+      description:  String(v.description || '')
+    }));
+    res.json({ variations: clean });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Auto Corpo: gerar variações de copy com GPT-4o-mini ─────────────────────
 app.post('/api/autocorpo/generate', express.json({ limit: '100kb' }), async (req, res) => {
   const { or_key, examples = [], prompt = '', count = 5 } = req.body;
