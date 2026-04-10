@@ -114,7 +114,7 @@ const CAT_MAP = {
   'video-library': null
 };
 
-const FERR_TOOLS = new Set(['watermark','trim','resize','compress','upscale','mirror','extrair','combine','translate','swapfala','cutaudio','gencenas']);
+const FERR_TOOLS = new Set(['watermark','cortes','resize','compress','upscale','mirror','extrair','combine','translate','swapfala','gencenas']);
 
 function showTool(name) {
   if (name === 'ferramentas') name = 'watermark';
@@ -4635,13 +4635,148 @@ makeSimpleTool({
     } finally {
       sub.disabled = false; sub.textContent = '▶ Substituir Fala';
       if (prog) prog.style.display = 'none';
-      checkReady();
-    }
+// ── CORTES: mode tab switcher ─────────────────────────────────────────────
+(function() {
+  const tabs = document.querySelectorAll('.cortes-tab');
+  const panels = { vid: document.getElementById('cortes-vid'), audio: document.getElementById('cortes-audio'), dyn: document.getElementById('cortes-dyn') };
+  if (!tabs.length) return;
+  tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.cmode;
+      tabs.forEach(b => b.classList.toggle('active', b.dataset.cmode === mode));
+      Object.entries(panels).forEach(([k, el]) => { if (el) el.style.display = k === mode ? '' : 'none'; });
+    });
   });
 })();
 
-// ══════════════════════════════════════════════════════════════════
-// CORTAR ÁUDIO INTELIGENTE
+// ── DIVIDIR DINÂMICO ─────────────────────────────────────────────────────────
+(function() {
+  const fileInput  = document.getElementById('dyn-file-input');
+  const dropZone   = document.getElementById('dyn-dz');
+  const fileNameEl = document.getElementById('dyn-file-name');
+  const minEl      = document.getElementById('dyn-seg-min');
+  const secEl      = document.getElementById('dyn-seg-sec');
+  const previewEl  = document.getElementById('dyn-preview');
+  const submitBtn  = document.getElementById('dyn-submit-btn');
+  const progWrap   = document.getElementById('dyn-progress-wrap');
+  const progBar    = document.getElementById('dyn-progress-bar');
+  const statusEl   = document.getElementById('dyn-status');
+  const errEl      = document.getElementById('dyn-error');
+  const resultCard = document.getElementById('dyn-result-card');
+  const infoEl     = document.getElementById('dyn-info');
+  const dlZip      = document.getElementById('dyn-download-zip');
+  const partsList  = document.getElementById('dyn-parts-list');
+  if (!submitBtn) return;
+
+  let dynFile = null, dynDur = 0;
+
+  function segDurSec() {
+    return (parseInt(minEl.value)||0)*60 + (parseInt(secEl.value)||0);
+  }
+
+  function fmtTime(s) {
+    s = Math.round(s);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    return `${m}:${String(sec).padStart(2,'0')}`;
+  }
+
+  function updatePreview() {
+    if (!dynFile || !dynDur) { if (previewEl) previewEl.textContent = ''; return; }
+    const seg = segDurSec();
+    if (!seg) { if (previewEl) previewEl.textContent = '⚠ Defina uma duração maior que zero.'; return; }
+    const count = Math.ceil(dynDur / seg);
+    const lastSec = dynDur % seg || seg;
+    let txt = `📹 Duração total: ${fmtTime(dynDur)} · ⏱ Cada parte: ${fmtTime(seg)}\n`;
+    txt += `🔢 Resultado: ${count} parte${count > 1 ? 's' : ''}`;
+    if (count > 1) txt += ` (${count-1} × ${fmtTime(seg)} + 1 × ${fmtTime(lastSec)})`;
+    if (previewEl) previewEl.textContent = txt;
+    submitBtn.disabled = false;
+    submitBtn.textContent = `⚡ Dividir em ${count} ${count>1?'partes':'parte'}`;
+  }
+
+  function setFile(f) {
+    dynFile = f;
+    if (fileNameEl) fileNameEl.textContent = f.name;
+    // Get duration
+    const tmp = document.createElement('video');
+    tmp.preload = 'metadata';
+    tmp.src = URL.createObjectURL(f);
+    tmp.onloadedmetadata = () => { dynDur = tmp.duration; URL.revokeObjectURL(tmp.src); updatePreview(); };
+  }
+
+  fileInput && fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+  if (dropZone) {
+    dropZone.addEventListener('click', () => fileInput && fileInput.click());
+    dropZone.addEventListener('dragover', e => e.preventDefault());
+    dropZone.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setFile(f); });
+  }
+  [minEl, secEl].forEach(el => el && el.addEventListener('input', updatePreview));
+
+  submitBtn.addEventListener('click', async () => {
+    if (!dynFile) return;
+    const seg = segDurSec();
+    if (!seg) { if (errEl) { errEl.style.display = ''; errEl.textContent = 'Defina uma duração maior que zero.'; } return; }
+    submitBtn.disabled = true; submitBtn.textContent = '⏳ Processando…';
+    if (errEl) errEl.style.display = 'none';
+    if (resultCard) resultCard.style.display = 'none';
+    if (progWrap) progWrap.style.display = '';
+    if (progBar) progBar.style.width = '5%';
+    if (statusEl) statusEl.textContent = '📤 Enviando vídeo…';
+
+    try {
+      const fd = new FormData();
+      fd.append('video', dynFile);
+      fd.append('seg_dur', seg);
+
+      const r = await fetch(API + '/api/split-dynamic', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      const jobId = j.id;
+      let done;
+      while (true) {
+        await new Promise(res => setTimeout(res, 2500));
+        const jr = await fetch(API + '/api/job/' + jobId);
+        const jj = await jr.json();
+        if (jj.status === 'done') { done = jj; break; }
+        if (jj.status === 'error') throw new Error(jj.error || 'Falhou');
+        if (progBar) progBar.style.width = (jj.progress || 0) + '%';
+        if (statusEl) statusEl.textContent = jj.status_label || `Processando… ${jj.progress||0}%`;
+      }
+
+      if (progBar) progBar.style.width = '100%';
+      if (statusEl) statusEl.textContent = '✓ Concluído!';
+
+      // ZIP download
+      if (dlZip && done.zip_url) { dlZip.href = API + done.zip_url; dlZip.download = 'partes.zip'; dlZip.style.display = ''; }
+      else if (dlZip) dlZip.style.display = 'none';
+
+      // Parts list
+      if (partsList && done.parts) {
+        partsList.innerHTML = done.parts.map((p, i) => {
+          const url = API + p.url;
+          return `<div style="padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px">Parte ${i+1} — ${p.label}</div>
+            <video controls class="result-video" src="${url}" style="margin-bottom:8px"></video>
+            <a href="${url}" download="${p.label}" class="download-btn">⬇ Baixar parte ${i+1}</a>
+          </div>`;
+        }).join('');
+      }
+
+      if (infoEl && done.parts) {
+        infoEl.textContent = `${done.parts.length} parte${done.parts.length>1?'s':''} · ${fmtTime(dynDur)} dividido em ${fmtTime(seg)} cada`;
+      }
+      if (resultCard) { resultCard.style.display = 'block'; resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+    } catch(e) {
+      if (errEl) { errEl.style.display = ''; errEl.textContent = 'Erro: ' + e.message; }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = dynFile && dynDur ? `⚡ Dividir em ${Math.ceil(dynDur/segDurSec())} partes` : 'Selecione um vídeo';
+      setTimeout(() => { if (progWrap) progWrap.style.display = 'none'; }, 1500);
+    }
+  });
+})();
 // ══════════════════════════════════════════════════════════════════
 (function() {
   const fileInput  = document.getElementById('ca-file-input');

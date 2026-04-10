@@ -47,7 +47,8 @@
       "Bash(npx vite:*)",
       "Bash(npm run:*)",
       "Bash(ssh:*)",
-      "Bash(grep -v \"//\")"
+      "Bash(grep -v \"//\")",
+      "WebFetch(domain:greenn.com.br)"
     ]
   }
 }

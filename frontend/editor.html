@@ -908,7 +908,7 @@
     <div id="ftools-tab-strip">
       <div class="ftools-tabs-inner">
         <button class="ftab active" data-ftool="watermark">Marca d'água</button>
-        <button class="ftab" data-ftool="trim">Cortar Vídeo</button>
+        <button class="ftab" data-ftool="cortes">✂️ Cortes</button>
         <button class="ftab" data-ftool="resize">Redimensionar</button>
         <button class="ftab" data-ftool="compress">Comprimir</button>
         <button class="ftab" data-ftool="upscale">Qualidade</button>
@@ -917,7 +917,6 @@
         <button class="ftab" data-ftool="combine">Combinador</button>
         <button class="ftab" data-ftool="translate">Traduzir</button>
         <button class="ftab" data-ftool="swapfala">Substituir Fala</button>
-        <button class="ftab" data-ftool="cutaudio">✂️ Cortar Áudio</button>
         <button class="ftab" data-ftool="gencenas">🎨 Gerador de Cenas</button>
       </div>
     </div>
@@ -1493,68 +1492,7 @@
       </div>
     </div>
 
-    <!-- CORTAR ÁUDIO -->
-    <div id="tool-cutaudio" class="tool-panel" style="display:none">
-      <div class="tool-header">
-        <h1 class="tool-title">✂️ Cortar Áudio Inteligente</h1>
-        <p class="tool-subtitle">Whisper transcreve + GPT-4o mini remove silêncios e partes "mortas" automaticamente</p>
-      </div>
 
-      <!-- Upload -->
-      <div class="card">
-        <div class="section-label">🎙 Áudio / Vídeo</div>
-        <label id="ca-drop-zone" class="drop-zone" tabindex="0">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:28px;height:28px;margin-bottom:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
-          <p><strong>Clique ou arraste</strong> áudio ou vídeo</p>
-          <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0">mp3 · wav · m4a · aac · flac · mp4 (extrai o áudio)</p>
-          <div id="ca-file-name" class="dz-filename"></div>
-        </label>
-        <input type="file" id="ca-file-input" accept="audio/*,video/mp4,video/mov,video/*" class="hidden-input" />
-      </div>
-
-      <!-- Config -->
-      <div class="card">
-        <div class="section-label">⚙️ Configuração</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-          <div style="flex:2;min-width:200px">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔑 OpenRouter Key (GPT-4o mini)</div>
-            <div style="display:flex;gap:6px">
-              <input id="ca-or-key" type="password" class="tool-input" placeholder="sk-or-..." style="flex:1" />
-              <button id="ca-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
-            </div>
-          </div>
-          <div style="flex:1;min-width:130px">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">⏱ Silêncio mínimo (s)</div>
-            <input id="ca-min-silence" type="number" class="tool-input" value="0.4" min="0.1" max="3" step="0.1" />
-          </div>
-          <div style="flex:1;min-width:130px">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔇 Buffer entre cortes (s)</div>
-            <input id="ca-buffer" type="number" class="tool-input" value="0.05" min="0" max="0.3" step="0.01" />
-          </div>
-        </div>
-        <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--bg-secondary);border-radius:8px">
-          <input id="ca-smart-mode" type="checkbox" checked style="width:16px;height:16px;margin-top:2px;accent-color:var(--accent);flex-shrink:0" />
-          <label for="ca-smart-mode" style="font-size:13px;cursor:pointer;line-height:1.4">
-            <strong>Modo inteligente</strong> — Whisper transcreve + GPT-4o mini analisa e identifica partes que "ficam em aberto", preenchimentos e repetições
-          </label>
-        </div>
-      </div>
-
-      <button id="ca-submit-btn" class="submit-btn" disabled>Selecione um arquivo de áudio</button>
-
-      <div id="ca-progress-wrap" style="display:none;margin-top:12px">
-        <div class="progress-wrap"><div class="progress-bar" id="ca-progress-bar" style="width:0%;transition:width 0.5s"></div></div>
-        <div id="ca-progress-label" class="status-text" style="margin-top:6px;text-align:center;font-size:13px"></div>
-      </div>
-      <div id="ca-error" class="error-msg"></div>
-
-      <div id="ca-result-card" class="result-card" style="display:none">
-        <h3>✓ Áudio cortado!</h3>
-        <div id="ca-stats" style="font-size:13px;color:var(--text-muted);margin-bottom:12px"></div>
-        <audio id="ca-result-audio" controls style="width:100%;margin-bottom:12px"></audio>
-        <a id="ca-download-btn" class="download-btn" download>⬇ Baixar áudio cortado</a>
-      </div>
-    </div>
 
     <!-- GERADOR DE CENAS -->
     <div id="tool-gencenas" class="tool-panel" style="display:none">
@@ -2325,12 +2263,18 @@
     </div>
 
 
-    <!-- CORTAR VÍDEO -->
-    <div id="tool-trim" class="tool-panel" style="display:none">
-      <div class="tool-header">
-        <h1 class="tool-title">Cortar Vídeo</h1>
-        <p class="tool-subtitle">Arraste os marcadores na timeline para definir o corte</p>
+    <!-- CORTES (Cortar Vídeo / Cortar Áudio / Dividir Dinâmico) -->
+    <div id="tool-cortes" class="tool-panel" style="display:none">
+
+      <!-- Sub-mode tabs -->
+      <div class="mode-toggle" style="margin-bottom:16px">
+        <button class="mode-btn cortes-tab active" data-cmode="vid">✂️ Cortar Vídeo</button>
+        <button class="mode-btn cortes-tab" data-cmode="audio">🎙 Cortar Áudio</button>
+        <button class="mode-btn cortes-tab" data-cmode="dyn">⚡ Dividir Dinâmico</button>
       </div>
+
+      <!-- ════ MODE: Cortar Vídeo ════ -->
+      <div id="cortes-vid">
       <div class="card">
         <label for="trim-file-input" id="trim-dz" class="drop-zone" tabindex="0">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
@@ -2401,7 +2345,102 @@
           <div id="split-results-list"></div>
         </div>
       </div>
-    </div>
+      </div><!-- /cortes-vid -->
+
+      <!-- ════ MODE: Cortar Áudio ════ -->
+      <div id="cortes-audio" style="display:none">
+        <!-- Upload -->
+        <div class="card">
+          <div class="section-label">🎙 Áudio / Vídeo</div>
+          <label id="ca-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:28px;height:28px;margin-bottom:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
+            <p><strong>Clique ou arraste</strong> áudio ou vídeo</p>
+            <p style="font-size:11px;color:var(--text-muted);margin:2px 0 0">mp3 · wav · m4a · aac · flac · mp4 (extrai o áudio)</p>
+            <div id="ca-file-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="ca-file-input" accept="audio/*,video/mp4,video/mov,video/*" class="hidden-input" />
+        </div>
+        <!-- Config -->
+        <div class="card">
+          <div class="section-label">⚙️ Configuração</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+            <div style="flex:2;min-width:200px">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔑 OpenRouter Key (GPT-4o mini)</div>
+              <div style="display:flex;gap:6px">
+                <input id="ca-or-key" type="password" class="tool-input" placeholder="sk-or-..." style="flex:1" />
+                <button id="ca-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
+              </div>
+            </div>
+            <div style="flex:1;min-width:130px">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">⏱ Silêncio mínimo (s)</div>
+              <input id="ca-min-silence" type="number" class="tool-input" value="0.4" min="0.1" max="3" step="0.1" />
+            </div>
+            <div style="flex:1;min-width:130px">
+              <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">🔇 Buffer entre cortes (s)</div>
+              <input id="ca-buffer" type="number" class="tool-input" value="0.05" min="0" max="0.3" step="0.01" />
+            </div>
+          </div>
+          <div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:var(--bg-secondary);border-radius:8px">
+            <input id="ca-smart-mode" type="checkbox" checked style="width:16px;height:16px;margin-top:2px;accent-color:var(--accent);flex-shrink:0" />
+            <label for="ca-smart-mode" style="font-size:13px;cursor:pointer;line-height:1.4">
+              <strong>Modo inteligente</strong> — Whisper transcreve + GPT-4o mini analisa e identifica partes que ficam em aberto, preenchimentos e repetições
+            </label>
+          </div>
+        </div>
+        <button id="ca-submit-btn" class="submit-btn" disabled>Selecione um arquivo de áudio</button>
+        <div id="ca-progress-wrap" style="display:none;margin-top:12px">
+          <div class="progress-wrap"><div class="progress-bar" id="ca-progress-bar" style="width:0%;transition:width 0.5s"></div></div>
+          <div id="ca-progress-label" class="status-text" style="margin-top:6px;text-align:center;font-size:13px"></div>
+        </div>
+        <div id="ca-error" class="error-msg"></div>
+        <div id="ca-result-card" class="result-card" style="display:none">
+          <h3>✓ Áudio cortado!</h3>
+          <div id="ca-stats" style="font-size:13px;color:var(--text-muted);margin-bottom:12px"></div>
+          <audio id="ca-result-audio" controls style="width:100%;margin-bottom:12px"></audio>
+          <a id="ca-download-btn" class="download-btn" download>⬇ Baixar áudio cortado</a>
+        </div>
+      </div><!-- /cortes-audio -->
+
+      <!-- ════ MODE: Dividir Dinâmico ════ -->
+      <div id="cortes-dyn" style="display:none">
+        <div class="card">
+          <div class="section-label">📹 Vídeo</div>
+          <label id="dyn-dz" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+            <p><strong>Clique ou arraste</strong> um vídeo aqui</p>
+            <div id="dyn-file-name" class="dz-filename"></div>
+          </label>
+          <input type="file" id="dyn-file-input" accept="video/*" class="hidden-input">
+        </div>
+        <div class="card">
+          <div class="section-label">⏱ Duração de cada parte</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:6px">
+              <input id="dyn-seg-min" type="number" class="tool-input" value="1" min="0" style="width:72px" placeholder="min"/>
+              <span style="font-size:13px;font-weight:600;color:var(--text-muted)">min</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input id="dyn-seg-sec" type="number" class="tool-input" value="0" min="0" max="59" style="width:72px" placeholder="seg"/>
+              <span style="font-size:13px;font-weight:600;color:var(--text-muted)">seg</span>
+            </div>
+          </div>
+          <div id="dyn-preview" style="font-size:13px;color:var(--text-muted);margin-top:10px;line-height:1.5"></div>
+        </div>
+        <button id="dyn-submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
+        <div id="dyn-progress-wrap" style="display:none;margin-top:12px">
+          <div class="progress-wrap"><div class="progress-bar" id="dyn-progress-bar" style="width:0%;transition:width 0.5s"></div></div>
+          <div id="dyn-status" class="status-text" style="margin-top:6px;text-align:center;font-size:13px"></div>
+        </div>
+        <div id="dyn-error" class="error-msg"></div>
+        <div id="dyn-result-card" class="result-card" style="display:none">
+          <h3>✓ Vídeo dividido!</h3>
+          <div id="dyn-info" style="font-size:13px;color:var(--text-muted);margin-bottom:14px"></div>
+          <a id="dyn-download-zip" class="download-btn" download style="margin-bottom:14px;display:block">⬇ Baixar ZIP com todas as partes</a>
+          <div id="dyn-parts-list"></div>
+        </div>
+      </div><!-- /cortes-dyn -->
+
+    </div><!-- /tool-cortes -->
 
     <!-- REDIMENSIONAR -->
     <div id="tool-resize" class="tool-panel" style="display:none">

@@ -3315,6 +3315,90 @@ app.post('/api/replace-segment', upload.single('video'), async (req, res) => {
   })();
 });
 
+// ── Dividir Vídeo Dinâmico (por duração fixa → ZIP numerado) ─────────────────
+app.post('/api/split-dynamic', upload.single('video'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Vídeo obrigatório' });
+  const segDur = parseFloat(req.body.seg_dur) || 60;
+  if (segDur < 1) { fs.unlink(req.file.path, ()=>{}); return res.status(400).json({ error: 'Duração mínima é 1 segundo' }); }
+
+  const jobId = Date.now().toString() + Math.random().toString(36).slice(2);
+  simpleJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, status_label: '✂️ Dividindo vídeo…', parts: null, zip_url: null };
+  res.json({ id: jobId });
+
+  (async () => {
+    const input = req.file.path;
+    const workDir = path.join(UPLOAD_DIR, 'dyn_' + jobId);
+    fs.mkdirSync(workDir, { recursive: true });
+
+    try {
+      simpleJobs[jobId].status_label = '⏳ Obtendo duração do vídeo…';
+      simpleJobs[jobId].progress = 5;
+      const totalDur = await getVideoDuration(input);
+      if (!totalDur) throw new Error('Não foi possível obter duração do vídeo');
+
+      const count = Math.ceil(totalDur / segDur);
+      simpleJobs[jobId].status_label = `✂️ Dividindo em ${count} partes…`;
+      simpleJobs[jobId].progress = 10;
+
+      // FFmpeg segment split
+      const segPattern = path.join(workDir, '%03d.mp4');
+      await new Promise((resolve, reject) => {
+        const cmd = `"${FFMPEG}" -y -i "${input}" -c copy -map 0 -f segment -segment_time ${segDur} -reset_timestamps 1 "${segPattern}"`;
+        exec(cmd, { timeout: 1800000, maxBuffer: 10*1024*1024 }, (err, _so, se) => {
+          if (err) return reject(new Error((se||err.message).slice(0, 300)));
+          resolve();
+        });
+      });
+
+      simpleJobs[jobId].progress = 70;
+      simpleJobs[jobId].status_label = '📦 Comprimindo em ZIP…';
+
+      // Collect generated parts (zero-padded = sorted numerically)
+      const partFiles = fs.readdirSync(workDir)
+        .filter(f => f.endsWith('.mp4'))
+        .sort();
+
+      if (!partFiles.length) throw new Error('FFmpeg não gerou nenhuma parte');
+
+      const padLen = String(partFiles.length).length;
+      const partsCopied = [];
+      for (let i = 0; i < partFiles.length; i++) {
+        const num = String(i + 1).padStart(padLen, '0');
+        const outName = `dyn-${jobId}-${num}.mp4`;
+        const outPath = path.join(UPLOAD_DIR, outName);
+        fs.copyFileSync(path.join(workDir, partFiles[i]), outPath);
+        scheduleDelete(outPath, 7200000);
+        partsCopied.push({ url: '/uploads/' + outName, label: `parte_${num}.mp4` });
+        simpleJobs[jobId].progress = 70 + Math.round((i + 1) / partFiles.length * 20);
+      }
+
+      // Create ZIP
+      const zipName = `dyn-${jobId}.zip`;
+      const zipPath = path.join(UPLOAD_DIR, zipName);
+      const zipArgParts = partsCopied.map(p => `"${path.join(UPLOAD_DIR, path.basename(p.url))}"`).join(' ');
+      await new Promise((resolve, reject) => {
+        exec(`zip -j "${zipPath}" ${zipArgParts}`, { timeout: 300000 }, (err, _so, se) => {
+          if (err) return reject(new Error('ZIP falhou: ' + (se||err.message).slice(0,200)));
+          resolve();
+        });
+      });
+      scheduleDelete(zipPath, 7200000);
+
+      simpleJobs[jobId].status = 'done';
+      simpleJobs[jobId].progress = 100;
+      simpleJobs[jobId].parts = partsCopied;
+      simpleJobs[jobId].zip_url = '/uploads/' + zipName;
+      simpleJobs[jobId].url = '/uploads/' + zipName;
+    } catch(e) {
+      simpleJobs[jobId].status = 'error';
+      simpleJobs[jobId].error = e.message;
+    } finally {
+      fs.unlink(input, () => {});
+      try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+    }
+  })();
+});
+
 // ── Cortar Áudio Inteligente ─────────────────────────────────────────────────
 app.post('/api/cutaudio', upload.single('audio'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Arquivo de áudio obrigatório' });
