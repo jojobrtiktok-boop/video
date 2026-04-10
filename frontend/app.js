@@ -4809,6 +4809,10 @@ makeSimpleTool({
     } finally {
       sub.disabled = false; sub.textContent = '▶ Substituir Fala';
       if (prog) prog.style.display = 'none';
+    }
+  });
+})();
+
 // ── CORTES: mode tab switcher ─────────────────────────────────────────────
 (function() {
   const tabs = document.querySelectorAll('.cortes-tab');
