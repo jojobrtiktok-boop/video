@@ -4662,7 +4662,7 @@ makeSimpleTool({
   async function pollJob(jobId, onStatus) {
     while (true) {
       await new Promise(r => setTimeout(r, 2500));
-      const resp = await fetch(API + `/api/process-status/${jobId}`);
+      const resp = await fetch(API + `/api/job/${jobId}`);
       const job  = await resp.json();
       if (job.status === 'done') return { url: API + job.url, job };
       if (job.status === 'error') throw new Error(job.error || 'Falhou');
