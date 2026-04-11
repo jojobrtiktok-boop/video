@@ -65,42 +65,47 @@ def detect(video_path, max_frames=24):
     mean_gray = cv2.cvtColor(mean_bgr, cv2.COLOR_BGR2GRAY)
     mean_edges = edge_mag(mean_gray)
 
-    # ══ A: completamente estatico (std<28) + borda na media (>12) ══════════════
-    mask_A = ((std_gray < 28) & (mean_lum > 6) & (mean_edges > 12)).astype(np.uint8) * 255
+    # ══ A: estatico com bordas (logos, caixas de texto fixas) ══════════════════
+    # std < 40 cobre tanto logos solidos quanto semitransparentes
+    mask_A = ((std_gray < 40) & (mean_lum > 4) & (mean_edges > 8)).astype(np.uint8) * 255
 
-    # ══ B: bordas persistentes em >30% dos frames amostrados ══════════════════
-    edge_acc = np.zeros((fh, fw), dtype=np.float32)
-    for f in frames_raw:
-        gf = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
-        edge_acc += (edge_mag(gf) > 25).astype(np.float32)
-    # Borda presente em >30% frames E variancia moderada (<45)
-    mask_B = ((edge_acc / count > 0.30) & (std_gray < 45)).astype(np.uint8) * 255
-
-    # ══ C: contraste local quasi-estatico (logos semitransparentes) ════════════
+    # ══ B: contraste local na media + quasi-estatico (semitransparentes) ═══════
     mean_blur = cv2.GaussianBlur(mean_gray, (5, 5), 0)
     local_contrast = cv2.absdiff(mean_gray, mean_blur)
-    mask_C = ((local_contrast > 8) & (std_gray < 35) & (mean_lum > 5)).astype(np.uint8) * 255
+    mask_B = ((local_contrast > 5) & (std_gray < 55) & (mean_lum > 3)).astype(np.uint8) * 255
+
+    # ══ C: legendas animadas (texto sempre presente mas muda de conteudo) ══════
+    # Calcula contraste local MEDIO POR FRAME (o texto muda mas continua presente)
+    lc_acc = np.zeros((fh, fw), dtype=np.float32)
+    for f in frames_raw:
+        gf  = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
+        gfb = cv2.GaussianBlur(gf, (5, 5), 0)
+        lc_acc += cv2.absdiff(gf, gfb).astype(np.float32)
+    mean_frame_lc = lc_acc / count
+    # Alta presenca de contraste em cada frame (texto sempre presente) + conteudo muda (std alto)
+    # std > 18: conteudo muda; std < 75: nao e' so' movimento do video; mean_frame_lc > 22: texto real
+    mask_C = ((mean_frame_lc > 22) & (std_gray > 18) & (std_gray < 75)).astype(np.uint8) * 255
 
     # ══ Unir as tres mascaras (OR) ═════════════════════════════════════════════
     combined = cv2.bitwise_or(mask_A, cv2.bitwise_or(mask_B, mask_C))
 
-    # Dilatar para conectar pixels vizinhos
-    k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (18, 9))
+    # Dilatar para conectar pixels vizinhos do mesmo overlay
+    k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (14, 7))
     dilated = cv2.dilate(combined, k1, iterations=2)
 
-    # Fechar buracos internos (palavras, linhas de texto)
-    k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 16))
+    # Fechar buracos internos (letras, espacos entre palavras)
+    k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (30, 14))
     closed = cv2.morphologyEx(dilated, cv2.MORPH_CLOSE, k2)
 
     # Remover ruido isolado
-    k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (6, 4))
+    k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
     cleaned = cv2.morphologyEx(closed, cv2.MORPH_OPEN, k3)
 
     contours, _ = cv2.findContours(cleaned, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Area: minimo 0.03% e maximo 42% do frame
-    min_area = fw * fh * 0.0003
-    max_area = fw * fh * 0.42
+    # Area: minimo 0.02% e maximo 38% do frame
+    min_area = fw * fh * 0.0002
+    max_area = fw * fh * 0.38
 
     sx = width  / fw
     sy = height / fh
