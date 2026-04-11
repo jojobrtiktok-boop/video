@@ -1077,6 +1077,58 @@ function updateSubSubmit() {
   subSubmitBtn.textContent = subSubMode === 'auto' ? '🤖 Gerar AutoCaption' : '💬 Gravar Legendas no Vídeo';
 }
 
+// ── Intervalos de legenda ──
+(function() {
+  const chk     = document.getElementById('sub-use-ranges');
+  const section = document.getElementById('sub-ranges-section');
+  const list    = document.getElementById('sub-ranges-list');
+  const addBtn  = document.getElementById('sub-add-range-btn');
+  if (!chk || !addBtn || !list) return;
+
+  chk.addEventListener('change', () => { section.style.display = chk.checked ? '' : 'none'; });
+
+  function fmtTime(s) { const m = Math.floor(s/60), ss = Math.floor(s%60); return `${m}:${String(ss).padStart(2,'0')}`; }
+
+  function parsetime(val) {
+    val = (val||'').trim();
+    const ms = val.match(/^(\d+)m(\d+)s?$/i); if (ms) return parseInt(ms[1])*60+parseInt(ms[2]);
+    const mc = val.match(/^(\d+):(\d+):(\d+)$/); if (mc) return parseInt(mc[1])*3600+parseInt(mc[2])*60+parseInt(mc[3]);
+    const mm = val.match(/^(\d+):(\d+)$/); if (mm) return parseInt(mm[1])*60+parseInt(mm[2]);
+    const n = parseFloat(val); return isNaN(n) ? null : n;
+  }
+
+  function addRow(start, end) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap';
+    row.innerHTML = `
+      <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">De</span>
+      <input class="tool-input sub-range-start" type="text" placeholder="0:00" value="${start||''}" style="width:54px;height:32px;font-size:12px;flex:none" />
+      <button class="sub-cap-start" title="Capturar tempo atual" style="background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;padding:0 7px;height:32px;white-space:nowrap">⏱ agora</button>
+      <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">até</span>
+      <input class="tool-input sub-range-end" type="text" placeholder="0:30" value="${end||''}" style="width:54px;height:32px;font-size:12px;flex:none" />
+      <button class="sub-cap-end" title="Capturar tempo atual" style="background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;padding:0 7px;height:32px;white-space:nowrap">⏱ agora</button>
+      <button class="sub-range-del" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-muted);padding:0 4px;margin-left:auto" title="Remover">✕</button>`;
+    row.querySelector('.sub-range-del').addEventListener('click', () => row.remove());
+    row.querySelector('.sub-cap-start').addEventListener('click', () => { if (subVideoEl) row.querySelector('.sub-range-start').value = fmtTime(subVideoEl.currentTime); });
+    row.querySelector('.sub-cap-end').addEventListener('click', () => { if (subVideoEl) row.querySelector('.sub-range-end').value = fmtTime(subVideoEl.currentTime); });
+    list.appendChild(row);
+  }
+
+  addBtn.addEventListener('click', () => addRow());
+
+  window._subGetRanges = function() {
+    if (!chk.checked) return null;
+    const rows = list.querySelectorAll('div');
+    const result = [];
+    rows.forEach(row => {
+      const s = parsetime(row.querySelector('.sub-range-start')?.value);
+      const e = parsetime(row.querySelector('.sub-range-end')?.value);
+      if (s !== null && e !== null && e > s) result.push({ start: s, end: e });
+    });
+    return result.length ? result : null;
+  };
+})();
+
 // Submit
 if (subSubmitBtn) {
   subSubmitBtn.addEventListener('click', async () => {
@@ -1117,6 +1169,8 @@ if (subSubmitBtn) {
       const valid = subEntries.filter(e => e.text.trim());
       fd.append('subs', JSON.stringify(valid.map(e => ({ start: e.start, end: e.end, text: e.text.trim() }))));
     }
+    const subRanges = window._subGetRanges ? window._subGetRanges() : null;
+    if (subRanges) fd.append('time_ranges', JSON.stringify(subRanges));
 
     try {
       const resp = await fetch(API + endpoint, { method: 'POST', body: fd });

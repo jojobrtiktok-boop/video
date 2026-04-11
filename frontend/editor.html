@@ -1187,6 +1187,19 @@
         </div>
       </div>
 
+      <!-- Intervalos opcionais para legendas -->
+      <div class="card">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600">
+          <input type="checkbox" id="sub-use-ranges" style="width:16px;height:16px;cursor:pointer" />
+          ⏱ Aplicar legendas apenas em intervalos específicos
+        </label>
+        <div id="sub-ranges-section" style="display:none;margin-top:12px">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Defina em quais trechos do vídeo as legendas devem aparecer. Legendas fora dos intervalos serão removidas.</div>
+          <div id="sub-ranges-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <button id="sub-add-range-btn" class="submit-btn" style="background:var(--bg);color:var(--text);border:1px solid var(--border);font-size:12px;padding:6px 12px;width:auto">+ Adicionar intervalo</button>
+        </div>
+      </div>
+
       <button id="sub-submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
       <div id="sub-progress-wrap" class="progress-wrap" style="display:none"><div class="progress-bar"></div></div>
       <div id="sub-status" class="status-text"></div>

@@ -662,6 +662,15 @@ app.post('/api/subtitle', upload.single('video'), (req, res) => {
   try { subs = JSON.parse(req.body.subs || '[]'); } catch (_) { return res.status(400).json({ error: 'subs invalido' }); }
   if (!subs.length) return res.status(400).json({ error: 'nenhuma legenda enviada' });
 
+  // Filter by time_ranges if provided
+  let timeRangesSub = null;
+  try { if (req.body.time_ranges) timeRangesSub = JSON.parse(req.body.time_ranges); } catch(_) {}
+  if (timeRangesSub && timeRangesSub.length > 0) {
+    function _tts(t) { const p = String(t).trim().split(':').map(s=>parseFloat(s)||0); return p.length===3?p[0]*3600+p[1]*60+p[2]:p.length===2?p[0]*60+p[1]:p[0]; }
+    subs = subs.filter(s => { const st = _tts(s.start), en = _tts(s.end); return timeRangesSub.some(r => st >= r.start && en <= r.end); });
+    if (!subs.length) { fs.unlink(req.file.path,()=>{}); return res.status(400).json({ error: 'Nenhuma legenda dentro dos intervalos especificados.' }); }
+  }
+
   const preset     = req.body.preset   || 'classico';
   const fontSize   = Math.max(24, Math.min(120, parseInt(req.body.fontsize) || 72));
   const wordByWord = req.body.wordbyword === '1';
@@ -872,6 +881,9 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
   const openrouterModel = req.body.openrouter_model || 'openai/gpt-4o-mini';
   // Sync offset: medium model tends to lag slightly behind audio
   const syncOffset = model === 'medium' ? -0.15 : (model === 'large' ? -0.2 : 0);
+  // time_ranges filter (optional)
+  let timeRangesSub = null;
+  try { if (req.body.time_ranges) timeRangesSub = JSON.parse(req.body.time_ranges); } catch(_) {}
 
   const python = PYTHON;
   const script = path.join(__dirname, 'transcribe.py');
@@ -919,7 +931,7 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
     }
 
     // Flatten: lista global de todas as palavras com start/end exatos
-    const allWords = [];
+    let allWords = [];
     for (const seg of wordData) {
       for (const w of (seg.words || [])) {
         if (w.word && w.word.trim()) {
@@ -932,12 +944,20 @@ app.post('/api/subtitle/auto', upload.single('video'), (req, res) => {
       }
     }
 
+    // Filter by time_ranges if provided
+    if (timeRangesSub && timeRangesSub.length > 0) {
+      allWords = allWords.filter(w => timeRangesSub.some(r => w.start >= r.start && w.end <= r.end));
+    }
+
     // Fallback: se não veio word data, usa os segmentos inteiros
     const segments = [];
     if (!allWords.length) {
       for (const seg of wordData) {
         const s0 = Math.max(0, seg.start + syncOffset);
         const e0 = Math.max(s0 + 0.05, seg.end + syncOffset);
+        if (timeRangesSub && timeRangesSub.length > 0) {
+          if (!timeRangesSub.some(r => s0 >= r.start && e0 <= r.end)) continue;
+        }
         segments.push({ start: secsToAssTime(s0), end: secsToAssTime(e0), text: uppercase ? String(seg.text).toUpperCase() : String(seg.text) });
       }
       if (!segments.length) {
