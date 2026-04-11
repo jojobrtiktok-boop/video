@@ -4512,6 +4512,7 @@ function loadResizeFrame(file) {
           const j = await r.json();
           if (!r.ok) throw new Error(j.error || 'Erro ao gerar vídeo');
           hook.resultUrl = API + j.url;
+          hook.approved = false; // un-approve after composing so re-run doesn't repeat it
           doneCount++;
           ahComposeStat.textContent = `⏳ Gerando vídeos (${doneCount}/${approved.length})…`;
           // Show result
@@ -4523,6 +4524,8 @@ function loadResizeFrame(file) {
             <a class="download-btn" href="${hook.resultUrl}" download style="width:auto;display:inline-block;padding:8px 16px;font-size:12px">⬇ Baixar</a>`;
           ahResultsList.appendChild(resDiv);
           ahResults.style.display = '';
+          // Scroll to first result when it appears
+          if (doneCount === 1) ahResults.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } catch(e) {
           ahComposeErr.textContent = `Erro no hook "${hook.text.slice(0,40)}": ${e.message}`;
           ahComposeErr.style.display = 'block';
