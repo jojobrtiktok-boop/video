@@ -576,12 +576,13 @@ let detectedTimeRanges = null; // set by AI analyze, used in submit
 
   function parsetime(val) {
     val = val.trim();
-    // accepts: 1:30, 1:30:00, 90 (seconds), 1m30s
+    // accepts: 1m30s, 1:30 (min:sec), 1:30:00 (h:min:sec), 90 (seconds)
     const ms = val.match(/^(\d+)m(\d+)s?$/i);
     if (ms) return parseInt(ms[1]) * 60 + parseInt(ms[2]);
-    const mc = val.match(/^(\d+):(\d+)(?::(\d+))?$/);
-    if (mc) return parseInt(mc[1]) * 3600 + parseInt(mc[2]) * 60 + (parseInt(mc[3]) || 0);
-    // try plain seconds
+    const mc = val.match(/^(\d+):(\d+):(\d+)$/);
+    if (mc) return parseInt(mc[1]) * 3600 + parseInt(mc[2]) * 60 + parseInt(mc[3]);
+    const mm = val.match(/^(\d+):(\d+)$/);
+    if (mm) return parseInt(mm[1]) * 60 + parseInt(mm[2]); // min:sec
     const n = parseFloat(val);
     return isNaN(n) ? null : n;
   }
