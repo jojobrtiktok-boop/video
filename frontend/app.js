@@ -238,7 +238,12 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
     selectedMode = btn.dataset.mode;
     if (modeDescEl) modeDescEl.textContent = modeDesc[selectedMode] || '';
     // Modos automáticos não precisam de seleção de região
-    if (previewSect) previewSect.style.display = autoModes.has(selectedMode) ? 'none' : (selectedFile ? '' : 'none');
+    if (autoModes.has(selectedMode)) {
+      selRect = null; // limpa seleção anterior para não bloquear submit
+      if (previewSect) previewSect.style.display = 'none';
+    } else {
+      if (previewSect) previewSect.style.display = selectedFile ? '' : 'none';
+    }
   });
 });
 
@@ -283,7 +288,7 @@ function loadVideoPreview(file) {
   videoEl.addEventListener('seeked', function onS() {
     videoEl.removeEventListener('seeked', onS);
     videoW = videoEl.videoWidth; videoH = videoEl.videoHeight;
-    previewSect.style.display = 'block';
+    previewSect.style.display = autoModes.has(selectedMode) ? 'none' : 'block';
     requestAnimationFrame(() => { updateCanvasSize(); startWatermarkLoop(); });
   });
 }
