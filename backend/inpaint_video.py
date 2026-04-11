@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
-inpaint_video.py — remove watermark usando OpenCV Telea inpainting paralelo.
-Carrega todos os frames em RAM e processa em múltiplas threads simultaneamente.
+inpaint_video.py — remove watermark usando OpenCV Telea inpainting em batches.
+Processa BATCH_SIZE frames por vez para evitar estouro de RAM.
 Usage: python3 inpaint_video.py <input> <output> <x> <y> <w> <h> [ffmpeg_bin] [time_ranges_json]
 """
 import sys, os, subprocess, tempfile, json
@@ -11,116 +11,106 @@ from multiprocessing import cpu_count
 import cv2
 import numpy as np
 
+BATCH_SIZE = 50  # frames por batch — limita uso de RAM
+
 def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg', time_ranges=None):
     cap = cv2.VideoCapture(input_path)
     if not cap.isOpened():
         print(f'ERROR: cannot open {input_path}', file=sys.stderr)
         sys.exit(1)
 
-    fps    = cap.get(cv2.CAP_PROP_FPS) or 30
-    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps          = cap.get(cv2.CAP_PROP_FPS) or 30
+    width        = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height       = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
 
     x = max(0, min(x, width  - 1))
     y = max(0, min(y, height - 1))
     w = max(1, min(w, width  - x))
     h = max(1, min(h, height - y))
 
-    PAD = 20
-    rx1 = max(0,      x - PAD)
-    ry1 = max(0,      y - PAD)
-    rx2 = min(width,  x + w + PAD)
-    ry2 = min(height, y + h + PAD)
+    PAD  = 20
+    rx1  = max(0,      x - PAD)
+    ry1  = max(0,      y - PAD)
+    rx2  = min(width,  x + w + PAD)
+    ry2  = min(height, y + h + PAD)
 
-    roi_mask = np.zeros((ry2 - ry1, rx2 - rx1), dtype=np.uint8)
-    mx1 = x - rx1
-    my1 = y - ry1
-    roi_mask[my1 : my1 + h, mx1 : mx1 + w] = 255
+    roi_mask         = np.zeros((ry2 - ry1, rx2 - rx1), dtype=np.uint8)
+    roi_mask[y - ry1 : y - ry1 + h, x - rx1 : x - rx1 + w] = 255
 
-    def frame_in_range(frame_idx):
-        """Return True if this frame (by index) falls within any time range."""
+    def frame_in_range(idx):
         if not time_ranges:
             return True
-        t = frame_idx / fps
-        for r in time_ranges:
-            if r['start'] <= t <= r['end']:
-                return True
-        return False
+        t = idx / fps
+        return any(r['start'] <= t <= r['end'] for r in time_ranges)
 
-    # ── Fase 1: carregar todos os frames em RAM ────────────────────────────────
     print('PROGRESS:2', flush=True)
-    print('Carregando frames em RAM…', flush=True)
-    all_frames = []
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        all_frames.append(frame)
-    cap.release()
+    print(f'Video: {width}x{height} @ {fps:.1f}fps, {total_frames} frames', flush=True)
 
-    total_frames = len(all_frames)
-    print(f'{total_frames} frames carregados ({width}x{height} @ {fps:.1f}fps)', flush=True)
-    print('PROGRESS:5', flush=True)
-
-    # ── Fase 2: inpainting paralelo com threads ────────────────────────────────
-    n_workers  = min(max(cpu_count(), 1), 16)
-    results    = [None] * total_frames
-    submitted  = [0]
-    task_q     = Queue(maxsize=n_workers * 4)
-
-    print(f'Inpainting com {n_workers} threads…', flush=True)
-
-    def worker():
-        while True:
-            item = task_q.get()
-            if item is None:
-                task_q.task_done()
-                break
-            idx, frame = item
-            roi       = frame[ry1:ry2, rx1:rx2]
-            inpainted = cv2.inpaint(roi, roi_mask, 21, cv2.INPAINT_TELEA)
-            out       = frame.copy()
-            out[ry1:ry2, rx1:rx2] = inpainted
-            results[idx] = out
-            task_q.task_done()
-
-    threads = [Thread(target=worker, daemon=True) for _ in range(n_workers)]
-    for t in threads:
-        t.start()
-
-    for i, frame in enumerate(all_frames):
-        if frame_in_range(i):
-            task_q.put((i, frame))
-        else:
-            results[i] = frame  # keep original frame outside detected ranges
-        submitted[0] = i + 1
-        if i % 15 == 0 and total_frames > 0:
-            pct = 5 + int(i / total_frames * 83)
-            print(f'PROGRESS:{pct}', flush=True)
-
-    for _ in threads:
-        task_q.put(None)
-    task_q.join()
-    for t in threads:
-        t.join()
-
-    all_frames = None  # libera RAM dos originais
-    print('PROGRESS:90', flush=True)
-
-    # ── Fase 3: escrever saída em arquivo temporário ───────────────────────────
-    print('Escrevendo frames…', flush=True)
     tmp_fd, tmp_path = tempfile.mkstemp(suffix='.avi')
     os.close(tmp_fd)
-    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    fourcc     = cv2.VideoWriter_fourcc(*'MJPG')
     out_writer = cv2.VideoWriter(tmp_path, fourcc, fps, (width, height))
-    for frame in results:
-        out_writer.write(frame)
-    out_writer.release()
-    results = None  # libera RAM
-    print('PROGRESS:93', flush=True)
 
-    # ── Fase 4: re-encode + áudio ─────────────────────────────────────────────
-    print('Re-encoding com ffmpeg…', flush=True)
+    n_workers   = min(max(cpu_count(), 1), 8)
+    frame_count = 0
+
+    while True:
+        batch   = []
+        indices = []
+        for _ in range(BATCH_SIZE):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            batch.append(frame)
+            indices.append(frame_count)
+            frame_count += 1
+
+        if not batch:
+            break
+
+        results = [None] * len(batch)
+        task_q  = Queue(maxsize=n_workers * 2)
+
+        def worker():
+            while True:
+                item = task_q.get()
+                if item is None:
+                    task_q.task_done()
+                    break
+                bi, frame = item
+                if frame_in_range(indices[bi]):
+                    roi       = frame[ry1:ry2, rx1:rx2]
+                    inpainted = cv2.inpaint(roi, roi_mask, 21, cv2.INPAINT_TELEA)
+                    out       = frame.copy()
+                    out[ry1:ry2, rx1:rx2] = inpainted
+                    results[bi] = out
+                else:
+                    results[bi] = frame
+                task_q.task_done()
+
+        threads = [Thread(target=worker, daemon=True) for _ in range(n_workers)]
+        for t in threads:
+            t.start()
+        for bi, frame in enumerate(batch):
+            task_q.put((bi, frame))
+        for _ in threads:
+            task_q.put(None)
+        task_q.join()
+        for t in threads:
+            t.join()
+
+        for frame in results:
+            out_writer.write(frame)
+
+        pct = 5 + int(frame_count / total_frames * 83)
+        print(f'PROGRESS:{min(pct, 88)}', flush=True)
+
+    cap.release()
+    out_writer.release()
+    print('PROGRESS:90', flush=True)
+
+    print('Re-encoding com ffmpeg...', flush=True)
     cmd = [
         ffmpeg, '-y',
         '-i', tmp_path,
@@ -141,7 +131,8 @@ def inpaint_video(input_path, output_path, x, y, w, h, ffmpeg='ffmpeg', time_ran
         sys.exit(r.returncode)
 
     print('PROGRESS:100', flush=True)
-    print(f'Saída: {output_path}', flush=True)
+    print(f'Saida: {output_path}', flush=True)
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 7:

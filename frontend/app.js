@@ -224,10 +224,11 @@ const modeDesc = {
   delogo: '✨ Reconstrução avançada de pixels com OpenCV — mais lento, resultado muito mais realista.',
   sora:   '🎵 Detecta automaticamente onde a marca d\'água do Sora está em cada frame e reconstrói apenas ali — sem apagar área fixa.',
   heygen: '🤖 Remove automaticamente a marca d\'água do HeyGen (canto inferior direito). Sem precisar selecionar região.',
+  auto:   '🔍 Detecta e remove automaticamente texto persistente (marcas d\'água, legendas fixas) usando OpenCV — sem seleção manual.',
   ai:     'Inpainting com IA — em breve neste servidor.'
 };
 
-const autoModes = new Set(['sora', 'heygen']);
+const autoModes = new Set(['sora', 'heygen', 'auto']);
 
 document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -485,7 +486,7 @@ function endDragWm() {
   drawFrame();
 }
 
-const ASYNC_MODES = new Set(['delogo', 'sora']);
+const ASYNC_MODES = new Set(['delogo', 'sora', 'auto']);
 
 // ── Manual time ranges ──
 (function() {

@@ -520,6 +520,98 @@ app.post('/api/process', upload.single('video'), (req, res) => {
     return;
   }
 
+  if (mode === 'auto') {
+    const jobId  = Date.now().toString() + Math.random().toString(36).slice(2);
+    const expiry = Date.now() + 30 * 60 * 1000;
+    const _autoN = friendlyFilename(_origName, "sem marcas (auto)");
+    processJobs[jobId] = { status: 'processing', progress: 0, url: null, error: null, expiresAt: expiry, friendlyName: _autoN };
+    const libEntry = { id: jobId, type: 'watermark', label: '🔍 Auto Remover', url: null, status: 'processing', progress: 0, createdAt: Date.now(), expiresAt: expiry, friendlyName: _autoN };
+    addToLibrary(libEntry);
+    res.json({ id: jobId, status: 'processing', friendlyName: _autoN });
+
+    (async () => {
+      try {
+        // 1. Detect text regions via OpenCV
+        const detectScript = path.join(__dirname, 'detect_text_regions.py');
+        const detectResult = await new Promise((resolve, reject) => {
+          const proc = spawn(PYTHON, [detectScript, input, '20'], { stdio: ['ignore', 'pipe', 'pipe'] });
+          let out = '';
+          proc.stdout.on('data', d => { out += d.toString(); });
+          proc.stderr.on('data', d => { /* ignore detect stderr */ });
+          proc.on('close', code => {
+            try { resolve(JSON.parse(out.trim())); }
+            catch(e) { reject(new Error('detect parse error: ' + out)); }
+          });
+        });
+
+        processJobs[jobId].progress = 20;
+        libEntry.progress = 20;
+
+        if (!detectResult.regions || detectResult.regions.length === 0) {
+          processJobs[jobId].status = 'error';
+          processJobs[jobId].error = 'Nenhuma região detectada automaticamente';
+          libEntry.status = 'error';
+          fs.unlink(input, () => {});
+          return;
+        }
+
+        // 2. Get video dimensions for clamping
+        const probeOut = await new Promise((resolve) => {
+          exec(`"${FFPROBE}" -v quiet -print_format json -show_streams "${input}"`, (e, o) => resolve(o || '{}'));
+        });
+        let vw = detectResult.width || 1920, vh = detectResult.height || 1080;
+        try {
+          const vs = JSON.parse(probeOut).streams?.find(s => s.codec_type === 'video');
+          if (vs) { vw = vs.width; vh = vs.height; }
+        } catch(_) {}
+
+        const M = 3;
+        // 3. Build delogo filter chain for all detected regions
+        const delogoFilters = detectResult.regions.map(r => {
+          let { x, y, w, h } = r;
+          x = Math.max(M, x);
+          y = Math.max(M, y);
+          if (x + w >= vw - M) w = vw - M - x;
+          if (y + h >= vh - M) h = vh - M - y;
+          w = Math.max(1, w); h = Math.max(1, h);
+          return `delogo=x=${x}:y=${y}:w=${w}:h=${h}:show=0`;
+        }).join(',');
+
+        processJobs[jobId].progress = 35;
+        libEntry.progress = 35;
+
+        // 4. Apply delogo with FFmpeg
+        const cmd = `"${FFMPEG}" -y -i "${input}" -vf "${delogoFilters}" -c:a copy "${output}"`;
+        const { code: ffCode, stderr: ffErr } = await new Promise(resolve => {
+          exec(cmd, (err, _o, stderr) => resolve({ code: err ? err.code : 0, stderr: stderr || '' }));
+        });
+
+        fs.unlink(input, () => {});
+
+        if (ffCode && ffCode !== 0) {
+          processJobs[jobId].status = 'error';
+          processJobs[jobId].error = 'FFmpeg falhou: ' + ffErr.slice(-300);
+          libEntry.status = 'error';
+          return;
+        }
+
+        scheduleDelete(output, expiry - Date.now());
+        processJobs[jobId].status = 'done';
+        processJobs[jobId].progress = 100;
+        processJobs[jobId].url = `/uploads/${path.basename(output)}`;
+        libEntry.status = 'done';
+        libEntry.progress = 100;
+        libEntry.url = processJobs[jobId].url;
+      } catch(err) {
+        processJobs[jobId].status = 'error';
+        processJobs[jobId].error = String(err.message || err);
+        libEntry.status = 'error';
+        fs.unlink(input, () => {});
+      }
+    })();
+    return;
+  }
+
   if (mode === 'ai') {
     fs.copyFileSync(input, output);
     fs.unlink(input, () => {});
