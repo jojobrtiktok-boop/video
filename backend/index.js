@@ -1246,7 +1246,7 @@ app.post('/api/combine/stage', multiUpload, (req, res) => {
   });
 });
 
-app.post('/api/concat/run', (req, res) => {
+app.post('/api/concat/run', async (req, res) => {
   const { hookId, bodyId } = req.body || {};
   const safeRe = /^[\w.\-]+$/;
   if (!hookId || !bodyId || !safeRe.test(hookId) || !safeRe.test(bodyId))
@@ -1259,23 +1259,69 @@ app.post('/api/concat/run', (req, res) => {
 
   const outputName = 'combo-' + Date.now() + '.mp4';
   const output = path.join(UPLOAD_DIR, outputName);
-  const scale = 'scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=PTS-STARTPTS';
-  const filterAV = `[0:v]${scale}[v0];[1:v]${scale}[v1];[0:a]aresample=44100[a0];[1:a]aresample=44100[a1];[v0][a0][v1][a1]concat=n=2:v=1:a=1[outv][outa]`;
-  const cmdAV = `"${FFMPEG}" -y -i "${hookPath}" -i "${bodyPath}" -filter_complex "${filterAV}" -map "[outv]" -map "[outa]" -c:v libx264 -preset ultrafast -crf 26 -c:a aac "${output}"`;
+  const tmpDir  = output + '_tmp';
+  fs.mkdirSync(tmpDir, { recursive: true });
 
-  exec(cmdAV, { timeout: 120000 }, (err) => {
-    if (!err) {
-      scheduleDelete(output, 30 * 60 * 1000);
-      return res.json({ url: `/uploads/${outputName}` });
+  try {
+    // Probe ambos os vídeos para decidir resolução e se têm áudio
+    function probeStream(fp) {
+      return new Promise(resolve => {
+        exec(`"${FFPROBE}" -v quiet -print_format json -show_streams "${fp}"`, (e, out) => {
+          try {
+            const streams = JSON.parse(out).streams || [];
+            const v = streams.find(s => s.codec_type === 'video') || {};
+            const a = streams.find(s => s.codec_type === 'audio');
+            resolve({ w: v.width || 0, h: v.height || 0, hasAudio: !!a });
+          } catch { resolve({ w: 0, h: 0, hasAudio: false }); }
+        });
+      });
     }
-    const filterV = `[0:v]${scale}[v0];[1:v]${scale}[v1];[v0][v1]concat=n=2:v=1:a=0[outv]`;
-    const cmdV = `"${FFMPEG}" -y -i "${hookPath}" -i "${bodyPath}" -filter_complex "${filterV}" -map "[outv]" -c:v libx264 -preset ultrafast -crf 26 -an "${output}"`;
-    exec(cmdV, { timeout: 120000 }, (err2, _out, stderr2) => {
-      if (err2) return res.status(500).json({ error: String(err2), stderr: stderr2 });
-      scheduleDelete(output, 30 * 60 * 1000);
-      return res.json({ url: `/uploads/${outputName}` });
+    const [p0, p1] = await Promise.all([probeStream(hookPath), probeStream(bodyPath)]);
+
+    // Usar a resolução do primeiro vídeo (ou 1280x720 fallback)
+    const tw = p0.w || 1280, th = p0.h || 720;
+    const hasAudio = p0.hasAudio || p1.hasAudio; // se qualquer um tiver, normaliza os dois
+
+    // Filtro de normalização: padeia para a mesma resolução, fps=30, pix_fmt yuv420p
+    const normVF = `scale=${tw}:${th}:force_original_aspect_ratio=decrease,pad=${tw}:${th}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`;
+
+    function normalize(inputPath, outPath, withAudio) {
+      return new Promise((resolve, reject) => {
+        let cmd;
+        if (withAudio) {
+          // Se o input não tiver áudio, gera silêncio via -f lavfi
+          cmd = `"${FFMPEG}" -y -i "${inputPath}" -f lavfi -i anullsrc=r=44100:cl=stereo -filter_complex "[0:v]${normVF}[v];[0:a][1:a]amix=inputs=2:duration=shortest[a]" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -shortest "${outPath}"`;
+        } else {
+          cmd = `"${FFMPEG}" -y -i "${inputPath}" -vf "${normVF}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -an "${outPath}"`;
+        }
+        exec(cmd, { timeout: 300000 }, (err, _o, se) => err ? reject(new Error(se?.slice(-300) || String(err))) : resolve());
+      });
+    }
+
+    const t0 = path.join(tmpDir, 'part0.mp4');
+    const t1 = path.join(tmpDir, 'part1.mp4');
+
+    // Normalizar os dois em paralelo
+    await Promise.all([
+      normalize(hookPath, t0, hasAudio),
+      normalize(bodyPath, t1, hasAudio)
+    ]);
+
+    // Concatenar com o demuxer (stream-copy após normalização — mais rápido e sem problemas de codec)
+    const listFile = path.join(tmpDir, 'list.txt');
+    fs.writeFileSync(listFile, `file '${t0}'\nfile '${t1}'\n`);
+    await new Promise((resolve, reject) => {
+      const cmd = `"${FFMPEG}" -y -f concat -safe 0 -i "${listFile}" -c copy "${output}"`;
+      exec(cmd, { timeout: 120000 }, (err, _o, se) => err ? reject(new Error(se?.slice(-300) || String(err))) : resolve());
     });
-  });
+
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    scheduleDelete(output, 30 * 60 * 1000);
+    return res.json({ url: `/uploads/${outputName}` });
+  } catch(err) {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 // ── EXTRAIR ───────────────────────────────────────────────────────────────────
