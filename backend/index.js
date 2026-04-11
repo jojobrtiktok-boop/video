@@ -254,9 +254,9 @@ app.post('/api/watermark/analyze', upload.single('video'), async (req, res) => {
     });
 
     const { w: videoW, h: videoH, dur } = meta;
-    // 2. Determine frame timestamps (every 3s, max 25 frames)
-    const INTERVAL = 3;
-    const MAX_FRAMES = 25;
+    // 2. Determine frame timestamps (every 2s, max 40 frames)
+    const INTERVAL = 2;
+    const MAX_FRAMES = 40;
     const timestamps = [];
     for (let t = 0; t < dur - 0.5; t += INTERVAL) {
       timestamps.push(Math.min(t, dur - 0.5));
