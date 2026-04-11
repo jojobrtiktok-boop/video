@@ -545,6 +545,8 @@ let detectedTimeRanges = null; // set by AI analyze, used in submit
         if (detectedRangesEl) detectedRangesEl.textContent = rangeText;
         if (detectedInfo) detectedInfo.style.display = '';
         if (orStatus) orStatus.textContent = `✓ Detectado em ${j.detected_ranges.length} trecho(s) — ${j.frame_count || ''} frames analisados`;
+        // Populate manual ranges boxes so user can edit
+        if (window._wmSetManualRanges) window._wmSetManualRanges(j.detected_ranges);
       } else {
         if (orStatus) orStatus.textContent = '⚠️ Nenhuma marca d\'água detectada nos frames analisados.';
         if (j.tight_bbox) {
@@ -561,6 +563,64 @@ let detectedTimeRanges = null; // set by AI analyze, used in submit
   });
 })();
 
+// ── Manual time ranges ──
+(function() {
+  const list = document.getElementById('wm-ranges-list');
+  const addBtn = document.getElementById('wm-add-range-btn');
+  if (!addBtn || !list) return;
+
+  function parsetime(val) {
+    val = val.trim();
+    // accepts: 1:30, 1:30:00, 90 (seconds), 1m30s
+    const ms = val.match(/^(\d+)m(\d+)s?$/i);
+    if (ms) return parseInt(ms[1]) * 60 + parseInt(ms[2]);
+    const mc = val.match(/^(\d+):(\d+)(?::(\d+))?$/);
+    if (mc) return parseInt(mc[1]) * 3600 + parseInt(mc[2]) * 60 + (parseInt(mc[3]) || 0);
+    // try plain seconds
+    const n = parseFloat(val);
+    return isNaN(n) ? null : n;
+  }
+
+  function getManualRanges() {
+    const rows = list.querySelectorAll('.wm-range-row');
+    const result = [];
+    rows.forEach(row => {
+      const s = parsetime(row.querySelector('.wm-range-start').value);
+      const e = parsetime(row.querySelector('.wm-range-end').value);
+      if (s !== null && e !== null && e > s) result.push({ start: s, end: e });
+    });
+    return result;
+  }
+
+  function addRow(start, end) {
+    const row = document.createElement('div');
+    row.className = 'wm-range-row';
+    row.style.cssText = 'display:flex;gap:6px;align-items:center';
+    row.innerHTML = `
+      <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">De</span>
+      <input class="tool-input wm-range-start" type="text" placeholder="0:00" value="${start||''}" style="flex:1;height:32px;font-size:12px" />
+      <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">até</span>
+      <input class="tool-input wm-range-end" type="text" placeholder="0:30" value="${end||''}" style="flex:1;height:32px;font-size:12px" />
+      <button class="wm-range-del" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-muted);padding:0 4px" title="Remover">✕</button>`;
+    row.querySelector('.wm-range-del').addEventListener('click', () => row.remove());
+    list.appendChild(row);
+  }
+
+  addBtn.addEventListener('click', () => addRow());
+
+  // Expose so AI detect can populate manual list
+  window._wmSetManualRanges = function(ranges) {
+    list.innerHTML = '';
+    ranges.forEach(r => {
+      const fmt = s => { const m = Math.floor(s/60); const ss = Math.round(s%60); return `${m}:${String(ss).padStart(2,'0')}`; };
+      addRow(fmt(r.start), fmt(r.end));
+    });
+  };
+
+  // Override getManualRanges so submit can read it
+  window._wmGetManualRanges = getManualRanges;
+})();
+
 submitBtn.addEventListener('click', async () => {
   if (!selectedFile) return;
   if (!autoModes.has(selectedMode) && (!selRect || selRect.w < 5 || selRect.h < 5)) {
@@ -574,9 +634,11 @@ submitBtn.addEventListener('click', async () => {
     fd.append('w', Math.round(selRect.w * videoW / previewW));
     fd.append('h', Math.round(selRect.h * videoH / previewH));
   }
-  // Pass AI-detected time ranges if available
-  if (detectedTimeRanges && detectedTimeRanges.length > 0) {
-    fd.append('time_ranges', JSON.stringify(detectedTimeRanges));
+  // Merge AI-detected ranges + manual ranges
+  const manualRanges = window._wmGetManualRanges ? window._wmGetManualRanges() : [];
+  const allRanges = [...(detectedTimeRanges || []), ...manualRanges];
+  if (allRanges.length > 0) {
+    fd.append('time_ranges', JSON.stringify(allRanges));
   }
   setLoadingWm(true, 0); clearError(); resultCard.style.display = 'none';
   try {

@@ -987,6 +987,15 @@
             <div id="wm-detected-ranges" style="font-size:12px;background:var(--bg);padding:8px 10px;border-radius:6px;border:1px solid var(--border);color:var(--text)"></div>
           </div>
         </div>
+
+        <!-- Manual time ranges -->
+        <div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px">⏱ Intervalos Manuais</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Defina em quais momentos do vídeo a marca aparece. Use no lugar ou junto com a detecção por IA.</div>
+          <div id="wm-ranges-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+          <button id="wm-add-range-btn" class="submit-btn" style="background:var(--bg);color:var(--text);border:1px solid var(--border);font-size:12px;padding:6px 12px;width:auto">+ Adicionar intervalo</button>
+        </div>
+
         <button id="submit-btn" class="submit-btn" disabled>Selecione um vídeo</button>
         <div id="progress-bar-wrap" class="progress-wrap"><div class="progress-bar"></div></div>
         <div id="status-text" class="status-text"></div>
