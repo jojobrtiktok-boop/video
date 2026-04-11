@@ -109,12 +109,12 @@ const API = '';
 // ── TOOL NAVIGATION ────────────────────────────────────────────────────────
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
-  compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video',
+  compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video', juntar: 'video',
   translate: 'video', autotr: 'video', autohook: 'video', autocorpo: 'video', automontador: 'video', ferramentas: 'video', swapfala: 'video',
   'video-library': null
 };
 
-const FERR_TOOLS = new Set(['watermark','cortes','resize','compress','upscale','mirror','extrair','combine','translate','swapfala','gencenas']);
+const FERR_TOOLS = new Set(['watermark','cortes','resize','compress','upscale','mirror','extrair','combine','juntar','translate','swapfala','gencenas']);
 
 function showTool(name) {
   if (name === 'ferramentas') name = 'watermark';
@@ -1311,6 +1311,140 @@ if (combineBtn) {
     combineBtn.disabled = false;
   });
 }
+
+// ════════════════════════════════════════════════════════════════════
+// JUNTAR VÍDEOS
+// ════════════════════════════════════════════════════════════════════
+(function() {
+  const dropZone      = document.getElementById('juntar-drop-zone');
+  const fileInput     = document.getElementById('juntar-file-input');
+  const addMoreBtn    = document.getElementById('juntar-add-more-btn');
+  const listWrap      = document.getElementById('juntar-list-wrap');
+  const listEl        = document.getElementById('juntar-list');
+  const countEl       = document.getElementById('juntar-count');
+  const btn           = document.getElementById('juntar-btn');
+  const progWrap      = document.getElementById('juntar-prog');
+  const statusEl      = document.getElementById('juntar-status');
+  const errorEl       = document.getElementById('juntar-error');
+  const resultCard    = document.getElementById('juntar-result');
+  const resultVideo   = document.getElementById('juntar-result-video');
+  const downloadBtn   = document.getElementById('juntar-download-btn');
+  if (!dropZone || !btn) return;
+
+  let jFiles = []; // { file, id }
+  let jNextId = 1;
+
+  function renderList() {
+    listEl.innerHTML = '';
+    countEl.textContent = jFiles.length;
+    listWrap.style.display = jFiles.length ? '' : 'none';
+    btn.disabled = jFiles.length < 2;
+    btn.textContent = jFiles.length >= 2
+      ? `🔗 Juntar ${jFiles.length} vídeos`
+      : 'Adicione ao menos 2 vídeos';
+
+    jFiles.forEach((entry, idx) => {
+      const { file } = entry;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border)';
+      row.dataset.jid = entry.id;
+      const sz = file.size < 1024*1024 ? (file.size/1024).toFixed(0)+' KB' : (file.size/1024/1024).toFixed(1)+' MB';
+      row.innerHTML = `
+        <span style="font-size:18px;flex-shrink:0">${idx === 0 ? '1️⃣' : idx === 1 ? '2️⃣' : idx === 2 ? '3️⃣' : idx === 3 ? '4️⃣' : idx === 4 ? '5️⃣' : (idx+1)+'.'}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px" title="${file.name}">${file.name}</span>
+        <span style="font-size:11px;color:var(--text-muted);flex-shrink:0">${sz}</span>
+        <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">
+          <button class="j-up" title="Mover para cima" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;padding:1px 6px;color:var(--text-muted)">▲</button>
+          <button class="j-dn" title="Mover para baixo" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;padding:1px 6px;color:var(--text-muted)">▼</button>
+        </div>
+        <button class="j-rm" title="Remover" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text-muted);padding:0 2px;line-height:1">&times;</button>
+      `;
+      row.querySelector('.j-up').addEventListener('click', () => {
+        if (idx === 0) return;
+        [jFiles[idx-1], jFiles[idx]] = [jFiles[idx], jFiles[idx-1]];
+        renderList();
+      });
+      row.querySelector('.j-dn').addEventListener('click', () => {
+        if (idx === jFiles.length - 1) return;
+        [jFiles[idx], jFiles[idx+1]] = [jFiles[idx+1], jFiles[idx]];
+        renderList();
+      });
+      row.querySelector('.j-rm').addEventListener('click', () => {
+        jFiles.splice(idx, 1);
+        renderList();
+        resultCard.style.display = 'none';
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  function addFiles(files) {
+    files.forEach(f => {
+      if (f.type.startsWith('video/')) jFiles.push({ file: f, id: jNextId++ });
+    });
+    renderList();
+    errorEl.style.display = 'none';
+    resultCard.style.display = 'none';
+  }
+
+  // Drop zone
+  let dragCnt = 0;
+  dropZone.addEventListener('dragenter', e => { e.preventDefault(); dragCnt++; dropZone.style.borderColor = 'var(--accent)'; });
+  dropZone.addEventListener('dragleave', () => { dragCnt--; if (dragCnt <= 0) { dragCnt = 0; dropZone.style.borderColor = ''; } });
+  dropZone.addEventListener('dragover', e => e.preventDefault());
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dragCnt = 0; dropZone.style.borderColor = '';
+    addFiles(Array.from(e.dataTransfer.files));
+  });
+  dropZone.addEventListener('click', e => { if (e.target !== fileInput) fileInput.click(); });
+  fileInput.addEventListener('change', () => { addFiles(Array.from(fileInput.files)); fileInput.value = ''; });
+  if (addMoreBtn) addMoreBtn.addEventListener('click', () => fileInput.click());
+
+  // Submit
+  btn.addEventListener('click', async () => {
+    if (jFiles.length < 2) return;
+    btn.disabled = true;
+    errorEl.style.display = 'none';
+    resultCard.style.display = 'none';
+    progWrap.style.display = '';
+    statusEl.textContent = '⏳ Enviando vídeos...';
+
+    try {
+      // 1. Upload all files
+      const fd = new FormData();
+      jFiles.forEach(e => fd.append('videos', e.file));
+      const stageResp = await fetch(API + '/api/juntar/stage', { method: 'POST', body: fd });
+      const stageJson = await stageResp.json();
+      if (!stageResp.ok || stageJson.error) throw new Error(stageJson.error || 'Erro no upload');
+
+      // 2. Run concat
+      statusEl.textContent = '⏳ Juntando vídeos...';
+      const runResp = await fetch(API + '/api/juntar/run', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: stageJson.ids, names: stageJson.names })
+      });
+      const runJson = await runResp.json();
+      if (!runResp.ok || runJson.error) throw new Error(runJson.error || 'Erro ao juntar');
+
+      // 3. Show result
+      resultVideo.src = API + runJson.url;
+      downloadBtn.href = API + runJson.url;
+      downloadBtn.download = runJson.friendlyName || 'video-juntado.mp4';
+      resultCard.style.display = '';
+      resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      statusEl.textContent = '✅ Pronto!';
+    } catch(err) {
+      errorEl.textContent = 'Erro: ' + err.message;
+      errorEl.style.display = 'block';
+      statusEl.textContent = '';
+    } finally {
+      btn.disabled = jFiles.length < 2;
+      progWrap.style.display = 'none';
+    }
+  });
+
+  renderList();
+})();
 
 // ════════════════════════════════════════════════════════════════════
 // EXTRAIR TOOL

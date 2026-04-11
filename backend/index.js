@@ -1324,6 +1324,93 @@ app.post('/api/concat/run', async (req, res) => {
   }
 });
 
+// ── JUNTAR VÍDEOS ─────────────────────────────────────────────────────────────
+const juntarUpload = multer({ storage }).array('videos', 50);
+
+app.post('/api/juntar/stage', (req, res) => {
+  juntarUpload(req, res, err => {
+    if (err) return res.status(400).json({ error: err.message });
+    const files = req.files || [];
+    if (files.length < 2) {
+      files.forEach(f => fs.unlink(f.path, () => {}));
+      return res.status(400).json({ error: 'Envie pelo menos 2 vídeos.' });
+    }
+    files.forEach(f => scheduleDelete(f.path, 2 * 60 * 60 * 1000));
+    res.json({
+      ids:   files.map(f => path.basename(f.path)),
+      names: files.map(f => f.originalname)
+    });
+  });
+});
+
+app.post('/api/juntar/run', async (req, res) => {
+  const { ids, names } = req.body || {};
+  const safeRe = /^[\w.\-]+$/;
+  if (!Array.isArray(ids) || ids.length < 2)
+    return res.status(400).json({ error: 'Envie pelo menos 2 IDs.' });
+  if (!ids.every(id => safeRe.test(id)))
+    return res.status(400).json({ error: 'IDs inválidos.' });
+
+  const paths = ids.map(id => path.join(UPLOAD_DIR, id));
+  const missing = paths.find(p => !fs.existsSync(p));
+  if (missing) return res.status(404).json({ error: 'Arquivo não encontrado. Faça o upload novamente.' });
+
+  const outputName = 'juntado-' + Date.now() + '.mp4';
+  const output = path.join(UPLOAD_DIR, outputName);
+  const tmpDir = output + '_tmp';
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  try {
+    // Probe primeiro vídeo para resolução base
+    const baseInfo = await new Promise(resolve => {
+      exec(`"${FFPROBE}" -v quiet -print_format json -show_streams "${paths[0]}"`, (e, out) => {
+        try {
+          const streams = JSON.parse(out).streams || [];
+          const v = streams.find(s => s.codec_type === 'video') || {};
+          const a = streams.find(s => s.codec_type === 'audio');
+          resolve({ w: v.width || 1280, h: v.height || 720, hasAudio: !!a });
+        } catch { resolve({ w: 1280, h: 720, hasAudio: true }); }
+      });
+    });
+
+    const tw = baseInfo.w, th = baseInfo.h;
+    const normVF = `scale=${tw}:${th}:force_original_aspect_ratio=decrease,pad=${tw}:${th}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30`;
+
+    // Normalizar todos os vídeos em paralelo
+    const normPaths = paths.map((_, i) => path.join(tmpDir, `part${i}.mp4`));
+    await Promise.all(paths.map((inputPath, i) => {
+      return new Promise((resolve, reject) => {
+        const outP = normPaths[i];
+        const cmd = `"${FFMPEG}" -y -i "${inputPath}" -f lavfi -i anullsrc=r=44100:cl=stereo -filter_complex "[0:v]${normVF}[v];[0:a][1:a]amix=inputs=2:duration=shortest[a]" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p -c:a aac -ar 44100 -ac 2 -shortest "${outP}"`;
+        exec(cmd, { timeout: 300000 }, (err, _o, se) => err ? reject(new Error(`Vídeo ${i+1}: ` + (se?.slice(-200) || String(err)))) : resolve());
+      });
+    }));
+
+    // Criar lista de concat
+    const listFile = path.join(tmpDir, 'list.txt');
+    fs.writeFileSync(listFile, normPaths.map(p => `file '${p}'`).join('\n') + '\n');
+
+    // Concatenar
+    await new Promise((resolve, reject) => {
+      exec(`"${FFMPEG}" -y -f concat -safe 0 -i "${listFile}" -c copy "${output}"`,
+        { timeout: 300000 }, (err, _o, se) => err ? reject(new Error(se?.slice(-300) || String(err))) : resolve());
+    });
+
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    scheduleDelete(output, 60 * 60 * 1000);
+
+    // Nome amigável baseado no primeiro arquivo
+    const baseName = names?.[0] ? path.basename(names[0], path.extname(names[0])) : 'video';
+    const friendlyName = `${baseName} +${ids.length - 1} partes.mp4`;
+    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'watermark', label: '🔗 Juntado', url: `/uploads/${outputName}`, createdAt: Date.now(), expiresAt: Date.now() + 60*60*1000, friendlyName };
+    addToLibrary(libEntry);
+    return res.json({ url: `/uploads/${outputName}`, friendlyName });
+  } catch(err) {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ── EXTRAIR ───────────────────────────────────────────────────────────────────
 app.post('/api/extract/video', upload.single('video'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' });

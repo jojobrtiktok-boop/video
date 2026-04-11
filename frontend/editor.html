@@ -923,6 +923,7 @@
         <button class="ftab" data-ftool="mirror">Espelhar</button>
         <button class="ftab" data-ftool="extrair">Extrair</button>
         <button class="ftab" data-ftool="combine">Combinador</button>
+        <button class="ftab" data-ftool="juntar">🔗 Juntar Vídeos</button>
         <button class="ftab" data-ftool="translate">Traduzir</button>
         <button class="ftab" data-ftool="swapfala">Substituir Fala</button>
         <button class="ftab" data-ftool="gencenas">🎨 Gerador de Cenas</button>
@@ -1241,6 +1242,41 @@
       <div id="combine-results" style="display:none">
         <div class="section-label" style="margin:24px 0 0">Vídeos Gerados &nbsp;<span class="accent-n" id="combine-done-n"></span></div>
         <div id="combine-result-grid" class="combine-result-grid"></div>
+      </div>
+    </div>
+
+    <!-- JUNTAR VÍDEOS -->
+    <div id="tool-juntar" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🔗 Juntar Vídeos</h1>
+        <p class="tool-subtitle">Adicione quantos vídeos quiser, reordene e junte tudo num único arquivo</p>
+      </div>
+
+      <div class="card" id="juntar-drop-zone" style="border:2px dashed var(--border);text-align:center;padding:28px 16px;cursor:pointer;transition:border-color .2s">
+        <div style="font-size:32px;margin-bottom:8px">🎬</div>
+        <p style="margin:0 0 4px;font-weight:600">Clique ou arraste vídeos aqui</p>
+        <p style="margin:0;font-size:12px;color:var(--text-muted)">Adicione quantos quiser — MP4, MKV, MOV, AVI</p>
+        <input type="file" id="juntar-file-input" accept="video/*" multiple class="hidden-input" />
+      </div>
+
+      <div id="juntar-list-wrap" style="display:none;margin-top:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span class="section-label" style="margin:0">Ordem de junção &nbsp;<span id="juntar-count" style="color:var(--accent);font-weight:700">0</span> vídeos</span>
+          <button id="juntar-add-more-btn" class="submit-btn" style="background:var(--bg);color:var(--text);border:1px solid var(--border);font-size:12px;padding:6px 14px;width:auto">+ Adicionar mais</button>
+        </div>
+        <div id="juntar-list" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+
+      <button id="juntar-btn" class="submit-btn" style="margin-top:16px" disabled>Adicione ao menos 2 vídeos</button>
+      <div id="juntar-prog" style="display:none;margin-top:10px">
+        <div class="progress-wrap" style="display:block"><div class="progress-bar"></div></div>
+        <div id="juntar-status" class="status-text"></div>
+      </div>
+      <div id="juntar-error" class="error-msg"></div>
+      <div id="juntar-result" class="result-card" style="display:none">
+        <h3>✓ Vídeo unido com sucesso!</h3>
+        <video id="juntar-result-video" class="result-video" controls></video><br/>
+        <a id="juntar-download-btn" class="download-btn" download>⬇ Baixar vídeo</a>
       </div>
     </div>
 
