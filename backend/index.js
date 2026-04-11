@@ -535,21 +535,37 @@ app.post('/api/process', upload.single('video'), (req, res) => {
         const detectScript = path.join(__dirname, 'detect_text_regions.py');
         const detectResult = await new Promise((resolve, reject) => {
           const proc = spawn(PYTHON, [detectScript, input, '20'], { stdio: ['ignore', 'pipe', 'pipe'] });
-          let out = '';
+          let out = '', errOut = '';
           proc.stdout.on('data', d => { out += d.toString(); });
-          proc.stderr.on('data', d => { /* ignore detect stderr */ });
+          proc.stderr.on('data', d => { errOut += d.toString(); });
           proc.on('close', code => {
-            try { resolve(JSON.parse(out.trim())); }
-            catch(e) { reject(new Error('detect parse error: ' + out)); }
+            try {
+              const parsed = JSON.parse(out.trim());
+              resolve(parsed);
+            } catch(e) {
+              // Se o script crashou, mostrar o erro real
+              const msg = errOut.trim() || out.trim() || `exit code ${code}`;
+              reject(new Error('Detecção falhou: ' + msg.slice(0, 300)));
+            }
           });
+          proc.on('error', err => reject(new Error('Não foi possível executar Python: ' + err.message)));
         });
 
         processJobs[jobId].progress = 20;
         libEntry.progress = 20;
 
+        // Erro retornado pelo próprio script (ex: OpenCV não instalado)
+        if (detectResult.error && (!detectResult.regions || !detectResult.regions.length)) {
+          processJobs[jobId].status = 'error';
+          processJobs[jobId].error = 'Detecção: ' + detectResult.error;
+          libEntry.status = 'error';
+          fs.unlink(input, () => {});
+          return;
+        }
+
         if (!detectResult.regions || detectResult.regions.length === 0) {
           processJobs[jobId].status = 'error';
-          processJobs[jobId].error = 'Nenhuma região detectada automaticamente';
+          processJobs[jobId].error = 'Nenhuma região detectada automaticamente. Tente selecionar a região manualmente.';
           libEntry.status = 'error';
           fs.unlink(input, () => {});
           return;
