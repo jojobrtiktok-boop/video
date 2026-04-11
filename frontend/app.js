@@ -129,10 +129,10 @@ function showTool(name) {
       b.classList.toggle('active', b.dataset.ftool === name);
     });
   }
-  // nav item active state
+  // nav item active state — itens diretos de ferramentastools ficam ativos tbm
   const activeNavTool = FERR_TOOLS.has(name) ? 'ferramentas' : name;
   document.querySelectorAll('.nav-item[data-tool], .nav-direct[data-tool]').forEach(item => {
-    item.classList.toggle('active', item.dataset.tool === activeNavTool);
+    item.classList.toggle('active', item.dataset.tool === activeNavTool || item.dataset.tool === name);
   });
   // auto-open the category group that contains this tool
   const cat = CAT_MAP[name];
