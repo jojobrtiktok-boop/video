@@ -17,43 +17,190 @@ const LIB_GROUPS = [
   { type: 'translate',  icon: '🌐', title: 'Tradução de Vídeo' },
 ];
 
-function formatExpiry(expiresAt) {
-  if (!expiresAt) return '';
+  function blockHit(px, py) {
+    const { blockW, blockH, left, top } = getBlockMetrics();
+    return px >= left - 8 && px <= left + blockW + 8 && py >= top - 8 && py <= top + blockH + 8;
+  }
+
+  function canvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+
+  function syncRegionInfo() {
+    const xPct = Math.round(hlBlockX * 100);
+    const yPct = Math.round(hlBlockY * 100);
+    if (regionInfo) regionInfo.innerHTML = `Posição do texto: <span>${xPct}%</span> horizontal e <span>${yPct}%</span> vertical`;
+  }
+
+  function startLoop() {
+    hlPaused = false;
+    hlVideoEl.loop = true;
+    hlVideoEl.play().catch(() => {});
+    if (vcPlay) vcPlay.textContent = '⏸';
+    function loop() { drawFrame(); hlAnimFrame = requestAnimationFrame(loop); }
+    hlAnimFrame = requestAnimationFrame(loop);
+  }
+
+  function loadPreview(file) {
+    if (hlAnimFrame) cancelAnimationFrame(hlAnimFrame);
+    hlVideoEl = document.createElement('video');
+    hlVideoEl.muted = true;
+    hlVideoEl.playsInline = true;
+    hlVideoEl.preload = 'auto';
+    hlVideoEl.src = URL.createObjectURL(file);
+    hlVideoEl.currentTime = 0.1;
+    hlVideoEl.addEventListener('seeked', function onSeeked() {
+      hlVideoEl.removeEventListener('seeked', onSeeked);
+      hlVideoW = hlVideoEl.videoWidth;
+      hlVideoH = hlVideoEl.videoHeight;
+      previewSect.style.display = 'block';
+      updateCanvasSize();
+      syncRegionInfo();
+      startLoop();
+    });
+  }
+
+  function setHeadlineFile(file) {
+    if (!file || !file.type.startsWith('video/')) return;
+    hlFile = file;
+    fileNameEl.textContent = '✓ ' + file.name;
+    dropZone.classList.add('has-file');
+    loadPreview(file);
+    syncButtonState();
+  }
+
+  function syncButtonState() {
+    const hasText = !!textEl.value.trim();
+    const hasFile = !!hlFile;
+    const start = parseStamp(startEl?.value);
+    const end = parseStamp(endEl?.value);
+    const validTime = Number.isFinite(start) && Number.isFinite(end) && end > start;
+    btn.disabled = !(hasText && hasFile && validTime);
+    if (!hasFile) btn.textContent = 'Selecione um vídeo';
+    else if (!hasText) btn.textContent = 'Digite um texto';
+    else if (!validTime) btn.textContent = 'Ajuste início e fim';
+    else btn.textContent = 'Aplicar texto no vídeo';
+  }
+
+  if (fileInput) fileInput.addEventListener('change', () => { if (fileInput.files[0]) setHeadlineFile(fileInput.files[0]); });
+  makeDrop('hl-drop-zone', f => f.type.startsWith('video/'), setHeadlineFile);
+
+];
+    const hasText = !!textEl.value.trim();
+    const hasFile = !!hlFile;
+    const start = parseStamp(startEl?.value);
+    const end = parseStamp(endEl?.value);
+    const validTime = Number.isFinite(start) && Number.isFinite(end) && end > start;
+    btn.disabled = !(hasText && hasFile && validTime);
+    if (!hasFile) btn.textContent = 'Selecione um vídeo';
+    else if (!hasText) btn.textContent = 'Digite um texto';
+    else if (!validTime) btn.textContent = 'Ajuste início e fim';
+    else btn.textContent = 'Aplicar texto no vídeo';
   const ms = expiresAt - Date.now();
   if (ms <= 0) return '⏰ Expirado';
-  const min = Math.floor(ms / 60000);
+  textEl.addEventListener('input', () => { syncButtonState(); drawFrame(); });
+  startEl?.addEventListener('input', syncButtonState);
+  endEl?.addEventListener('input', syncButtonState);
+  colorEl?.addEventListener('change', drawFrame);
+  fontSizeEl?.addEventListener('change', drawFrame);
+  capStartBtn?.addEventListener('click', () => {
+    if (!hlVideoEl) return;
+    startEl.value = fmtStamp(hlVideoEl.currentTime);
+    syncButtonState();
+  });
+  capEndBtn?.addEventListener('click', () => {
+    if (!hlVideoEl) return;
+    endEl.value = fmtStamp(hlVideoEl.currentTime);
+    syncButtonState();
+  });
+
+  if (canvas) {
+    canvas.addEventListener('mousedown', e => {
+      const p = canvasPos(e);
+      if (blockHit(p.x, p.y)) { hlDragging = true; canvas.style.cursor = 'grabbing'; }
+    });
+    canvas.addEventListener('mousemove', e => {
+      const p = canvasPos(e);
+      if (hlDragging) {
+        hlBlockX = Math.max(0.08, Math.min(0.92, p.x / hlPreviewW));
+        hlBlockY = Math.max(0.08, Math.min(0.92, p.y / hlPreviewH));
+        syncRegionInfo();
+        drawFrame();
+      } else {
+        canvas.style.cursor = blockHit(p.x, p.y) ? 'grab' : 'default';
+      }
+    });
+    canvas.addEventListener('mouseup', () => { hlDragging = false; canvas.style.cursor = 'default'; });
+    canvas.addEventListener('mouseleave', () => { hlDragging = false; });
+    canvas.addEventListener('touchstart', e => {
+      e.preventDefault();
+      const p = canvasPos(e);
+      if (blockHit(p.x, p.y)) hlDragging = true;
+    }, { passive: false });
+    canvas.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (!hlDragging) return;
+      const p = canvasPos(e);
+      hlBlockX = Math.max(0.08, Math.min(0.92, p.x / hlPreviewW));
+      hlBlockY = Math.max(0.08, Math.min(0.92, p.y / hlPreviewH));
+      syncRegionInfo();
+      drawFrame();
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => { hlDragging = false; });
+  }
+
+  vcPlay?.addEventListener('click', () => {
+    if (!hlVideoEl) return;
+    if (hlPaused) { hlVideoEl.play().catch(() => {}); hlPaused = false; vcPlay.textContent = '⏸'; }
+    else { hlVideoEl.pause(); hlPaused = true; vcPlay.textContent = '▶'; }
+  });
+  vcSeek?.addEventListener('mousedown', () => { hlSeeking = true; });
+  vcSeek?.addEventListener('input', () => {
+    if (!hlVideoEl || !hlVideoEl.duration) return;
+    hlVideoEl.currentTime = (vcSeek.value / 1000) * hlVideoEl.duration;
+    if (vcTime) vcTime.textContent = formatTime(hlVideoEl.currentTime) + ' / ' + formatTime(hlVideoEl.duration);
+  });
+  vcSeek?.addEventListener('mouseup', () => { hlSeeking = false; });
+  vcSpeed?.addEventListener('change', () => { if (hlVideoEl) hlVideoEl.playbackRate = parseFloat(vcSpeed.value); });
+
   const hr  = Math.floor(min / 60);
   if (hr > 0) return `⏰ Apaga em ${hr}h ${min % 60}m`;
   return `⏰ Apaga em ${min}m`;
 }
-
+    const start = parseStamp(startEl?.value);
+    const end = parseStamp(endEl?.value);
+    if (!text || !hlFile || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
 function renderVideoCard(item) {
   const isReady  = !item.status || item.status === 'done';
   const isProc   = item.status === 'processing';
   const isErr    = item.status === 'error';
   const pct      = item.progress != null ? item.progress : (isReady ? 100 : 0);
-  const expiry   = isReady ? formatExpiry(item.expiresAt) : '';
+    statusEl.textContent = 'Aplicando texto no vídeo...';
   const filename = item.url ? item.url.split('/').pop() : 'processando…';
   const displayName = item.friendlyName || filename;
+      const fd = new FormData();
+      fd.append('video', hlFile);
+      fd.append('text', text);
+      fd.append('start', String(start));
+      fd.append('end', String(end));
+      fd.append('color', String(colorEl?.value || 'white'));
+      fd.append('fontSize', String(fontSizeEl?.value || '64'));
+      fd.append('x', String(hlBlockX));
+      fd.append('y', String(hlBlockY));
   return `
-    <div class="video-card" data-id="${item.id || ''}">
-      ${isReady && item.url
-        ? item.mediaType === 'image'
-          ? `<img src="${API + item.url}" class="lib-img" alt="${item.label || 'imagem'}">`
-          : `<video src="${API + item.url}" controls muted playsinline preload="metadata"></video>`
-        : `<div class="video-card-placeholder">${isProc ? '⏳' : '❌'}</div>`
-      }
-      <div class="video-card-info">
-        <div class="video-card-label">${item.label || ''}</div>
+        method: 'POST',
+        body: fd
         <div class="video-card-title">${displayName}</div>
         ${isProc ? `
-          <div class="lib-progress-bar"><div class="lib-progress-fill" style="width:${pct}%"></div></div>
+      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ao aplicar headline');
           <div class="video-card-meta">⏳ ${pct}% — processando…</div>` : ''}
         ${isReady ? `<div class="video-card-meta">${expiry}</div>` : ''}
         ${isErr   ? `<div class="video-card-meta" style="color:#f87171">❌ Erro no processamento</div>` : ''}
         <div class="video-card-actions">
           ${isReady && item.url ? `<a href="${API + item.url}" download="${displayName}" class="video-card-dl">⬇ Baixar</a>` : ''}
-        </div>
+      statusEl.textContent = 'Texto aplicado com sucesso.';
       </div>
     </div>`;
 }
@@ -1450,11 +1597,24 @@ if (combineBtn) {
 // CRIAR HEADLINE
 // ════════════════════════════════════════════════════════════════════
 (function() {
+  const fileInput = document.getElementById('hl-file-input');
+  const dropZone = document.getElementById('hl-drop-zone');
+  const fileNameEl = document.getElementById('hl-file-name');
+  const previewSect = document.getElementById('hl-preview-section');
+  const canvas = document.getElementById('hl-preview-canvas');
+  const ctx = canvas ? canvas.getContext('2d') : null;
+  const vcPlay = document.getElementById('hl-vc-play');
+  const vcSeek = document.getElementById('hl-vc-seek');
+  const vcTime = document.getElementById('hl-vc-time');
+  const vcSpeed = document.getElementById('hl-vc-speed');
+  const regionInfo = document.getElementById('hl-region-info');
   const textEl = document.getElementById('hl-text');
-  const durationEl = document.getElementById('hl-duration');
-  const formatEl = document.getElementById('hl-format');
-  const bgEl = document.getElementById('hl-bg');
+  const startEl = document.getElementById('hl-start');
+  const endEl = document.getElementById('hl-end');
+  const capStartBtn = document.getElementById('hl-cap-start');
+  const capEndBtn = document.getElementById('hl-cap-end');
   const colorEl = document.getElementById('hl-color');
+  const fontSizeEl = document.getElementById('hl-fontsize');
   const btn = document.getElementById('hl-btn');
   const progWrap = document.getElementById('hl-prog');
   const statusEl = document.getElementById('hl-status');
@@ -1462,47 +1622,287 @@ if (combineBtn) {
   const resultCard = document.getElementById('hl-result');
   const resultVideo = document.getElementById('hl-result-video');
   const downloadBtn = document.getElementById('hl-download-btn');
-  if (!textEl || !btn) return;
+  if (!textEl || !btn || !fileInput || !dropZone || !canvas || !ctx) return;
+
+  let hlFile = null;
+  let hlVideoEl = null;
+  let hlPreviewW = 0, hlPreviewH = 0, hlVideoW = 0, hlVideoH = 0;
+  let hlAnimFrame = null, hlPaused = false, hlSeeking = false;
+  let hlBlockX = 0.5, hlBlockY = 0.22, hlDragging = false;
+  const HL_BLOCK_W_FRAC = 0.74;
+
+  function parseStamp(value) {
+    value = String(value || '').trim();
+    const hhmmss = value.match(/^(\d+):(\d+):(\d+)$/);
+    if (hhmmss) return parseInt(hhmmss[1], 10) * 3600 + parseInt(hhmmss[2], 10) * 60 + parseInt(hhmmss[3], 10);
+    const mmss = value.match(/^(\d+):(\d+)$/);
+    if (mmss) return parseInt(mmss[1], 10) * 60 + parseInt(mmss[2], 10);
+    const num = parseFloat(value);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  function fmtStamp(total) {
+    total = Math.max(0, Math.round(total || 0));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function wrapHeadlineLines(text, maxWidth, fontSize) {
+    const paras = String(text || '').split('\n');
+    const lines = [];
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    paras.forEach(para => {
+      const words = para.trim().split(/\s+/).filter(Boolean);
+      if (!words.length) { lines.push(''); return; }
+      let current = words[0];
+      for (let i = 1; i < words.length; i++) {
+        const next = current + ' ' + words[i];
+        if (ctx.measureText(next).width <= maxWidth) current = next;
+        else { lines.push(current); current = words[i]; }
+      }
+      lines.push(current);
+    });
+    return lines.slice(0, 6);
+  }
+
+  function updateCanvasSize() {
+    if (!hlVideoW || !hlVideoH) return;
+    const wrap = document.getElementById('hl-canvas-wrap');
+    const maxW = 760;
+    const dW = Math.min(maxW, Math.max(200, wrap?.clientWidth || maxW));
+    const dH = Math.round(dW * hlVideoH / hlVideoW);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = dW + 'px';
+    canvas.style.height = dH + 'px';
+    canvas.width = Math.max(1, Math.round(dW * dpr));
+    canvas.height = Math.max(1, Math.round(dH * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    hlPreviewW = dW;
+    hlPreviewH = dH;
+  }
+
+  function getBlockMetrics() {
+    const fontSize = parseInt(fontSizeEl?.value || '64', 10);
+    const scaledFont = Math.max(18, Math.round(fontSize * (hlPreviewW / Math.max(hlVideoW || hlPreviewW, 1))));
+    const blockW = hlPreviewW * HL_BLOCK_W_FRAC;
+    const lines = wrapHeadlineLines(textEl.value.trim() || 'Headline', blockW * 0.86, scaledFont);
+    const lineH = scaledFont * 1.28;
+    const pad = scaledFont * 0.42;
+    const blockH = pad * 2 + Math.max(1, lines.length) * lineH;
+    const left = hlBlockX * hlPreviewW - blockW / 2;
+    const top = hlBlockY * hlPreviewH - blockH / 2;
+    return { fontSize: scaledFont, blockW, blockH, left, top, lines, lineH, pad };
+  }
+
+  function drawFrame() {
+    if (!hlVideoEl || !ctx) return;
+    if (!hlSeeking && vcSeek && vcTime) {
+      const dur = hlVideoEl.duration || 0;
+      vcSeek.value = dur ? Math.round((hlVideoEl.currentTime / dur) * 1000) : 0;
+      vcTime.textContent = formatTime(hlVideoEl.currentTime) + ' / ' + formatTime(dur);
+    }
+    ctx.clearRect(0, 0, hlPreviewW, hlPreviewH);
+    ctx.drawImage(hlVideoEl, 0, 0, hlPreviewW, hlPreviewH);
+
+    const { fontSize, blockW, blockH, left, top, lines, lineH, pad } = getBlockMetrics();
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    roundRect(ctx, left, top, blockW, blockH, 8);
+    ctx.fill();
+    ctx.strokeStyle = hlDragging ? '#ffffff' : '#6c63ff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 3]);
+    roundRect(ctx, left, top, blockW, blockH, 8);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.lineWidth = Math.max(2, Math.round(fontSize * 0.07));
+    ctx.strokeStyle = colorEl?.value === 'black' ? '#ffffff' : '#000000';
+    ctx.fillStyle = colorEl?.value || 'white';
+    lines.forEach((line, idx) => {
+      const y = top + pad + lineH * (idx + 0.5);
+      ctx.strokeText(line, left + blockW / 2, y);
+      ctx.fillText(line, left + blockW / 2, y);
+    });
+
+    ctx.font = `${Math.max(11, Math.round(fontSize * 0.26))}px Arial, sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText('arraste para posicionar', left + blockW / 2, top + blockH + 14);
+  }
+
+  function blockHit(px, py) {
+    const { blockW, blockH, left, top } = getBlockMetrics();
+    return px >= left - 8 && px <= left + blockW + 8 && py >= top - 8 && py <= top + blockH + 8;
+  }
+
+  function canvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+
+  function syncRegionInfo() {
+    const xPct = Math.round(hlBlockX * 100);
+    const yPct = Math.round(hlBlockY * 100);
+    if (regionInfo) regionInfo.innerHTML = `Posição do texto: <span>${xPct}%</span> horizontal e <span>${yPct}%</span> vertical`;
+  }
+
+  function startLoop() {
+    hlPaused = false;
+    hlVideoEl.loop = true;
+    hlVideoEl.play().catch(() => {});
+    if (vcPlay) vcPlay.textContent = '⏸';
+    function loop() { drawFrame(); hlAnimFrame = requestAnimationFrame(loop); }
+    hlAnimFrame = requestAnimationFrame(loop);
+  }
+
+  function loadPreview(file) {
+    if (hlAnimFrame) cancelAnimationFrame(hlAnimFrame);
+    hlVideoEl = document.createElement('video');
+    hlVideoEl.muted = true;
+    hlVideoEl.playsInline = true;
+    hlVideoEl.preload = 'auto';
+    hlVideoEl.src = URL.createObjectURL(file);
+    hlVideoEl.currentTime = 0.1;
+    hlVideoEl.addEventListener('seeked', function onSeeked() {
+      hlVideoEl.removeEventListener('seeked', onSeeked);
+      hlVideoW = hlVideoEl.videoWidth;
+      hlVideoH = hlVideoEl.videoHeight;
+      previewSect.style.display = 'block';
+      updateCanvasSize();
+      syncRegionInfo();
+      startLoop();
+    });
+  }
+
+  function setHeadlineFile(file) {
+    if (!file || !file.type.startsWith('video/')) return;
+    hlFile = file;
+    fileNameEl.textContent = '✓ ' + file.name;
+    dropZone.classList.add('has-file');
+    loadPreview(file);
+    syncButtonState();
+  }
 
   function syncButtonState() {
     const hasText = !!textEl.value.trim();
-    btn.disabled = !hasText;
-    btn.textContent = hasText ? 'Gerar Headline' : 'Digite um texto';
+    const hasFile = !!hlFile;
+    const start = parseStamp(startEl?.value);
+    const end = parseStamp(endEl?.value);
+    const validTime = Number.isFinite(start) && Number.isFinite(end) && end > start;
+    btn.disabled = !(hasText && hasFile && validTime);
+    if (!hasFile) btn.textContent = 'Selecione um vídeo';
+    else if (!hasText) btn.textContent = 'Digite um texto';
+    else if (!validTime) btn.textContent = 'Ajuste início e fim';
+    else btn.textContent = 'Aplicar texto no vídeo';
   }
 
-  textEl.addEventListener('input', syncButtonState);
+  if (fileInput) fileInput.addEventListener('change', () => { if (fileInput.files[0]) setHeadlineFile(fileInput.files[0]); });
+  makeDrop('hl-drop-zone', f => f.type.startsWith('video/'), setHeadlineFile);
+
+  textEl.addEventListener('input', () => { syncButtonState(); drawFrame(); });
+  startEl?.addEventListener('input', syncButtonState);
+  endEl?.addEventListener('input', syncButtonState);
+  colorEl?.addEventListener('change', drawFrame);
+  fontSizeEl?.addEventListener('change', drawFrame);
+  capStartBtn?.addEventListener('click', () => {
+    if (!hlVideoEl) return;
+    startEl.value = fmtStamp(hlVideoEl.currentTime);
+    syncButtonState();
+  });
+  capEndBtn?.addEventListener('click', () => {
+    if (!hlVideoEl) return;
+    endEl.value = fmtStamp(hlVideoEl.currentTime);
+    syncButtonState();
+  });
+
+  canvas.addEventListener('mousedown', e => {
+    const p = canvasPos(e);
+    if (blockHit(p.x, p.y)) { hlDragging = true; canvas.style.cursor = 'grabbing'; }
+  });
+  canvas.addEventListener('mousemove', e => {
+    const p = canvasPos(e);
+    if (hlDragging) {
+      hlBlockX = Math.max(0.08, Math.min(0.92, p.x / hlPreviewW));
+      hlBlockY = Math.max(0.08, Math.min(0.92, p.y / hlPreviewH));
+      syncRegionInfo();
+      drawFrame();
+    } else {
+      canvas.style.cursor = blockHit(p.x, p.y) ? 'grab' : 'default';
+    }
+  });
+  canvas.addEventListener('mouseup', () => { hlDragging = false; canvas.style.cursor = 'default'; });
+  canvas.addEventListener('mouseleave', () => { hlDragging = false; });
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const p = canvasPos(e);
+    if (blockHit(p.x, p.y)) hlDragging = true;
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (!hlDragging) return;
+    const p = canvasPos(e);
+    hlBlockX = Math.max(0.08, Math.min(0.92, p.x / hlPreviewW));
+    hlBlockY = Math.max(0.08, Math.min(0.92, p.y / hlPreviewH));
+    syncRegionInfo();
+    drawFrame();
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => { hlDragging = false; });
+
+  vcPlay?.addEventListener('click', () => {
+    if (!hlVideoEl) return;
+    if (hlPaused) { hlVideoEl.play().catch(() => {}); hlPaused = false; vcPlay.textContent = '⏸'; }
+    else { hlVideoEl.pause(); hlPaused = true; vcPlay.textContent = '▶'; }
+  });
+  vcSeek?.addEventListener('mousedown', () => { hlSeeking = true; });
+  vcSeek?.addEventListener('input', () => {
+    if (!hlVideoEl || !hlVideoEl.duration) return;
+    hlVideoEl.currentTime = (vcSeek.value / 1000) * hlVideoEl.duration;
+    if (vcTime) vcTime.textContent = formatTime(hlVideoEl.currentTime) + ' / ' + formatTime(hlVideoEl.duration);
+  });
+  vcSeek?.addEventListener('mouseup', () => { hlSeeking = false; });
+  vcSpeed?.addEventListener('change', () => { if (hlVideoEl) hlVideoEl.playbackRate = parseFloat(vcSpeed.value); });
+
   syncButtonState();
 
   btn.addEventListener('click', async () => {
     const text = textEl.value.trim();
-    if (!text) return;
+    const start = parseStamp(startEl?.value);
+    const end = parseStamp(endEl?.value);
+    if (!text || !hlFile || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
 
     btn.disabled = true;
     errorEl.style.display = 'none';
     resultCard.style.display = 'none';
     progWrap.style.display = '';
-    statusEl.textContent = 'Gerando headline...';
+    statusEl.textContent = 'Aplicando texto no vídeo...';
 
     try {
+      const fd = new FormData();
+      fd.append('video', hlFile);
+      fd.append('text', text);
+      fd.append('start', String(start));
+      fd.append('end', String(end));
+      fd.append('color', String(colorEl?.value || 'white'));
+      fd.append('fontSize', String(fontSizeEl?.value || '64'));
+      fd.append('x', String(hlBlockX));
+      fd.append('y', String(hlBlockY));
       const resp = await fetch(API + '/api/headline/run', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          duration: Number(durationEl?.value || 3),
-          format: String(formatEl?.value || '9:16'),
-          bg: String(bgEl?.value || 'black'),
-          color: String(colorEl?.value || 'white')
-        })
+        body: fd
       });
       const json = await resp.json();
-      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ao criar headline');
+      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ao aplicar headline');
 
       resultVideo.src = API + json.url;
       downloadBtn.href = API + json.url;
       downloadBtn.download = json.friendlyName || 'headline.mp4';
       resultCard.style.display = '';
-      statusEl.textContent = 'Headline criada com sucesso.';
+      statusEl.textContent = 'Texto aplicado com sucesso.';
       resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } catch (err) {
       errorEl.textContent = 'Erro: ' + err.message;

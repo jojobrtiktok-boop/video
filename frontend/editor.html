@@ -1651,7 +1651,38 @@
     <div id="tool-headline" class="tool-panel" style="display:none">
       <div class="tool-header">
         <h1 class="tool-title">Criar Headline</h1>
-        <p class="tool-subtitle">Crie um clipe de vídeo com texto em destaque — escolha o tempo e o estilo</p>
+        <p class="tool-subtitle">Escreva um texto sobre o seu vídeo, arraste para posicionar e escolha quando ele aparece</p>
+      </div>
+
+      <div class="card">
+        <label for="hl-file-input" id="hl-drop-zone" class="drop-zone" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+          <p><strong>Clique ou arraste</strong> um vídeo aqui</p>
+          <p>O texto será aplicado diretamente nele</p>
+          <div id="hl-file-name" class="dz-filename"></div>
+        </label>
+        <input type="file" id="hl-file-input" accept="video/*" class="hidden-input" />
+
+        <div id="hl-preview-section" style="display:none;margin-top:14px">
+          <div class="section-label">Posição do texto</div>
+          <p class="canvas-hint"><strong>Arraste</strong> o bloco para escolher o local no vídeo</p>
+          <div id="hl-canvas-wrap" style="position:relative;border-radius:var(--radius-sm) var(--radius-sm) 0 0;overflow:hidden;border:1px solid var(--border);border-bottom:none;cursor:default">
+            <canvas id="hl-preview-canvas" style="display:block;user-select:none;-webkit-user-select:none"></canvas>
+          </div>
+          <div class="video-controls">
+            <button id="hl-vc-play" class="vc-play" title="Play / Pause">⏸</button>
+            <span id="hl-vc-time" class="vc-time">0:00 / 0:00</span>
+            <input type="range" id="hl-vc-seek" class="vc-seek" min="0" max="1000" step="1" value="0">
+            <select id="hl-vc-speed" class="vc-speed" title="Velocidade">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.5">1.5×</option>
+              <option value="2">2×</option>
+            </select>
+          </div>
+          <div id="hl-region-info" style="margin-top:4px;font-size:0.77rem;color:var(--text-muted);min-height:20px">Posição central do texto</div>
+        </div>
       </div>
 
       <div class="card">
@@ -1661,36 +1692,18 @@
 
       <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div>
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Duração</div>
-          <select id="hl-duration" class="tool-select" style="width:100%">
-            <option value="1">1 segundo</option>
-            <option value="2">2 segundos</option>
-            <option value="3" selected>3 segundos</option>
-            <option value="4">4 segundos</option>
-            <option value="5">5 segundos</option>
-            <option value="6">6 segundos</option>
-            <option value="8">8 segundos</option>
-            <option value="10">10 segundos</option>
-          </select>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Início</div>
+          <div style="display:flex;gap:8px">
+            <input id="hl-start" type="text" class="tool-input" value="0:00" placeholder="0:00" style="flex:1" />
+            <button id="hl-cap-start" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">Agora</button>
+          </div>
         </div>
         <div>
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Formato</div>
-          <select id="hl-format" class="tool-select" style="width:100%">
-            <option value="9:16" selected>9:16 — Story / Reels</option>
-            <option value="1:1">1:1 — Quadrado</option>
-            <option value="16:9">16:9 — Horizontal</option>
-          </select>
-        </div>
-        <div>
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Fundo</div>
-          <select id="hl-bg" class="tool-select" style="width:100%">
-            <option value="black" selected>Preto</option>
-            <option value="white">Branco</option>
-            <option value="0x1a1a2e">Azul escuro</option>
-            <option value="0x16213e">Azul noite</option>
-            <option value="0x0f3460">Azul marinho</option>
-            <option value="0x1b1b1b">Cinza escuro</option>
-          </select>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Fim</div>
+          <div style="display:flex;gap:8px">
+            <input id="hl-end" type="text" class="tool-input" value="0:03" placeholder="0:03" style="flex:1" />
+            <button id="hl-cap-end" class="submit-btn" style="width:auto;padding:0 12px;font-size:12px">Agora</button>
+          </div>
         </div>
         <div>
           <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Cor do texto</div>
@@ -1703,9 +1716,18 @@
             <option value="black">Preto</option>
           </select>
         </div>
+        <div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Tamanho</div>
+          <select id="hl-fontsize" class="tool-select" style="width:100%">
+            <option value="48">Pequeno</option>
+            <option value="64" selected>Médio</option>
+            <option value="80">Grande</option>
+            <option value="96">Muito grande</option>
+          </select>
+        </div>
       </div>
 
-      <button id="hl-btn" class="submit-btn" style="margin-top:6px">Gerar Headline</button>
+      <button id="hl-btn" class="submit-btn" style="margin-top:6px">Selecione um vídeo</button>
 
       <div id="hl-prog" style="display:none;margin-top:10px">
         <div class="progress-wrap" style="display:block"><div class="progress-bar"></div></div>
