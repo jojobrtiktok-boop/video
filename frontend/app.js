@@ -17,190 +17,43 @@ const LIB_GROUPS = [
   { type: 'translate',  icon: '🌐', title: 'Tradução de Vídeo' },
 ];
 
-  function blockHit(px, py) {
-    const { blockW, blockH, left, top } = getBlockMetrics();
-    return px >= left - 8 && px <= left + blockW + 8 && py >= top - 8 && py <= top + blockH + 8;
-  }
-
-  function canvasPos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const src = e.touches ? e.touches[0] : e;
-    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
-  }
-
-  function syncRegionInfo() {
-    const xPct = Math.round(hlBlockX * 100);
-    const yPct = Math.round(hlBlockY * 100);
-    if (regionInfo) regionInfo.innerHTML = `Posição do texto: <span>${xPct}%</span> horizontal e <span>${yPct}%</span> vertical`;
-  }
-
-  function startLoop() {
-    hlPaused = false;
-    hlVideoEl.loop = true;
-    hlVideoEl.play().catch(() => {});
-    if (vcPlay) vcPlay.textContent = '⏸';
-    function loop() { drawFrame(); hlAnimFrame = requestAnimationFrame(loop); }
-    hlAnimFrame = requestAnimationFrame(loop);
-  }
-
-  function loadPreview(file) {
-    if (hlAnimFrame) cancelAnimationFrame(hlAnimFrame);
-    hlVideoEl = document.createElement('video');
-    hlVideoEl.muted = true;
-    hlVideoEl.playsInline = true;
-    hlVideoEl.preload = 'auto';
-    hlVideoEl.src = URL.createObjectURL(file);
-    hlVideoEl.currentTime = 0.1;
-    hlVideoEl.addEventListener('seeked', function onSeeked() {
-      hlVideoEl.removeEventListener('seeked', onSeeked);
-      hlVideoW = hlVideoEl.videoWidth;
-      hlVideoH = hlVideoEl.videoHeight;
-      previewSect.style.display = 'block';
-      updateCanvasSize();
-      syncRegionInfo();
-      startLoop();
-    });
-  }
-
-  function setHeadlineFile(file) {
-    if (!file || !file.type.startsWith('video/')) return;
-    hlFile = file;
-    fileNameEl.textContent = '✓ ' + file.name;
-    dropZone.classList.add('has-file');
-    loadPreview(file);
-    syncButtonState();
-  }
-
-  function syncButtonState() {
-    const hasText = !!textEl.value.trim();
-    const hasFile = !!hlFile;
-    const start = parseStamp(startEl?.value);
-    const end = parseStamp(endEl?.value);
-    const validTime = Number.isFinite(start) && Number.isFinite(end) && end > start;
-    btn.disabled = !(hasText && hasFile && validTime);
-    if (!hasFile) btn.textContent = 'Selecione um vídeo';
-    else if (!hasText) btn.textContent = 'Digite um texto';
-    else if (!validTime) btn.textContent = 'Ajuste início e fim';
-    else btn.textContent = 'Aplicar texto no vídeo';
-  }
-
-  if (fileInput) fileInput.addEventListener('change', () => { if (fileInput.files[0]) setHeadlineFile(fileInput.files[0]); });
-  makeDrop('hl-drop-zone', f => f.type.startsWith('video/'), setHeadlineFile);
-
-];
-    const hasText = !!textEl.value.trim();
-    const hasFile = !!hlFile;
-    const start = parseStamp(startEl?.value);
-    const end = parseStamp(endEl?.value);
-    const validTime = Number.isFinite(start) && Number.isFinite(end) && end > start;
-    btn.disabled = !(hasText && hasFile && validTime);
-    if (!hasFile) btn.textContent = 'Selecione um vídeo';
-    else if (!hasText) btn.textContent = 'Digite um texto';
-    else if (!validTime) btn.textContent = 'Ajuste início e fim';
-    else btn.textContent = 'Aplicar texto no vídeo';
+function formatExpiry(expiresAt) {
+  if (!expiresAt) return '';
   const ms = expiresAt - Date.now();
   if (ms <= 0) return '⏰ Expirado';
-  textEl.addEventListener('input', () => { syncButtonState(); drawFrame(); });
-  startEl?.addEventListener('input', syncButtonState);
-  endEl?.addEventListener('input', syncButtonState);
-  colorEl?.addEventListener('change', drawFrame);
-  fontSizeEl?.addEventListener('change', drawFrame);
-  capStartBtn?.addEventListener('click', () => {
-    if (!hlVideoEl) return;
-    startEl.value = fmtStamp(hlVideoEl.currentTime);
-    syncButtonState();
-  });
-  capEndBtn?.addEventListener('click', () => {
-    if (!hlVideoEl) return;
-    endEl.value = fmtStamp(hlVideoEl.currentTime);
-    syncButtonState();
-  });
-
-  if (canvas) {
-    canvas.addEventListener('mousedown', e => {
-      const p = canvasPos(e);
-      if (blockHit(p.x, p.y)) { hlDragging = true; canvas.style.cursor = 'grabbing'; }
-    });
-    canvas.addEventListener('mousemove', e => {
-      const p = canvasPos(e);
-      if (hlDragging) {
-        hlBlockX = Math.max(0.08, Math.min(0.92, p.x / hlPreviewW));
-        hlBlockY = Math.max(0.08, Math.min(0.92, p.y / hlPreviewH));
-        syncRegionInfo();
-        drawFrame();
-      } else {
-        canvas.style.cursor = blockHit(p.x, p.y) ? 'grab' : 'default';
-      }
-    });
-    canvas.addEventListener('mouseup', () => { hlDragging = false; canvas.style.cursor = 'default'; });
-    canvas.addEventListener('mouseleave', () => { hlDragging = false; });
-    canvas.addEventListener('touchstart', e => {
-      e.preventDefault();
-      const p = canvasPos(e);
-      if (blockHit(p.x, p.y)) hlDragging = true;
-    }, { passive: false });
-    canvas.addEventListener('touchmove', e => {
-      e.preventDefault();
-      if (!hlDragging) return;
-      const p = canvasPos(e);
-      hlBlockX = Math.max(0.08, Math.min(0.92, p.x / hlPreviewW));
-      hlBlockY = Math.max(0.08, Math.min(0.92, p.y / hlPreviewH));
-      syncRegionInfo();
-      drawFrame();
-    }, { passive: false });
-    canvas.addEventListener('touchend', () => { hlDragging = false; });
-  }
-
-  vcPlay?.addEventListener('click', () => {
-    if (!hlVideoEl) return;
-    if (hlPaused) { hlVideoEl.play().catch(() => {}); hlPaused = false; vcPlay.textContent = '⏸'; }
-    else { hlVideoEl.pause(); hlPaused = true; vcPlay.textContent = '▶'; }
-  });
-  vcSeek?.addEventListener('mousedown', () => { hlSeeking = true; });
-  vcSeek?.addEventListener('input', () => {
-    if (!hlVideoEl || !hlVideoEl.duration) return;
-    hlVideoEl.currentTime = (vcSeek.value / 1000) * hlVideoEl.duration;
-    if (vcTime) vcTime.textContent = formatTime(hlVideoEl.currentTime) + ' / ' + formatTime(hlVideoEl.duration);
-  });
-  vcSeek?.addEventListener('mouseup', () => { hlSeeking = false; });
-  vcSpeed?.addEventListener('change', () => { if (hlVideoEl) hlVideoEl.playbackRate = parseFloat(vcSpeed.value); });
-
+  const min = Math.floor(ms / 60000);
   const hr  = Math.floor(min / 60);
   if (hr > 0) return `⏰ Apaga em ${hr}h ${min % 60}m`;
   return `⏰ Apaga em ${min}m`;
 }
-    const start = parseStamp(startEl?.value);
-    const end = parseStamp(endEl?.value);
-    if (!text || !hlFile || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+
 function renderVideoCard(item) {
   const isReady  = !item.status || item.status === 'done';
   const isProc   = item.status === 'processing';
   const isErr    = item.status === 'error';
   const pct      = item.progress != null ? item.progress : (isReady ? 100 : 0);
-    statusEl.textContent = 'Aplicando texto no vídeo...';
+  const expiry   = isReady ? formatExpiry(item.expiresAt) : '';
   const filename = item.url ? item.url.split('/').pop() : 'processando…';
   const displayName = item.friendlyName || filename;
-      const fd = new FormData();
-      fd.append('video', hlFile);
-      fd.append('text', text);
-      fd.append('start', String(start));
-      fd.append('end', String(end));
-      fd.append('color', String(colorEl?.value || 'white'));
-      fd.append('fontSize', String(fontSizeEl?.value || '64'));
-      fd.append('x', String(hlBlockX));
-      fd.append('y', String(hlBlockY));
   return `
-        method: 'POST',
-        body: fd
+    <div class="video-card" data-id="${item.id || ''}">
+      ${isReady && item.url
+        ? item.mediaType === 'image'
+          ? `<img src="${API + item.url}" class="lib-img" alt="${item.label || 'imagem'}">`
+          : `<video src="${API + item.url}" controls muted playsinline preload="metadata"></video>`
+        : `<div class="video-card-placeholder">${isProc ? '⏳' : '❌'}</div>`
+      }
+      <div class="video-card-info">
+        <div class="video-card-label">${item.label || ''}</div>
         <div class="video-card-title">${displayName}</div>
         ${isProc ? `
-      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ao aplicar headline');
+          <div class="lib-progress-bar"><div class="lib-progress-fill" style="width:${pct}%"></div></div>
           <div class="video-card-meta">⏳ ${pct}% — processando…</div>` : ''}
         ${isReady ? `<div class="video-card-meta">${expiry}</div>` : ''}
         ${isErr   ? `<div class="video-card-meta" style="color:#f87171">❌ Erro no processamento</div>` : ''}
         <div class="video-card-actions">
           ${isReady && item.url ? `<a href="${API + item.url}" download="${displayName}" class="video-card-dl">⬇ Baixar</a>` : ''}
-      statusEl.textContent = 'Texto aplicado com sucesso.';
+        </div>
       </div>
     </div>`;
 }
@@ -220,7 +73,6 @@ function renderVideoLibrary(items) {
       <div class="lib-cards-row">${groupItems.map(renderVideoCard).join('')}</div>
     </div>`;
   });
-  // Items sem tipo conhecido
   const knownTypes = LIB_GROUPS.map(g => g.type);
   const others = items.filter(i => !knownTypes.includes(i.type));
   if (others.length) {
@@ -239,7 +91,6 @@ async function fetchVideoLibrary() {
     const json = await resp.json();
     if (!json.items) return;
     renderVideoLibrary(json.items);
-    // Refresh mais rápido se há itens processando
     const hasProcessing = json.items.some(i => i.status === 'processing');
     const delay = hasProcessing ? 3000 : 8000;
     clearTimeout(_libRefreshTimer);
@@ -268,7 +119,6 @@ function showTool(name) {
   document.querySelectorAll('.tool-panel').forEach(p => {
     p.style.display = p.id === 'tool-' + name ? 'block' : 'none';
   });
-  // ferramentas tab strip
   const tabStrip = document.getElementById('ftools-tab-strip');
   if (tabStrip) {
     tabStrip.style.display = FERR_TOOLS.has(name) ? '' : 'none';
@@ -276,12 +126,10 @@ function showTool(name) {
       b.classList.toggle('active', b.dataset.ftool === name);
     });
   }
-  // nav item active state — itens diretos de ferramentastools ficam ativos tbm
   const activeNavTool = FERR_TOOLS.has(name) ? 'ferramentas' : name;
   document.querySelectorAll('.nav-item[data-tool], .nav-direct[data-tool]').forEach(item => {
     item.classList.toggle('active', item.dataset.tool === activeNavTool || item.dataset.tool === name);
   });
-  // auto-open the category group that contains this tool
   const cat = CAT_MAP[name];
   if (cat) {
     const group = document.getElementById('cat-' + cat);
@@ -289,7 +137,6 @@ function showTool(name) {
   }
 }
 
-// ── accordion: toggle group open/close on header click ──
 document.querySelectorAll('.nav-group-header').forEach(header => {
   header.addEventListener('click', () => {
     const group = header.closest('.nav-group');
@@ -297,7 +144,6 @@ document.querySelectorAll('.nav-group-header').forEach(header => {
   });
 });
 
-// ── nav item clicks ──
 document.querySelectorAll('.nav-item[data-tool]').forEach(item => {
   item.addEventListener('click', () => showTool(item.dataset.tool));
 });
@@ -305,14 +151,14 @@ document.querySelectorAll('.nav-direct[data-tool]').forEach(item => {
   item.addEventListener('click', () => {
     showTool(item.dataset.tool);
     if (item.dataset.tool === 'video-library') {
-      clearTimeout(_libRefreshTimer); fetchVideoLibrary();
+      clearTimeout(_libRefreshTimer);
+      fetchVideoLibrary();
     }
   });
 });
 document.querySelectorAll('.ftab').forEach(btn => {
   btn.addEventListener('click', () => showTool(btn.dataset.ftool));
 });
-// Initialize: show tab strip for default tool (watermark)
 showTool('watermark');
 
 function formatTime(s) {
