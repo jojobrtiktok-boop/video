@@ -487,87 +487,6 @@ function endDragWm() {
 
 const ASYNC_MODES = new Set(['delogo', 'sora']);
 
-// ── OpenRouter watermark detect (main WM tool) ──
-let detectedTimeRanges = null; // set by AI analyze, used in submit
-(function() {
-  const orKeyInput   = document.getElementById('wm-or-key');
-  const orSaveBtn    = document.getElementById('wm-or-save-btn');
-  const orDetectBtn  = document.getElementById('wm-or-detect-btn');
-  const orStatus     = document.getElementById('wm-or-status');
-  const orError      = document.getElementById('wm-or-error');
-  const detectedInfo = document.getElementById('wm-detected-info');
-  const detectedRangesEl = document.getElementById('wm-detected-ranges');
-  if (!orDetectBtn) return;
-  const saved = localStorage.getItem('wm_or_key');
-  if (saved && orKeyInput) orKeyInput.value = saved;
-  if (orSaveBtn && orKeyInput) {
-    orSaveBtn.addEventListener('click', () => {
-      const v = orKeyInput.value.trim();
-      if (v) { localStorage.setItem('wm_or_key', v); orSaveBtn.textContent = '✅'; setTimeout(() => orSaveBtn.textContent = '💾', 2000); }
-    });
-  }
-  orDetectBtn.addEventListener('click', async () => {
-    if (!selectedFile) { if (orError) { orError.textContent = 'Selecione um vídeo primeiro.'; orError.style.display = ''; } return; }
-    const key = (orKeyInput && orKeyInput.value.trim()) || localStorage.getItem('wm_or_key') || '';
-    if (!key) { if (orError) { orError.textContent = 'Informe a OpenRouter API Key.'; orError.style.display = ''; } return; }
-    if (!selRect || selRect.w < 5 || selRect.h < 5) {
-      if (orError) { orError.textContent = 'Marque a região aproximada da marca d\'água no vídeo primeiro.'; orError.style.display = ''; }
-      return;
-    }
-    orDetectBtn.disabled = true;
-    if (orError) { orError.textContent = ''; orError.style.display = 'none'; }
-    if (detectedInfo) detectedInfo.style.display = 'none';
-    detectedTimeRanges = null;
-    if (orStatus) orStatus.textContent = '🔍 Analisando frames com IA…';
-    try {
-      const fd = new FormData();
-      fd.append('video', selectedFile);
-      fd.append('orKey', key);
-      fd.append('x', Math.round(selRect.x * videoW / previewW));
-      fd.append('y', Math.round(selRect.y * videoH / previewH));
-      fd.append('w', Math.round(selRect.w * videoW / previewW));
-      fd.append('h', Math.round(selRect.h * videoH / previewH));
-      const r = await fetch(API + '/api/watermark/analyze', { method: 'POST', body: fd });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Erro');
-      // Update canvas rect to tight bbox if returned
-      if (j.tight_bbox && j.tight_bbox.w > 0) {
-        selRect = {
-          x: j.tight_bbox.x * previewW / videoW,
-          y: j.tight_bbox.y * previewH / videoH,
-          w: j.tight_bbox.w * previewW / videoW,
-          h: j.tight_bbox.h * previewH / videoH
-        };
-        drawFrame();
-      }
-      // Display detected ranges
-      if (j.detected_ranges && j.detected_ranges.length > 0) {
-        detectedTimeRanges = j.detected_ranges;
-        const rangeText = j.detected_ranges.map(r => {
-          const fmt = s => { const m = Math.floor(s/60); return m > 0 ? `${m}m${Math.round(s%60)}s` : `${Math.round(s)}s`; };
-          return `${fmt(r.start)} – ${fmt(r.end)}`;
-        }).join(',  ');
-        if (detectedRangesEl) detectedRangesEl.textContent = rangeText;
-        if (detectedInfo) detectedInfo.style.display = '';
-        if (orStatus) orStatus.textContent = `✓ Detectado em ${j.detected_ranges.length} trecho(s) — ${j.frame_count || ''} frames analisados`;
-        // Populate manual ranges boxes so user can edit
-        if (window._wmSetManualRanges) window._wmSetManualRanges(j.detected_ranges);
-      } else {
-        if (orStatus) orStatus.textContent = '⚠️ Nenhuma marca d\'água detectada nos frames analisados.';
-        if (j.tight_bbox) {
-          if (orStatus) orStatus.textContent += ` Bbox ajustado: ${j.tight_bbox.w}×${j.tight_bbox.h}px`;
-        }
-      }
-      submitBtn.disabled = false;
-    } catch(e) {
-      if (orError) { orError.textContent = e.message; orError.style.display = ''; }
-      if (orStatus) orStatus.textContent = '';
-    } finally {
-      orDetectBtn.disabled = false;
-    }
-  });
-})();
-
 // ── Manual time ranges ──
 (function() {
   const list = document.getElementById('wm-ranges-list');
@@ -653,11 +572,10 @@ submitBtn.addEventListener('click', async () => {
     fd.append('w', Math.round(selRect.w * videoW / previewW));
     fd.append('h', Math.round(selRect.h * videoH / previewH));
   }
-  // Merge AI-detected ranges + manual ranges
+  // Manual time ranges
   const manualRanges = window._wmGetManualRanges ? window._wmGetManualRanges() : [];
-  const allRanges = [...(detectedTimeRanges || []), ...manualRanges];
-  if (allRanges.length > 0) {
-    fd.append('time_ranges', JSON.stringify(allRanges));
+  if (manualRanges.length > 0) {
+    fd.append('time_ranges', JSON.stringify(manualRanges));
   }
   setLoadingWm(true, 0); clearError(); resultCard.style.display = 'none';
   try {

@@ -970,28 +970,11 @@
           <button class="mode-btn" data-mode="ai" disabled>🔬 IA Inpainting</button>
         </div>
         <div id="mode-desc" class="mode-desc">Blur gaussiano com bordas suaves e degradê — rápido, funciona em qualquer fundo.</div>
-        <!-- Smart watermark analyze -->
-        <div style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg)">
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px">🤖 Analisar Marca d'Água com IA</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Marque a região aproximada no vídeo e clique em Analisar — a IA detecta as letras com precisão e os segundos onde aparece.</div>
-          <div style="display:flex;gap:6px;margin-bottom:8px">
-            <input id="wm-or-key" type="password" class="tool-input" placeholder="OpenRouter API Key (sk-or-...)" style="flex:1;height:34px" />
-            <button id="wm-or-save-btn" class="submit-btn" style="width:auto;padding:0 10px;font-size:12px">💾</button>
-          </div>
-          <button id="wm-or-detect-btn" class="submit-btn">🔍 Analisar Vídeo com IA</button>
-          <div id="wm-or-status" class="status-text"></div>
-          <div id="wm-or-error" class="error-msg"></div>
-          <!-- Detected ranges display -->
-          <div id="wm-detected-info" style="display:none;margin-top:10px">
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">📍 Marca d'água detectada em:</div>
-            <div id="wm-detected-ranges" style="font-size:12px;background:var(--bg);padding:8px 10px;border-radius:6px;border:1px solid var(--border);color:var(--text)"></div>
-          </div>
-        </div>
 
         <!-- Manual time ranges -->
         <div id="wm-ranges-section" style="display:none;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg)">
           <div style="font-size:13px;font-weight:600;margin-bottom:8px">⏱ Intervalos Manuais</div>
-          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Defina em quais momentos do vídeo a marca aparece. Use no lugar ou junto com a detecção por IA.</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Defina em quais momentos do vídeo a marca aparece. Avance o vídeo e clique ⏱ agora para capturar o tempo.</div>
           <div id="wm-ranges-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
           <button id="wm-add-range-btn" class="submit-btn" style="background:var(--bg);color:var(--text);border:1px solid var(--border);font-size:12px;padding:6px 12px;width:auto">+ Adicionar intervalo</button>
         </div>
