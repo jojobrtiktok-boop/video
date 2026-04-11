@@ -275,6 +275,7 @@ function startVideoLoop(vEl, canvasEl, ctxEl, pw, ph, drawFn, vcPlayEl) {
 function loadVideoPreview(file) {
   selRect = null; dragMode = null;
   regionInfo.innerHTML = 'Nenhuma região selecionada — arraste para marcar';
+  const rs = document.getElementById('wm-ranges-section'); if (rs) rs.style.display = 'none';
   videoEl = document.createElement('video');
   videoEl.muted = true; videoEl.playsInline = true; videoEl.preload = 'auto';
   videoEl.src = URL.createObjectURL(file); videoEl.currentTime = 0.1;
@@ -470,13 +471,17 @@ function handleDragWm(p) {
 function endDragWm() {
   if (!dragMode) return;
   dragMode = null; activeHandle = null; dragStart = null; dragOrigRect = null;
+  const rangesSection = document.getElementById('wm-ranges-section');
   if (!selRect || selRect.w < 5 || selRect.h < 5) {
     selRect = null; drawFrame();
-    regionInfo.innerHTML = 'Nenhuma região selecionada — arraste para marcar'; return;
+    regionInfo.innerHTML = 'Nenhuma região selecionada — arraste para marcar';
+    if (rangesSection) rangesSection.style.display = 'none';
+    return;
   }
   const rx = Math.round(selRect.x * videoW / previewW), ry = Math.round(selRect.y * videoH / previewH);
   const rw = Math.round(selRect.w * videoW / previewW), rh = Math.round(selRect.h * videoH / previewH);
   regionInfo.innerHTML = 'Região: <span>' + rw + ' x ' + rh + ' px</span> em <span>(' + rx + ', ' + ry + ')</span>';
+  if (rangesSection) rangesSection.style.display = '';
   drawFrame();
 }
 
