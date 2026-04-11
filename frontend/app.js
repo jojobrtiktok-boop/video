@@ -597,17 +597,30 @@ let detectedTimeRanges = null; // set by AI analyze, used in submit
     return result;
   }
 
+  function fmtTime(s) {
+    const m = Math.floor(s / 60), ss = Math.floor(s % 60);
+    return `${m}:${String(ss).padStart(2, '0')}`;
+  }
+
   function addRow(start, end) {
     const row = document.createElement('div');
     row.className = 'wm-range-row';
-    row.style.cssText = 'display:flex;gap:6px;align-items:center';
+    row.style.cssText = 'display:flex;gap:4px;align-items:center;flex-wrap:wrap';
     row.innerHTML = `
       <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">De</span>
-      <input class="tool-input wm-range-start" type="text" placeholder="0:00" value="${start||''}" style="flex:1;height:32px;font-size:12px" />
+      <input class="tool-input wm-range-start" type="text" placeholder="0:00" value="${start||''}" style="width:54px;height:32px;font-size:12px;flex:none" />
+      <button class="wm-cap-start" title="Capturar tempo atual do vídeo" style="background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;padding:0 7px;height:32px;white-space:nowrap">⏱ agora</button>
       <span style="font-size:12px;color:var(--text-muted);white-space:nowrap">até</span>
-      <input class="tool-input wm-range-end" type="text" placeholder="0:30" value="${end||''}" style="flex:1;height:32px;font-size:12px" />
-      <button class="wm-range-del" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-muted);padding:0 4px" title="Remover">✕</button>`;
+      <input class="tool-input wm-range-end" type="text" placeholder="0:30" value="${end||''}" style="width:54px;height:32px;font-size:12px;flex:none" />
+      <button class="wm-cap-end" title="Capturar tempo atual do vídeo" style="background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:11px;padding:0 7px;height:32px;white-space:nowrap">⏱ agora</button>
+      <button class="wm-range-del" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-muted);padding:0 4px;margin-left:auto" title="Remover">✕</button>`;
     row.querySelector('.wm-range-del').addEventListener('click', () => row.remove());
+    row.querySelector('.wm-cap-start').addEventListener('click', () => {
+      if (videoEl) row.querySelector('.wm-range-start').value = fmtTime(videoEl.currentTime);
+    });
+    row.querySelector('.wm-cap-end').addEventListener('click', () => {
+      if (videoEl) row.querySelector('.wm-range-end').value = fmtTime(videoEl.currentTime);
+    });
     list.appendChild(row);
   }
 
