@@ -857,10 +857,7 @@
             <span class="nav-item-title">Ferramentas</span>
             <span class="nav-item-desc">Marca d'água, cortar, resize…</span>
           </button>
-          <button class="nav-item" data-tool="juntar">
-            <span class="nav-item-title">🔗 Juntar Vídeos</span>
-            <span class="nav-item-desc">Una vários vídeos em ordem</span>
-          </button>
+
           <button class="nav-item" data-tool="automontador">
             <span class="nav-item-title" style="color:var(--accent)">Auto Montador</span>
             <span class="nav-item-desc">IA escolhe cenas + monta o vídeo</span>
@@ -920,17 +917,18 @@
     <div id="ftools-tab-strip">
       <div class="ftools-tabs-inner">
         <button class="ftab active" data-ftool="watermark">Marca d'água</button>
-        <button class="ftab" data-ftool="cortes">✂️ Cortes</button>
+        <button class="ftab" data-ftool="cortes">Cortes</button>
         <button class="ftab" data-ftool="resize">Redimensionar</button>
         <button class="ftab" data-ftool="compress">Comprimir</button>
         <button class="ftab" data-ftool="upscale">Qualidade</button>
         <button class="ftab" data-ftool="mirror">Espelhar</button>
         <button class="ftab" data-ftool="extrair">Extrair</button>
         <button class="ftab" data-ftool="combine">Combinador</button>
-        <button class="ftab" data-ftool="juntar">🔗 Juntar Vídeos</button>
+        <button class="ftab" data-ftool="juntar">Juntar Vídeos</button>
         <button class="ftab" data-ftool="translate">Traduzir</button>
         <button class="ftab" data-ftool="swapfala">Substituir Fala</button>
-        <button class="ftab" data-ftool="gencenas">🎨 Gerador de Cenas</button>
+        <button class="ftab" data-ftool="gencenas">Gerador de Cenas</button>
+        <button class="ftab" data-ftool="headline">Criar Headline</button>
       </div>
     </div>
 
@@ -1252,7 +1250,7 @@
     <!-- JUNTAR VÍDEOS -->
     <div id="tool-juntar" class="tool-panel" style="display:none">
       <div class="tool-header">
-        <h1 class="tool-title">🔗 Juntar Vídeos</h1>
+        <h1 class="tool-title">Juntar Vídeos</h1>
         <p class="tool-subtitle">Adicione quantos vídeos quiser, reordene e junte tudo num único arquivo</p>
       </div>
 
@@ -1551,7 +1549,7 @@
     <!-- GERADOR DE CENAS -->
     <div id="tool-gencenas" class="tool-panel" style="display:none">
       <div class="tool-header">
-        <h1 class="tool-title">🎨 Gerador de Cenas IA</h1>
+        <h1 class="tool-title">Gerador de Cenas IA</h1>
         <p class="tool-subtitle">GPT-4o mini cria cenas • Texto animado ou análise + overlay no seu vídeo</p>
       </div>
 
@@ -1646,6 +1644,78 @@
         <h3>✓ Vídeo gerado!</h3>
         <video id="gc-result-video" class="result-video" controls></video><br/>
         <a id="gc-download-btn" class="download-btn" download>⬇ Baixar vídeo</a>
+      </div>
+    </div>
+
+    <!-- CRIAR HEADLINE -->
+    <div id="tool-headline" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">Criar Headline</h1>
+        <p class="tool-subtitle">Crie um clipe de vídeo com texto em destaque — escolha o tempo e o estilo</p>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-bottom:8px">Texto da Headline</div>
+        <textarea id="hl-text" class="tool-input" rows="3" placeholder="Ex: OFERTA POR TEMPO LIMITADO&#10;50% OFF hoje!" style="width:100%;resize:vertical;font-size:16px;font-weight:600"></textarea>
+      </div>
+
+      <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Duração</div>
+          <select id="hl-duration" class="tool-select" style="width:100%">
+            <option value="1">1 segundo</option>
+            <option value="2">2 segundos</option>
+            <option value="3" selected>3 segundos</option>
+            <option value="4">4 segundos</option>
+            <option value="5">5 segundos</option>
+            <option value="6">6 segundos</option>
+            <option value="8">8 segundos</option>
+            <option value="10">10 segundos</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Formato</div>
+          <select id="hl-format" class="tool-select" style="width:100%">
+            <option value="9:16" selected>9:16 — Story / Reels</option>
+            <option value="1:1">1:1 — Quadrado</option>
+            <option value="16:9">16:9 — Horizontal</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Fundo</div>
+          <select id="hl-bg" class="tool-select" style="width:100%">
+            <option value="black" selected>Preto</option>
+            <option value="white">Branco</option>
+            <option value="0x1a1a2e">Azul escuro</option>
+            <option value="0x16213e">Azul noite</option>
+            <option value="0x0f3460">Azul marinho</option>
+            <option value="0x1b1b1b">Cinza escuro</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Cor do texto</div>
+          <select id="hl-color" class="tool-select" style="width:100%">
+            <option value="white" selected>Branco</option>
+            <option value="yellow">Amarelo</option>
+            <option value="0xFFD700">Dourado</option>
+            <option value="0xFF4444">Vermelho</option>
+            <option value="0x00D4FF">Azul neon</option>
+            <option value="black">Preto</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="hl-btn" class="submit-btn" style="margin-top:6px">Gerar Headline</button>
+
+      <div id="hl-prog" style="display:none;margin-top:10px">
+        <div class="progress-wrap" style="display:block"><div class="progress-bar"></div></div>
+        <div id="hl-status" class="status-text"></div>
+      </div>
+      <div id="hl-error" class="error-msg"></div>
+      <div id="hl-result" class="result-card" style="display:none">
+        <h3>✓ Headline criada!</h3>
+        <video id="hl-result-video" class="result-video" controls></video><br/>
+        <a id="hl-download-btn" class="download-btn" download>⬇ Baixar clipe</a>
       </div>
     </div>
 

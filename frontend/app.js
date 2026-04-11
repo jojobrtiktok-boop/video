@@ -110,11 +110,11 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video', juntar: 'video',
-  translate: 'video', autotr: 'video', autohook: 'video', autocorpo: 'video', automontador: 'video', ferramentas: 'video', swapfala: 'video',
+  translate: 'video', autotr: 'video', autohook: 'video', autocorpo: 'video', automontador: 'video', ferramentas: 'video', swapfala: 'video', headline: 'video', gencenas: 'video',
   'video-library': null
 };
 
-const FERR_TOOLS = new Set(['watermark','cortes','resize','compress','upscale','mirror','extrair','combine','juntar','translate','swapfala','gencenas']);
+const FERR_TOOLS = new Set(['watermark','cortes','resize','compress','upscale','mirror','extrair','combine','juntar','translate','swapfala','gencenas','headline']);
 
 function showTool(name) {
   if (name === 'ferramentas') name = 'watermark';
@@ -1340,7 +1340,7 @@ if (combineBtn) {
     listWrap.style.display = jFiles.length ? '' : 'none';
     btn.disabled = jFiles.length < 2;
     btn.textContent = jFiles.length >= 2
-      ? `🔗 Juntar ${jFiles.length} vídeos`
+      ? `Juntar ${jFiles.length} vídeos`
       : 'Adicione ao menos 2 vídeos';
 
     jFiles.forEach((entry, idx) => {
@@ -1444,6 +1444,75 @@ if (combineBtn) {
   });
 
   renderList();
+})();
+
+// ════════════════════════════════════════════════════════════════════
+// CRIAR HEADLINE
+// ════════════════════════════════════════════════════════════════════
+(function() {
+  const textEl = document.getElementById('hl-text');
+  const durationEl = document.getElementById('hl-duration');
+  const formatEl = document.getElementById('hl-format');
+  const bgEl = document.getElementById('hl-bg');
+  const colorEl = document.getElementById('hl-color');
+  const btn = document.getElementById('hl-btn');
+  const progWrap = document.getElementById('hl-prog');
+  const statusEl = document.getElementById('hl-status');
+  const errorEl = document.getElementById('hl-error');
+  const resultCard = document.getElementById('hl-result');
+  const resultVideo = document.getElementById('hl-result-video');
+  const downloadBtn = document.getElementById('hl-download-btn');
+  if (!textEl || !btn) return;
+
+  function syncButtonState() {
+    const hasText = !!textEl.value.trim();
+    btn.disabled = !hasText;
+    btn.textContent = hasText ? 'Gerar Headline' : 'Digite um texto';
+  }
+
+  textEl.addEventListener('input', syncButtonState);
+  syncButtonState();
+
+  btn.addEventListener('click', async () => {
+    const text = textEl.value.trim();
+    if (!text) return;
+
+    btn.disabled = true;
+    errorEl.style.display = 'none';
+    resultCard.style.display = 'none';
+    progWrap.style.display = '';
+    statusEl.textContent = 'Gerando headline...';
+
+    try {
+      const resp = await fetch(API + '/api/headline/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          duration: Number(durationEl?.value || 3),
+          format: String(formatEl?.value || '9:16'),
+          bg: String(bgEl?.value || 'black'),
+          color: String(colorEl?.value || 'white')
+        })
+      });
+      const json = await resp.json();
+      if (!resp.ok || json.error) throw new Error(json.error || 'Erro ao criar headline');
+
+      resultVideo.src = API + json.url;
+      downloadBtn.href = API + json.url;
+      downloadBtn.download = json.friendlyName || 'headline.mp4';
+      resultCard.style.display = '';
+      statusEl.textContent = 'Headline criada com sucesso.';
+      resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      errorEl.textContent = 'Erro: ' + err.message;
+      errorEl.style.display = 'block';
+      statusEl.textContent = '';
+    } finally {
+      progWrap.style.display = 'none';
+      syncButtonState();
+    }
+  });
 })();
 
 // ════════════════════════════════════════════════════════════════════

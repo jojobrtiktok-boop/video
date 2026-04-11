@@ -31,6 +31,21 @@ function friendlyFilename(originalname, suffix, forceExt) {
   return suffix ? base + ' ' + suffix + ext : base + ext;
 }
 
+function getHeadlineFontFile() {
+  const candidates = _p
+    ? ['C:/Windows/Fonts/arialbd.ttf', 'C:/Windows/Fonts/arial.ttf']
+    : [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+      ];
+  return candidates.find(p => fs.existsSync(p)) || null;
+}
+
+function ffmpegFilterPath(filePath) {
+  return String(filePath || '').replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+}
+
 const app = express();
 
 const _p = process.platform === 'win32';
@@ -1409,6 +1424,75 @@ app.post('/api/juntar/run', async (req, res) => {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
     return res.status(500).json({ error: err.message });
   }
+});
+
+// ── CRIAR HEADLINE ───────────────────────────────────────────────────────────
+app.post('/api/headline/run', async (req, res) => {
+  const text = String(req.body?.text || '').trim();
+  const duration = Math.max(1, Math.min(10, Number(req.body?.duration) || 3));
+  const format = String(req.body?.format || '9:16');
+  const bg = String(req.body?.bg || 'black').trim();
+  const color = String(req.body?.color || 'white').trim();
+
+  if (!text) return res.status(400).json({ error: 'Texto da headline é obrigatório.' });
+  if (text.length > 500) return res.status(400).json({ error: 'Texto muito grande. Use até 500 caracteres.' });
+  if (!['9:16', '1:1', '16:9'].includes(format)) return res.status(400).json({ error: 'Formato inválido.' });
+  if (!/^(black|white|yellow|red|blue|green|0x[0-9a-fA-F]{6})$/.test(bg)) return res.status(400).json({ error: 'Cor de fundo inválida.' });
+  if (!/^(black|white|yellow|red|blue|green|0x[0-9a-fA-F]{6})$/.test(color)) return res.status(400).json({ error: 'Cor do texto inválida.' });
+
+  const sizes = {
+    '9:16': { width: 1080, height: 1920 },
+    '1:1': { width: 1080, height: 1080 },
+    '16:9': { width: 1920, height: 1080 }
+  };
+  const { width, height } = sizes[format];
+  const outputName = `headline-${Date.now()}.mp4`;
+  const output = path.join(UPLOAD_DIR, outputName);
+  const textPath = path.join(UPLOAD_DIR, `headline-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
+  const safeText = text.replace(/\r\n/g, '\n').slice(0, 500);
+  const fontFile = getHeadlineFontFile();
+  const fontSize = Math.max(64, Math.round(Math.min(width, height) * 0.09));
+  const lineSpacing = Math.max(12, Math.round(fontSize * 0.22));
+  const borderColor = color === 'black' ? 'white@0.45' : 'black@0.45';
+
+  fs.writeFileSync(textPath, safeText, 'utf8');
+
+  const drawParts = [];
+  if (fontFile) drawParts.push(`fontfile='${ffmpegFilterPath(fontFile)}'`);
+  drawParts.push(`textfile='${ffmpegFilterPath(textPath)}'`);
+  drawParts.push(`reload=0`);
+  drawParts.push(`fontcolor=${color}`);
+  drawParts.push(`fontsize=${fontSize}`);
+  drawParts.push(`line_spacing=${lineSpacing}`);
+  drawParts.push(`borderw=${Math.max(3, Math.round(fontSize * 0.05))}`);
+  drawParts.push(`bordercolor=${borderColor}`);
+  drawParts.push(`fix_bounds=true`);
+  drawParts.push(`x=(w-text_w)/2`);
+  drawParts.push(`y=(h-text_h)/2`);
+
+  const vf = `drawtext=${drawParts.join(':')}`;
+  const cmd = `"${FFMPEG}" -y -f lavfi -i "color=c=${bg}:s=${width}x${height}:r=30:d=${duration}" -vf "${vf}" -t ${duration} -c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p -movflags +faststart "${output}"`;
+
+  exec(cmd, { timeout: 120000 }, err => {
+    try { fs.unlinkSync(textPath); } catch {}
+    if (err) {
+      try { fs.unlinkSync(output); } catch {}
+      return res.status(500).json({ error: 'FFmpeg falhou ao criar a headline.' });
+    }
+
+    scheduleDelete(output, 60 * 60 * 1000);
+    const friendlyName = 'headline.mp4';
+    addToLibrary({
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      type: 'headline',
+      label: 'Headline',
+      url: `/uploads/${outputName}`,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      friendlyName
+    });
+    return res.json({ url: `/uploads/${outputName}`, friendlyName });
+  });
 });
 
 // ── EXTRAIR ───────────────────────────────────────────────────────────────────
