@@ -150,10 +150,11 @@ const multiUpload = multer({ storage }).fields([{ name: 'hooks', maxCount: 20 },
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // ── Gemini Vision helper ───────────────────────────────────────────────────
-function orVisionDetect(apiKey, frameBase64, mimeType, prompt) {
+function orVisionDetect(apiKey, frameBase64, mimeType, prompt, model) {
+  model = model || 'openai/gpt-4o-mini';
   return new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify({
-      model: 'openai/gpt-4o-mini',
+      model: model,
       messages: [{ role: 'user', content: [
         { type: 'image_url', image_url: { url: `data:${mimeType};base64,${frameBase64}` } },
         { type: 'text', text: prompt }
@@ -253,9 +254,9 @@ app.post('/api/watermark/analyze', upload.single('video'), async (req, res) => {
     });
 
     const { w: videoW, h: videoH, dur } = meta;
-    // 2. Determine frame timestamps (every 5s, max 20 frames)
-    const INTERVAL = 5;
-    const MAX_FRAMES = 20;
+    // 2. Determine frame timestamps (every 3s, max 25 frames)
+    const INTERVAL = 3;
+    const MAX_FRAMES = 25;
     const timestamps = [];
     for (let t = 0; t < dur - 0.5; t += INTERVAL) {
       timestamps.push(Math.min(t, dur - 0.5));
@@ -270,7 +271,7 @@ app.post('/api/watermark/analyze', upload.single('video'), async (req, res) => {
     const ch = Math.max(4, Math.min(cropH, videoH - cy));
 
     // 4. Extract crops for each timestamp in parallel (batches of 4)
-    const prompt = `Analise esta imagem. Há texto de marca d'água (watermark/logo de rede social como TikTok, Sora, CapCut, etc) visível? Se sim, retorne APENAS JSON: {"present": true, "x": pixeis_da_esquerda, "y": pixeis_do_topo, "w": largura_px, "h": altura_px}. x,y,w,h devem envolver SOMENTE as letras com margem mínima. Se não houver marca d'água: {"present": false}. Não escreva mais nada, apenas JSON.`;
+    const prompt = `Esta imagem tem exatamente ${cw}x${ch} pixels. É um recorte de frame de vídeo. Encontre a bounding box MÍNIMA que cobre TODOS os pixels de texto, letras, números, ícones ou símbolos de marca d'água visíveis nesta imagem. Seja extremamente preciso: x e y devem ser os pixels mais à esquerda e mais ao topo do conteúdo, w e h a largura e altura exatas do grupo de símbolos. Margem zero — envolva somente os pixels do texto/logo. Se houver qualquer texto ou símbolo: {"present":true,"x":X,"y":Y,"w":W,"h":H}. Se a imagem estiver limpa sem nenhum texto ou símbolo: {"present":false}. Responda SOMENTE com o JSON, sem nenhum texto adicional.`;
 
     const frameResults = [];
     for (let i = 0; i < timestamps.length; i++) {
@@ -289,27 +290,38 @@ app.post('/api/watermark/analyze', upload.single('video'), async (req, res) => {
       const frameData = fs.readFileSync(framePath).toString('base64');
       let result = null;
       try {
-        const raw = await orVisionDetect(orKey, frameData, 'image/jpeg', prompt);
+        const raw = await orVisionDetect(orKey, frameData, 'image/jpeg', prompt, 'openai/gpt-4o');
         const m = raw.match(/\{[\s\S]*?\}/);
         if (m) result = JSON.parse(m[0]);
       } catch(_) {}
       frameResults.push({ t, result });
     }
 
-    // 5. Compute tight_bbox (average of all bboxes where present=true)
-    const presentResults = frameResults.filter(r => r.result && r.result.present === true);
+    // 5. Compute tight_bbox using median of detected bboxes + union for coverage
+    const presentResults = frameResults.filter(r => r.result && r.result.present === true
+      && typeof r.result.x === 'number' && r.result.w > 0 && r.result.h > 0);
     let tight_bbox = null;
     if (presentResults.length > 0) {
-      const avgX = presentResults.reduce((s, r) => s + (r.result.x || 0), 0) / presentResults.length;
-      const avgY = presentResults.reduce((s, r) => s + (r.result.y || 0), 0) / presentResults.length;
-      const avgW = presentResults.reduce((s, r) => s + (r.result.w || 0), 0) / presentResults.length;
-      const avgH = presentResults.reduce((s, r) => s + (r.result.h || 0), 0) / presentResults.length;
-      // tight_bbox is relative to video dimensions (not crop), add crop offset
+      function medianVal(arr) {
+        const s = [...arr].sort((a, b) => a - b);
+        const m = Math.floor(s.length / 2);
+        return s.length % 2 === 0 ? (s[m-1] + s[m]) / 2 : s[m];
+      }
+      const medX = medianVal(presentResults.map(r => r.result.x || 0));
+      const medY = medianVal(presentResults.map(r => r.result.y || 0));
+      const medW = medianVal(presentResults.map(r => r.result.w || 0));
+      const medH = medianVal(presentResults.map(r => r.result.h || 0));
+      // Clamp bbox to crop bounds before adding offset
+      const bx = Math.max(0, Math.min(medX, cw - 1));
+      const by = Math.max(0, Math.min(medY, ch - 1));
+      const bw = Math.max(1, Math.min(medW, cw - bx));
+      const bh = Math.max(1, Math.min(medH, ch - by));
+      // tight_bbox offset to full video coordinates
       tight_bbox = {
-        x: Math.round(cx + avgX),
-        y: Math.round(cy + avgY),
-        w: Math.round(avgW),
-        h: Math.round(avgH)
+        x: Math.round(cx + bx),
+        y: Math.round(cy + by),
+        w: Math.round(bw),
+        h: Math.round(bh)
       };
     }
 
