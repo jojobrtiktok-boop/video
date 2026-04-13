@@ -6042,28 +6042,28 @@ makeSimpleTool({
   const panel = document.getElementById('tool-autoaud');
   if (!panel) return;
 
-  const dropzone   = panel.querySelector('#autoaud-dropzone');
-  const fileInput  = panel.querySelector('#autoaud-file-input');
-  const fromLang   = panel.querySelector('#autoaud-from-lang');
-  const toLang     = panel.querySelector('#autoaud-to-lang');
-  const customInst = panel.querySelector('#autoaud-custom-instructions');
-  const apiKeyEl   = panel.querySelector('#autoaud-api-key');
-  const modelSel   = panel.querySelector('#autoaud-model');
-  const analyzeBtn = panel.querySelector('#autoaud-analyze-btn');
-  const progBar    = panel.querySelector('#autoaud-progress');
-  const progText   = panel.querySelector('#autoaud-progress-text');
-  const errEl      = panel.querySelector('#autoaud-error');
-  const phaseAnalyze = panel.querySelector('#autoaud-phase-analyze');
-  const phaseSegments= panel.querySelector('#autoaud-phase-segments');
-  const segGrid    = panel.querySelector('#autoaud-seg-grid');
-  const elKeyEl    = panel.querySelector('#autoaud-el-key');
-  const loadVoicesBtn = panel.querySelector('#autoaud-load-voices');
-  const voiceSel   = panel.querySelector('#autoaud-voice-select');
-  const audioModes = panel.querySelectorAll('input[name="autoaud-audio-mode"]');
-  const generateBtn= panel.querySelector('#autoaud-generate-btn');
-  const phaseResult= panel.querySelector('#autoaud-phase-result');
-  const audioPlayer= panel.querySelector('#autoaud-audio-player');
-  const dlBtn      = panel.querySelector('#autoaud-download');
+  const dropzone   = panel.querySelector('#aau-drop-zone');
+  const fileInput  = panel.querySelector('#aau-audio-input');
+  const fromLang   = panel.querySelector('#aau-from-lang');
+  const toLang     = panel.querySelector('#aau-to-lang');
+  const customInst = panel.querySelector('#aau-custom-instructions');
+  const apiKeyEl   = panel.querySelector('#aau-api-key');
+  const modelSel   = panel.querySelector('#aau-api-model');
+  const analyzeBtn = panel.querySelector('#aau-analyze-btn');
+  const progBar    = panel.querySelector('#aau-analyze-progress');
+  const progText   = panel.querySelector('#aau-analyze-status');
+  const errEl      = panel.querySelector('#aau-analyze-error');
+  const phaseAnalyze = panel.querySelector('#aau-phase-config');
+  const phaseSegments= panel.querySelector('#aau-phase-segments');
+  const segGrid    = panel.querySelector('#aau-segments-container');
+  const elKeyEl    = panel.querySelector('#aau-el-key');
+  const loadVoicesBtn = panel.querySelector('#aau-load-voices-btn');
+  const voiceSel   = panel.querySelector('#aau-voice-select');
+  const audioModes = panel.querySelectorAll('input[name="aau-audio-mode"]');
+  const generateBtn= panel.querySelector('#aau-generate-btn');
+  const phaseResult= panel.querySelector('#aau-phase-result');
+  const audioPlayer= panel.querySelector('#aau-result-audio');
+  const dlBtn      = panel.querySelector('#aau-download-btn');
 
   let currentFile = null;
   let analyzeJobId = null;
@@ -6100,7 +6100,7 @@ makeSimpleTool({
 
   function setFile(f) {
     currentFile = f;
-    const nameEl = panel.querySelector('#autoaud-filename');
+    const nameEl = panel.querySelector('#aau-file-name');
     if (nameEl) nameEl.textContent = f.name;
     if (dropzone) dropzone.style.borderColor = 'var(--accent)';
     showErr('');
@@ -6267,15 +6267,16 @@ makeSimpleTool({
   const panel = document.getElementById('tool-clonar-voz');
   if (!panel) return;
 
-  const dropzone  = panel.querySelector('#cv-dropzone');
+
+  const dropzone  = panel.querySelector('#cv-drop-zone');
   const fileInput = panel.querySelector('#cv-file-input');
   const elKeyEl   = panel.querySelector('#cv-el-key');
   const cloneBtn  = panel.querySelector('#cv-clone-btn');
   const errEl     = panel.querySelector('#cv-error');
   const progBar   = panel.querySelector('#cv-progress');
-  const progText  = panel.querySelector('#cv-progress-text');
+  const progText  = panel.querySelector('#cv-status');
   const resultSec = panel.querySelector('#cv-result');
-  const voiceIdEl = panel.querySelector('#cv-voice-id');
+  const voiceIdEl = panel.querySelector('#cv-voice-id-display');
   const copyBtn   = panel.querySelector('#cv-copy-btn');
   const deleteBtn = panel.querySelector('#cv-delete-btn');
   const timerEl   = panel.querySelector('#cv-timer');
@@ -6309,7 +6310,7 @@ makeSimpleTool({
 
   function setFile(f) {
     currentFile = f;
-    const nameEl = panel.querySelector('#cv-filename');
+    const nameEl = panel.querySelector('#cv-file-name');
     if (nameEl) nameEl.textContent = f.name;
     if (dropzone) dropzone.style.borderColor = 'var(--accent)';
     showErr('');
