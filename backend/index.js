@@ -2442,12 +2442,15 @@ app.post('/api/translate/analyze', upload.single('video'), async (req, res) => {
   const apiModel   = req.body.api_model || 'claude-3-5-haiku-20241022';
   const apiBase    = req.body.api_base  || 'https://api.anthropic.com';
 
+  const customInstructions = req.body.custom_instructions || '';
+  const audioOnlyFlag = req.body.audio_only === 'true' || req.body.audio_only === true;
+
   if (!apiKey) return res.status(400).json({ error: 'api_key obrigatória para tradução' });
 
   // Guarda referência do arquivo original para o passo generate
   const tempId = Date.now().toString(36) + Math.random().toString(36).slice(2);
   const tempMeta = path.join(UPLOAD_DIR, tempId + '.meta.json');
-  fs.writeFileSync(tempMeta, JSON.stringify({ input, originalname: req.file.originalname, toLang }));
+  fs.writeFileSync(tempMeta, JSON.stringify({ input, originalname: req.file.originalname, toLang, audioOnly: audioOnlyFlag }));
   scheduleDelete(input, 60 * 60 * 1000);      // 1h para expirar
   scheduleDelete(tempMeta, 60 * 60 * 1000);
 
@@ -2583,7 +2586,7 @@ async function elevenLabsDeleteVoice(voiceId, elKey) {
 
 // Paso 2: gera vídeo traduzido com os segmentos aprovados (editados pelo usuário)
 app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req, res) => {
-  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync, trim_to_audio, max_tempo, dynamic_mode, music_mode = 'recriar' } = req.body;
+  const { tempId, segments, elevenlabs_key, voice_id, with_lipsync, trim_to_audio, max_tempo, dynamic_mode, music_mode = 'recriar', audio_only: audioOnlyParam } = req.body;
   if (!tempId || !segments || !elevenlabs_key || !voice_id)
     return res.status(400).json({ error: 'tempId, segments, elevenlabs_key e voice_id são obrigatórios' });
   const maxTempoRate = Math.max(1.0, Math.min(2.5, parseFloat(max_tempo) || 1.8));
@@ -2595,6 +2598,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
   const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
   const input = meta.input;
   const toLang = meta.toLang || '';
+  const audioOnly = !!(audioOnlyParam || meta.audioOnly);
   if (!fs.existsSync(input)) return res.status(404).json({ error: 'Arquivo original expirado.' });
 
   function srtTimeToSecs(t) {
@@ -2810,13 +2814,22 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
       }
     }
 
-    // 7. Substituir áudio no vídeo
-    const outputName = 'traducao-' + path.basename(input);
+    // 7. Substituir áudio no vídeo (ou retornar só o áudio)
+    const outputExt = audioOnly ? '.mp3' : path.extname(meta.originalname) || '.mp4';
+    const outputName = (audioOnly ? 'audio-traduzido-' : 'traducao-') + path.basename(input).replace(/\.[^.]+$/, '') + outputExt;
     const output = path.join(UPLOAD_DIR, outputName);
-    const trimFlag = trim_to_audio && trimEndTime > 0 ? `-t ${(trimEndTime + 0.5).toFixed(3)}` : '';
-    await new Promise((resolve, reject) => {
-      exec(`"${FFMPEG}" -y -i "${input}" -i "${finalAudio}" -c:v copy -map 0:v:0 -map 1:a:0 ${trimFlag} -shortest "${output}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
-    });
+
+    if (audioOnly) {
+      // Só exporta o áudio traduzido como MP3
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${finalAudio}" -codec:a libmp3lame -qscale:a 2 "${output}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
+      });
+    } else {
+      const trimFlag = trim_to_audio && trimEndTime > 0 ? `-t ${(trimEndTime + 0.5).toFixed(3)}` : '';
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${input}" -i "${finalAudio}" -c:v copy -map 0:v:0 -map 1:a:0 ${trimFlag} -shortest "${output}"`, (e,_,se) => e ? reject(new Error(se)) : resolve());
+      });
+    }
 
     // 8. Limpeza de temporários
     [audioRaw, finalAudio].forEach(f => fs.unlink(f, () => {}));
@@ -2824,7 +2837,7 @@ app.post('/api/translate/generate', express.json({ limit: '200kb' }), async (req
 
     scheduleDelete(output, 30 * 60 * 1000);
     const fn = friendlyFilename(meta.originalname, `traduzido ${toLang || ''}`);
-    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: 'translate', label: '🌐 Tradução', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000, friendlyName: fn };
+    const libEntry = { id: Date.now().toString() + Math.random().toString(36).slice(2), type: audioOnly ? 'audio' : 'translate', label: audioOnly ? '🔊 Áudio Traduzido' : '🌐 Tradução', url: `/uploads/${path.basename(output)}`, createdAt: Date.now(), expiresAt: Date.now() + 30*60*1000, friendlyName: fn };
     addToLibrary(libEntry);
     return res.json({ url: `/uploads/${path.basename(output)}`, id: libEntry.id, friendlyName: fn });
 
@@ -2869,6 +2882,57 @@ app.post('/api/translate/text', express.json({ limit: '20kb' }), async (req, res
     return res.json({ translated });
   } catch (e) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// CLONE VOZ (temporário, auto-delete)
+// ════════════════════════════════════════════════════════════════════
+
+app.post('/api/clone-voice/create', upload.single('audio'), async (req, res) => {
+  const { elevenlabs_key } = req.body;
+  if (!req.file || !elevenlabs_key)
+    return res.status(400).json({ error: 'audio e elevenlabs_key são obrigatórios' });
+
+  const src = req.file.path;
+  let audioPath = src;
+
+  try {
+    // Se for vídeo, extrai o áudio
+    const isVideo = req.file.mimetype?.startsWith('video/');
+    if (isVideo) {
+      audioPath = src + '_voice.wav';
+      await new Promise((resolve, reject) => {
+        exec(`"${FFMPEG}" -y -i "${src}" -vn -ar 44100 -ac 1 -t 120 "${audioPath}"`, (e,_,se) => e ? reject(new Error(se||e.message)) : resolve());
+      });
+    }
+
+    const voiceId = await elevenLabsCloneVoice(audioPath, elevenlabs_key);
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutos
+
+    // Agenda deleção automática
+    setTimeout(() => {
+      elevenLabsDeleteVoice(voiceId, elevenlabs_key).catch(() => {});
+    }, 10 * 60 * 1000);
+
+    res.json({ voiceId, expiresAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    fs.unlink(src, () => {});
+    if (audioPath !== src) fs.unlink(audioPath, () => {});
+  }
+});
+
+app.post('/api/clone-voice/delete', express.json(), async (req, res) => {
+  const { voiceId, elevenlabs_key } = req.body;
+  if (!voiceId || !elevenlabs_key)
+    return res.status(400).json({ error: 'voiceId e elevenlabs_key são obrigatórios' });
+  try {
+    await elevenLabsDeleteVoice(voiceId, elevenlabs_key);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

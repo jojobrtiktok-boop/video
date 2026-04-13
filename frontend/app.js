@@ -108,7 +108,7 @@ const API = '';
 const CAT_MAP = {
   watermark: 'video', subtitle: 'video', trim: 'video', resize: 'video',
   compress: 'video', upscale: 'video', mirror: 'video', extrair: 'video', combine: 'video', juntar: 'video',
-  translate: 'video', autotr: 'video', autohook: 'video', autocorpo: 'video', automontador: 'video', ferramentas: 'video', swapfala: 'video', headline: 'video', gencenas: 'video',
+  translate: 'video', autotr: 'video', autoaud: 'video', autohook: 'video', autocorpo: 'video', automontador: 'video', ferramentas: 'video', swapfala: 'video', headline: 'video', gencenas: 'video', 'clonar-voz': 'video',
   'video-library': null
 };
 
@@ -6033,6 +6033,382 @@ makeSimpleTool({
       updProg(0, '');
     } finally {
       renderBtn.disabled = false; renderBtn.textContent = '🚀 Renderizar vídeo';
+    }
+  });
+})();
+
+// ─── AUTO TRADUZIR ÁUDIO ─────────────────────────────────────────────────────
+(function(){
+  const panel = document.getElementById('tool-autoaud');
+  if (!panel) return;
+
+  const dropzone   = panel.querySelector('#autoaud-dropzone');
+  const fileInput  = panel.querySelector('#autoaud-file-input');
+  const fromLang   = panel.querySelector('#autoaud-from-lang');
+  const toLang     = panel.querySelector('#autoaud-to-lang');
+  const customInst = panel.querySelector('#autoaud-custom-instructions');
+  const apiKeyEl   = panel.querySelector('#autoaud-api-key');
+  const modelSel   = panel.querySelector('#autoaud-model');
+  const analyzeBtn = panel.querySelector('#autoaud-analyze-btn');
+  const progBar    = panel.querySelector('#autoaud-progress');
+  const progText   = panel.querySelector('#autoaud-progress-text');
+  const errEl      = panel.querySelector('#autoaud-error');
+  const phaseAnalyze = panel.querySelector('#autoaud-phase-analyze');
+  const phaseSegments= panel.querySelector('#autoaud-phase-segments');
+  const segGrid    = panel.querySelector('#autoaud-seg-grid');
+  const elKeyEl    = panel.querySelector('#autoaud-el-key');
+  const loadVoicesBtn = panel.querySelector('#autoaud-load-voices');
+  const voiceSel   = panel.querySelector('#autoaud-voice-select');
+  const audioModes = panel.querySelectorAll('input[name="autoaud-audio-mode"]');
+  const generateBtn= panel.querySelector('#autoaud-generate-btn');
+  const phaseResult= panel.querySelector('#autoaud-phase-result');
+  const audioPlayer= panel.querySelector('#autoaud-audio-player');
+  const dlBtn      = panel.querySelector('#autoaud-download');
+
+  let currentFile = null;
+  let analyzeJobId = null;
+  let analyzeSegments = [];
+
+  // Persist keys
+  const KEYS = { api: 'autoaud_api_key', el: 'autoaud_el_key', model: 'autoaud_model' };
+  if (localStorage.getItem(KEYS.api)) apiKeyEl.value = localStorage.getItem(KEYS.api);
+  if (localStorage.getItem(KEYS.el))  elKeyEl.value  = localStorage.getItem(KEYS.el);
+  if (localStorage.getItem(KEYS.model)) modelSel.value = localStorage.getItem(KEYS.model);
+  apiKeyEl.addEventListener('change', () => localStorage.setItem(KEYS.api, apiKeyEl.value.trim()));
+  elKeyEl.addEventListener('change',  () => localStorage.setItem(KEYS.el,  elKeyEl.value.trim()));
+  modelSel.addEventListener('change', () => localStorage.setItem(KEYS.model, modelSel.value));
+
+  function showErr(msg) { errEl.textContent = msg; errEl.style.display = msg ? 'block' : 'none'; }
+  function updProg(pct, txt) {
+    if (progBar) { progBar.style.display = pct > 0 ? 'block' : 'none'; progBar.value = pct; }
+    if (progText) progText.textContent = txt || '';
+  }
+  function hideProg() { updProg(0, ''); }
+
+  // Drop zone
+  if (dropzone) {
+    dropzone.addEventListener('click', () => fileInput && fileInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault(); dropzone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+  }
+  if (fileInput) fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+  function setFile(f) {
+    currentFile = f;
+    const nameEl = panel.querySelector('#autoaud-filename');
+    if (nameEl) nameEl.textContent = f.name;
+    if (dropzone) dropzone.style.borderColor = 'var(--accent)';
+    showErr('');
+  }
+
+  // Analyze
+  if (analyzeBtn) analyzeBtn.addEventListener('click', async () => {
+    if (!currentFile) { showErr('Selecione um arquivo de áudio.'); return; }
+    const key = apiKeyEl.value.trim();
+    if (!key) { showErr('Informe a API Key OpenAI.'); return; }
+    showErr('');
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = 'Analisando…';
+    updProg(5, 'Enviando arquivo…');
+
+    try {
+      const fd = new FormData();
+      fd.append('file', currentFile);
+      fd.append('from_lang', fromLang ? fromLang.value : 'auto');
+      fd.append('to_lang', toLang ? toLang.value : 'pt');
+      fd.append('custom_instructions', customInst ? customInst.value : '');
+      fd.append('api_key', key);
+      fd.append('model', modelSel ? modelSel.value : 'gpt-4o');
+      fd.append('audio_only', 'true');
+
+      updProg(15, 'Transcrevendo áudio…');
+      const r = await fetch('/api/translate/analyze', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      analyzeJobId = j.id;
+      analyzeSegments = j.segments || [];
+
+      updProg(100, '✓ Transcrição pronta!');
+      renderSegments(analyzeSegments);
+      if (phaseAnalyze) phaseAnalyze.style.display = 'none';
+      if (phaseSegments) phaseSegments.style.display = 'block';
+      hideProg();
+    } catch(e) {
+      showErr('Erro: ' + e.message);
+      hideProg();
+    } finally {
+      analyzeBtn.disabled = false;
+      analyzeBtn.textContent = '🎙️ Analisar Áudio';
+    }
+  });
+
+  function renderSegments(segs) {
+    if (!segGrid) return;
+    segGrid.innerHTML = '';
+    segs.forEach((seg, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'seg-item';
+      wrap.innerHTML = `<div class="seg-label">Segmento ${i+1} <span class="seg-time">[${fmtTime(seg.start)}–${fmtTime(seg.end)}]</span></div>
+        <div class="seg-cols">
+          <div><label>Original</label><textarea class="seg-original" rows="2">${esc(seg.original || seg.text || '')}</textarea></div>
+          <div><label>Tradução</label><textarea class="seg-translation" rows="2">${esc(seg.translation || '')}</textarea></div>
+        </div>`;
+      segGrid.appendChild(wrap);
+    });
+  }
+
+  function fmtTime(s) { if (!s && s !== 0) return '--'; const m = Math.floor(s/60); const sec = Math.floor(s%60); return `${m}:${String(sec).padStart(2,'0')}`; }
+  function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  // Load ElevenLabs voices
+  if (loadVoicesBtn) loadVoicesBtn.addEventListener('click', async () => {
+    const elKey = elKeyEl.value.trim();
+    if (!elKey) { showErr('Informe a ElevenLabs API Key.'); return; }
+    loadVoicesBtn.disabled = true;
+    loadVoicesBtn.textContent = 'Carregando…';
+    try {
+      const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': elKey } });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.detail?.message || 'Erro ElevenLabs');
+      if (!voiceSel) return;
+      voiceSel.innerHTML = '';
+      (j.voices || []).forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.voice_id;
+        opt.textContent = v.name;
+        voiceSel.appendChild(opt);
+      });
+      loadVoicesBtn.textContent = '✓ Vozes carregadas';
+    } catch(e) {
+      showErr('Erro ao carregar vozes: ' + e.message);
+      loadVoicesBtn.disabled = false;
+      loadVoicesBtn.textContent = 'Carregar Vozes';
+    }
+  });
+
+  // Generate
+  if (generateBtn) generateBtn.addEventListener('click', async () => {
+    if (!analyzeJobId) { showErr('Analise o áudio primeiro.'); return; }
+    const elKey = elKeyEl.value.trim();
+    if (!elKey) { showErr('Informe a ElevenLabs API Key.'); return; }
+    const voiceId = voiceSel ? voiceSel.value : '';
+    if (!voiceId) { showErr('Selecione uma voz.'); return; }
+
+    // Collect reviewed translations
+    const reviewedSegs = [];
+    if (segGrid) {
+      segGrid.querySelectorAll('.seg-item').forEach((el, i) => {
+        const orig = el.querySelector('.seg-original');
+        const trans = el.querySelector('.seg-translation');
+        reviewedSegs.push({
+          ...analyzeSegments[i],
+          original: orig ? orig.value : (analyzeSegments[i]?.original || ''),
+          translation: trans ? trans.value : (analyzeSegments[i]?.translation || '')
+        });
+      });
+    }
+
+    let audioMode = 'normal';
+    audioModes.forEach(r => { if (r.checked) audioMode = r.value; });
+
+    showErr('');
+    generateBtn.disabled = true;
+    generateBtn.textContent = 'Gerando…';
+    updProg(10, 'Gerando áudio traduzido…');
+
+    try {
+      const body = {
+        id: analyzeJobId,
+        el_key: elKey,
+        voice_id: voiceId,
+        audio_mode: audioMode,
+        audio_only: true,
+        segments: reviewedSegs
+      };
+      const r = await fetch('/api/translate/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      // Poll if job-based
+      let url = j.url;
+      if (j.id) {
+        updProg(30, 'Processando…');
+        url = await pollGcJob(j.id);
+      }
+
+      updProg(100, '✓ Áudio pronto!');
+      if (audioPlayer) { audioPlayer.src = url; audioPlayer.style.display = 'block'; }
+      if (dlBtn) { dlBtn.href = url; dlBtn.download = 'audio-traduzido.mp3'; dlBtn.style.display = 'inline-block'; }
+      if (phaseSegments) phaseSegments.style.display = 'none';
+      if (phaseResult) { phaseResult.style.display = 'block'; phaseResult.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+      hideProg();
+    } catch(e) {
+      showErr('Erro: ' + e.message);
+      hideProg();
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = '🎵 Gerar Áudio Traduzido';
+    }
+  });
+})();
+
+// ─── CLONAR VOZ ──────────────────────────────────────────────────────────────
+(function(){
+  const panel = document.getElementById('tool-clonar-voz');
+  if (!panel) return;
+
+  const dropzone  = panel.querySelector('#cv-dropzone');
+  const fileInput = panel.querySelector('#cv-file-input');
+  const elKeyEl   = panel.querySelector('#cv-el-key');
+  const cloneBtn  = panel.querySelector('#cv-clone-btn');
+  const errEl     = panel.querySelector('#cv-error');
+  const progBar   = panel.querySelector('#cv-progress');
+  const progText  = panel.querySelector('#cv-progress-text');
+  const resultSec = panel.querySelector('#cv-result');
+  const voiceIdEl = panel.querySelector('#cv-voice-id');
+  const copyBtn   = panel.querySelector('#cv-copy-btn');
+  const deleteBtn = panel.querySelector('#cv-delete-btn');
+  const timerEl   = panel.querySelector('#cv-timer');
+
+  let currentFile  = null;
+  let currentVoiceId = null;
+  let countdownInterval = null;
+
+  const KEY_EL = 'cv_el_key';
+  if (localStorage.getItem(KEY_EL)) elKeyEl.value = localStorage.getItem(KEY_EL);
+  elKeyEl.addEventListener('change', () => localStorage.setItem(KEY_EL, elKeyEl.value.trim()));
+
+  function showErr(msg) { if (errEl) { errEl.textContent = msg; errEl.style.display = msg ? 'block' : 'none'; } }
+  function updProg(pct, txt) {
+    if (progBar) { progBar.style.display = pct > 0 ? 'block' : 'none'; progBar.value = pct; }
+    if (progText) progText.textContent = txt || '';
+  }
+
+  // Drop zone
+  if (dropzone) {
+    dropzone.addEventListener('click', () => fileInput && fileInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault(); dropzone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+  }
+  if (fileInput) fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+  function setFile(f) {
+    currentFile = f;
+    const nameEl = panel.querySelector('#cv-filename');
+    if (nameEl) nameEl.textContent = f.name;
+    if (dropzone) dropzone.style.borderColor = 'var(--accent)';
+    showErr('');
+  }
+
+  // Clone
+  if (cloneBtn) cloneBtn.addEventListener('click', async () => {
+    if (!currentFile) { showErr('Selecione um arquivo de áudio ou vídeo.'); return; }
+    const elKey = elKeyEl.value.trim();
+    if (!elKey) { showErr('Informe a ElevenLabs API Key.'); return; }
+
+    showErr('');
+    cloneBtn.disabled = true;
+    cloneBtn.textContent = 'Clonando…';
+    updProg(20, 'Enviando arquivo…');
+
+    try {
+      const fd = new FormData();
+      fd.append('file', currentFile);
+      fd.append('el_key', elKey);
+
+      const r = await fetch('/api/clone-voice/create', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+
+      currentVoiceId = j.voiceId;
+      updProg(100, '✓ Voz clonada!');
+
+      if (voiceIdEl) voiceIdEl.textContent = j.voiceId;
+      if (resultSec) { resultSec.style.display = 'block'; resultSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+
+      // Start countdown (10 min)
+      startCountdown(600);
+      setTimeout(() => updProg(0, ''), 1500);
+    } catch(e) {
+      showErr('Erro: ' + e.message);
+      updProg(0, '');
+    } finally {
+      cloneBtn.disabled = false;
+      cloneBtn.textContent = '🎤 Clonar Voz';
+    }
+  });
+
+  function startCountdown(seconds) {
+    if (countdownInterval) clearInterval(countdownInterval);
+    let remaining = seconds;
+    updateTimerDisplay(remaining);
+    countdownInterval = setInterval(() => {
+      remaining--;
+      updateTimerDisplay(remaining);
+      if (remaining <= 0) {
+        clearInterval(countdownInterval);
+        if (timerEl) timerEl.textContent = '⏱ Voz expirada';
+        if (deleteBtn) deleteBtn.style.display = 'none';
+        currentVoiceId = null;
+      }
+    }, 1000);
+  }
+
+  function updateTimerDisplay(s) {
+    if (!timerEl) return;
+    const m = Math.floor(s / 60);
+    const sec = String(s % 60).padStart(2, '0');
+    timerEl.textContent = `⏱ Expira em ${m}:${sec}`;
+    timerEl.style.color = s < 60 ? '#ef4444' : '#f59e0b';
+  }
+
+  // Copy voice ID
+  if (copyBtn) copyBtn.addEventListener('click', () => {
+    if (!currentVoiceId) return;
+    navigator.clipboard.writeText(currentVoiceId).then(() => {
+      copyBtn.textContent = '✓ Copiado!';
+      setTimeout(() => { copyBtn.textContent = 'Copiar ID'; }, 2000);
+    });
+  });
+
+  // Delete voice
+  if (deleteBtn) deleteBtn.addEventListener('click', async () => {
+    if (!currentVoiceId) return;
+    const elKey = elKeyEl.value.trim();
+    deleteBtn.disabled = true;
+    deleteBtn.textContent = 'Deletando…';
+    try {
+      const r = await fetch('/api/clone-voice/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voiceId: currentVoiceId, el_key: elKey })
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
+      if (countdownInterval) clearInterval(countdownInterval);
+      if (timerEl) timerEl.textContent = '✓ Voz deletada';
+      if (resultSec) resultSec.style.display = 'none';
+      currentVoiceId = null;
+    } catch(e) {
+      showErr('Erro ao deletar: ' + e.message);
+    } finally {
+      deleteBtn.disabled = false;
+      deleteBtn.textContent = '🗑️ Deletar Voz Agora';
     }
   });
 })();

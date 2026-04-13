@@ -874,6 +874,10 @@
             <span class="nav-item-title" style="color:var(--accent)">Auto Corpo</span>
             <span class="nav-item-desc">Corpos IA + voz ElevenLabs</span>
           </button>
+          <button class="nav-item" data-tool="autoaud">
+            <span class="nav-item-title" style="color:var(--accent)">Auto Traduzir Áudio</span>
+            <span class="nav-item-desc">Traduz áudio do Zap + clona voz (ElevenLabs v2)</span>
+          </button>
           <button class="nav-item" data-tool="autotr">
             <span class="nav-item-title" style="color:var(--accent)">Auto Tradutor</span>
             <span class="nav-item-desc">Tradução → Marca d'Água → Legendas</span>
@@ -881,6 +885,10 @@
           <button class="nav-item" data-tool="autohook">
             <span class="nav-item-title" style="color:var(--accent)">Auto Hook</span>
             <span class="nav-item-desc">Hooks IA + voz + edição automática</span>
+          </button>
+          <button class="nav-item" data-tool="clonar-voz">
+            <span class="nav-item-title">Clonar Voz</span>
+            <span class="nav-item-desc">Clona voz por 10 min → apaga automaticamente</span>
           </button>
           <a href="/editor/" class="nav-item" style="text-decoration:none;border-top:1px solid var(--border);margin-top:4px;padding-top:10px;">
             <span class="nav-item-title" style="color:var(--accent);display:flex;align-items:center;gap:5px;">
@@ -2093,6 +2101,199 @@
       <div id="ac-results" style="display:none">
         <div class="section-label" style="margin-bottom:10px">✅ Resultados</div>
         <div id="ac-results-list"></div>
+      </div>
+    </div>
+
+    </div>
+
+    <!-- AUTO TRADUZIR ÁUDIO -->
+    <div id="tool-autoaud" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🔊 Auto Traduzir Áudio</h1>
+        <p class="tool-subtitle">Envie um áudio (Zap, MP3, WAV…) — transcreve, traduz e regrava a voz com ElevenLabs</p>
+      </div>
+
+      <!-- FASE CONFIG -->
+      <div id="aau-phase-config">
+        <div class="card">
+          <div class="section-label">🎙 Áudio</div>
+          <label for="aau-audio-input" id="aau-drop-zone" class="drop-zone" tabindex="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:40px;height:40px;opacity:.4"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
+            <p><strong>Selecione o áudio</strong></p>
+            <div style="font-size:11px;color:var(--text-muted)">MP3, M4A, OGG, WAV, AAC, OPUS…</div>
+            <div id="aau-file-name" class="dz-filename" style="margin-top:6px"></div>
+          </label>
+          <input type="file" id="aau-audio-input" accept="audio/*,.ogg,.opus,.m4a,.aac" class="hidden-input" />
+        </div>
+
+        <div class="card" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div class="section-label">🌍 Idioma de origem</div>
+            <select id="aau-from-lang" class="tool-select" style="width:100%">
+              <option value="auto">🔍 Auto-detectar</option>
+              <option value="pt">Português</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="fr">Francês</option>
+              <option value="de">Alemão</option>
+              <option value="it">Italiano</option>
+              <option value="ja">Japonês</option>
+              <option value="zh">Chinês</option>
+            </select>
+          </div>
+          <div>
+            <div class="section-label">🎯 Traduzir para</div>
+            <select id="aau-to-lang" class="tool-select" style="width:100%">
+              <option value="pt">Português</option>
+              <option value="en">Inglês</option>
+              <option value="es">Espanhol</option>
+              <option value="fr">Francês</option>
+              <option value="de">Alemão</option>
+              <option value="it">Italiano</option>
+              <option value="ja">Japonês</option>
+              <option value="zh">Chinês</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">✏️ Personalização <span style="font-size:11px;font-weight:400;color:var(--text-muted)">(opcional)</span></div>
+          <textarea id="aau-custom-instructions" class="tool-input" rows="2" placeholder="Ex: tom informal; mensagem de áudio do celular..." style="width:100%;resize:vertical;font-family:inherit;line-height:1.5"></textarea>
+        </div>
+
+        <div class="card">
+          <div class="section-label">🤖 API Tradução (Anthropic ou OpenRouter)</div>
+          <div style="display:flex;gap:8px">
+            <input id="aau-api-key" type="password" class="tool-input" placeholder="sk-ant-... ou sk-or-..." style="flex:1" />
+            <button id="aau-api-save-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">💾 Salvar</button>
+          </div>
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+            <label style="font-size:12px;color:var(--text-muted)">Modelo:</label>
+            <select id="aau-api-model" class="tool-select" style="flex:1">
+              <option value="claude-3-5-haiku-20241022">Claude 3.5 Haiku</option>
+              <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+              <option value="openai/gpt-4o-mini" selected>GPT-4o Mini (OpenRouter)</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="aau-analyze-btn" class="submit-btn" disabled>Selecione um áudio</button>
+        <div id="aau-analyze-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="aau-analyze-status" class="status-text"></div>
+        <div id="aau-analyze-error" class="error-msg"></div>
+      </div>
+
+      <!-- FASE SEGMENTOS -->
+      <div id="aau-phase-segments" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div class="section-label" style="margin:0">📝 Revise a tradução</div>
+            <button id="aau-back-btn" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px">← Voltar</button>
+          </div>
+          <div id="aau-segments-container" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-label">🎙 Voz ElevenLabs</div>
+          <div style="display:flex;gap:8px">
+            <input id="aau-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+            <button id="aau-el-save-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:13px">💾</button>
+            <button id="aau-load-voices-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">Carregar vozes</button>
+          </div>
+          <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">Salvo só no seu navegador</div>
+          <select id="aau-voice-select" class="tool-select" style="width:100%;margin-top:8px;display:none">
+            <option value="">Selecione uma voz...</option>
+          </select>
+          <div id="aau-voices-error" class="error-msg"></div>
+        </div>
+
+        <div class="card" style="padding:14px">
+          <div class="section-label" style="margin-bottom:10px">⚙️ Modo de montagem</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <label id="aau-mode-normal-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:2px solid var(--accent);border-radius:8px;cursor:pointer;background:color-mix(in srgb,var(--accent) 10%,transparent)">
+              <input type="radio" name="aau-audio-mode" value="normal" checked style="display:none">
+              <span style="font-size:13px;font-weight:600">🎛️ Normal</span>
+              <span style="font-size:11px;color:var(--text-muted)">Mantém pausas originais</span>
+            </label>
+            <label id="aau-mode-dynamic-lbl" style="display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer">
+              <input type="radio" name="aau-audio-mode" value="dynamic" style="display:none">
+              <span style="font-size:13px;font-weight:600">⚡ Dinâmico</span>
+              <span style="font-size:11px;color:var(--text-muted)">Sem pausas, fluxo contínuo</span>
+            </label>
+          </div>
+        </div>
+
+        <button id="aau-generate-btn" class="submit-btn" disabled>Configure a voz para gerar</button>
+        <div id="aau-generate-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+        <div id="aau-generate-status" class="status-text"></div>
+        <div id="aau-generate-error" class="error-msg"></div>
+      </div>
+
+      <!-- FASE RESULTADO -->
+      <div id="aau-phase-result" style="display:none">
+        <div class="card" style="text-align:center;padding:28px 20px">
+          <div style="font-size:40px;margin-bottom:10px">✅</div>
+          <h3 style="color:var(--text);margin:0 0 6px">Áudio traduzido!</h3>
+          <p style="font-size:13px;color:var(--text-muted);margin:0 0 18px">Pronto para baixar</p>
+          <audio id="aau-result-audio" controls style="width:100%;margin-bottom:16px"></audio>
+          <a id="aau-download-btn" class="download-btn" download>⬇ Baixar áudio traduzido</a>
+          <button id="aau-new-btn" class="submit-btn" style="margin-top:10px;background:none;border:1px solid var(--border);color:var(--text)">🔄 Traduzir novo áudio</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CLONAR VOZ -->
+    <div id="tool-clonar-voz" class="tool-panel" style="display:none">
+      <div class="tool-header">
+        <h1 class="tool-title">🧬 Clonar Voz</h1>
+        <p class="tool-subtitle">Clone uma voz por 10 minutos — apagada automaticamente depois</p>
+      </div>
+
+      <div class="card" style="border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.04)">
+        <p style="font-size:12px;color:#f87171;margin:0">⚠️ A voz clonada fica disponível <strong>por 10 minutos</strong> e depois é apagada automaticamente da sua conta ElevenLabs. Use apenas com áudios que você tem permissão para clonar.</p>
+      </div>
+
+      <div class="card">
+        <div class="section-label">📁 Áudio ou Vídeo com a voz</div>
+        <label for="cv-file-input" id="cv-drop-zone" class="drop-zone" tabindex="0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:36px;height:36px;opacity:.4"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
+          <p><strong>Selecione áudio ou vídeo</strong></p>
+          <div style="font-size:11px;color:var(--text-muted)">MP3, M4A, WAV, MP4, MOV… (mín. 10 seg de fala)</div>
+          <div id="cv-file-name" class="dz-filename" style="margin-top:6px"></div>
+        </label>
+        <input type="file" id="cv-file-input" accept="audio/*,video/*" class="hidden-input" />
+      </div>
+
+      <div class="card">
+        <div class="section-label">🔑 ElevenLabs API Key</div>
+        <div style="display:flex;gap:8px">
+          <input id="cv-el-key" type="password" class="tool-input" placeholder="ElevenLabs API Key" style="flex:1" />
+          <button id="cv-el-save-btn" class="submit-btn" style="width:auto;padding:0 12px;font-size:13px">💾</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Salvo localmente no navegador</div>
+      </div>
+
+      <button id="cv-clone-btn" class="submit-btn" disabled>Selecione um arquivo</button>
+      <div id="cv-progress" class="progress-wrap" style="display:none"><div class="progress-bar" style="animation:indeterminate 1.5s infinite linear;width:40%"></div></div>
+      <div id="cv-status" class="status-text"></div>
+      <div id="cv-error" class="error-msg"></div>
+
+      <!-- Resultado: voice id + timer -->
+      <div id="cv-result" style="display:none">
+        <div class="card" style="border:1px solid rgba(74,222,128,0.3);background:rgba(74,222,128,0.04)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <span style="font-size:13px;font-weight:700;color:#4ade80">✅ Voz clonada!</span>
+            <span id="cv-timer" style="font-size:22px;font-weight:800;color:#f59e0b;font-variant-numeric:tabular-nums">10:00</span>
+          </div>
+          <div class="section-label" style="margin-bottom:6px">Voice ID</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="cv-voice-id-display" type="text" class="tool-input" readonly style="flex:1;font-family:monospace;font-size:12px" />
+            <button id="cv-copy-btn" class="submit-btn" style="width:auto;padding:0 14px;font-size:13px">📋 Copiar</button>
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0">Use este Voice ID nas ferramentas de tradução e geração de voz enquanto o tempo não acabar.</p>
+          <button id="cv-delete-btn" class="submit-btn" style="margin-top:14px;background:#7f1d1d;border-color:#ef4444;color:#fca5a5;font-size:12px">🗑 Apagar voz agora</button>
+        </div>
+        <button id="cv-new-btn" class="submit-btn" style="margin-top:8px;background:none;border:1px solid var(--border);color:var(--text)">🔄 Clonar outra voz</button>
       </div>
     </div>
 
