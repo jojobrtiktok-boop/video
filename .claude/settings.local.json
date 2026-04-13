@@ -49,7 +49,20 @@
       "Bash(ssh:*)",
       "Bash(grep -v \"//\")",
       "WebFetch(domain:greenn.com.br)",
-      "WebFetch(domain:worldtreinamentos.site)"
+      "WebFetch(domain:worldtreinamentos.site)",
+      "Bash(env)",
+      "Bash(python -c \"import fal_client; print\\('ok'\\)\")",
+      "Bash(pip install:*)",
+      "Bash(curl -s \"https://v3b.fal.media/files/b/0a95bbf4/paVsx5h5EuvZ1k3ebbWad.jpg\" -o \"Z:/projetos pra test/mulher/lp/hero-kit.jpg\")",
+      "Bash(curl -s \"https://v3b.fal.media/files/b/0a95bc39/kYt0rbZYyCJlHdWWKxKHJ_image.png\" -o \"Z:/projetos pra test/mulher/lp/tabela-precos.png\")",
+      "Bash(python:*)",
+      "Bash(npx remotion:*)",
+      "Read(//c/Users/user/AppData/Local/**)",
+      "Read(//c/Users/user/.npm/**)",
+      "Bash(where remotion:*)",
+      "Bash(ffprobe -v quiet -print_format json -show_streams \"C:/Users/user/Downloads/Nova pasta/cvs/cv3/CV 3 SEM HEADLINE.mp4\")",
+      "Bash(ffmpeg:*)",
+      "Bash(ffprobe:*)"
     ]
   }
 }

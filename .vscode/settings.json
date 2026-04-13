@@ -50,6 +50,8 @@
         "/^cd \"h:\\\\projeto novo\" ; node --check frontend/app\\.js 2>&1$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "Set-Content": true,
+        "Add": true
     }
 }

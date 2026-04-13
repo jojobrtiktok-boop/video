@@ -2748,7 +2748,7 @@ function loadResizeFrame(file) {
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ── Voltar ──
-  trBackBtn.addEventListener('click', () => {
+  if (trBackBtn) trBackBtn.addEventListener('click', () => {
     trStep2.style.display = 'none';
     trStep1.style.display = '';
   });
@@ -6071,12 +6071,12 @@ makeSimpleTool({
 
   // Persist keys
   const KEYS = { api: 'autoaud_api_key', el: 'autoaud_el_key', model: 'autoaud_model' };
-  if (localStorage.getItem(KEYS.api)) apiKeyEl.value = localStorage.getItem(KEYS.api);
-  if (localStorage.getItem(KEYS.el))  elKeyEl.value  = localStorage.getItem(KEYS.el);
-  if (localStorage.getItem(KEYS.model)) modelSel.value = localStorage.getItem(KEYS.model);
-  apiKeyEl.addEventListener('change', () => localStorage.setItem(KEYS.api, apiKeyEl.value.trim()));
-  elKeyEl.addEventListener('change',  () => localStorage.setItem(KEYS.el,  elKeyEl.value.trim()));
-  modelSel.addEventListener('change', () => localStorage.setItem(KEYS.model, modelSel.value));
+  if (apiKeyEl && localStorage.getItem(KEYS.api)) apiKeyEl.value = localStorage.getItem(KEYS.api);
+  if (elKeyEl && localStorage.getItem(KEYS.el))  elKeyEl.value  = localStorage.getItem(KEYS.el);
+  if (modelSel && localStorage.getItem(KEYS.model)) modelSel.value = localStorage.getItem(KEYS.model);
+  if (apiKeyEl) apiKeyEl.addEventListener('change', () => localStorage.setItem(KEYS.api, apiKeyEl.value.trim()));
+  if (elKeyEl) elKeyEl.addEventListener('change',  () => localStorage.setItem(KEYS.el,  elKeyEl.value.trim()));
+  if (modelSel) modelSel.addEventListener('change', () => localStorage.setItem(KEYS.model, modelSel.value));
 
   function showErr(msg) { errEl.textContent = msg; errEl.style.display = msg ? 'block' : 'none'; }
   function updProg(pct, txt) {
