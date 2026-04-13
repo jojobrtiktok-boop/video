@@ -6109,6 +6109,7 @@ makeSimpleTool({
   // Analyze
   if (analyzeBtn) analyzeBtn.addEventListener('click', async () => {
     if (!currentFile) { showErr('Selecione um arquivo de áudio.'); return; }
+    if (!apiKeyEl) { showErr('Elemento API Key não encontrado.'); return; }
     const key = apiKeyEl.value.trim();
     if (!key) { showErr('Informe a API Key OpenAI.'); return; }
     showErr('');
@@ -6168,6 +6169,7 @@ makeSimpleTool({
 
   // Load ElevenLabs voices
   if (loadVoicesBtn) loadVoicesBtn.addEventListener('click', async () => {
+    if (!elKeyEl) { showErr('Elemento ElevenLabs Key não encontrado.'); return; }
     const elKey = elKeyEl.value.trim();
     if (!elKey) { showErr('Informe a ElevenLabs API Key.'); return; }
     loadVoicesBtn.disabled = true;
@@ -6195,6 +6197,7 @@ makeSimpleTool({
   // Generate
   if (generateBtn) generateBtn.addEventListener('click', async () => {
     if (!analyzeJobId) { showErr('Analise o áudio primeiro.'); return; }
+    if (!elKeyEl) { showErr('Elemento ElevenLabs Key não encontrado.'); return; }
     const elKey = elKeyEl.value.trim();
     if (!elKey) { showErr('Informe a ElevenLabs API Key.'); return; }
     const voiceId = voiceSel ? voiceSel.value : '';
@@ -6319,6 +6322,7 @@ makeSimpleTool({
   // Clone
   if (cloneBtn) cloneBtn.addEventListener('click', async () => {
     if (!currentFile) { showErr('Selecione um arquivo de áudio ou vídeo.'); return; }
+    if (!elKeyEl) { showErr('Elemento ElevenLabs Key não encontrado.'); return; }
     const elKey = elKeyEl.value.trim();
     if (!elKey) { showErr('Informe a ElevenLabs API Key.'); return; }
 
